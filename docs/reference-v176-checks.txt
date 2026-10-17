@@ -1,0 +1,104 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS arrival point has a real route
+PASS reading UI does not mutate missing-person timer
+PASS manual room request reserves immediately
+PASS second guest cannot steal reserved room
+PASS reservation becomes occupied exactly once
+PASS repeated confirmation cannot collect money twice
+PASS used room becomes dirty
+PASS dirty room can reserve for cleaning then reuse
+PASS cleaning then second occupancy completes
+PASS explicit cancellation releases room reservation
+PASS unreachable click does not snap across map
+PASS moving guest stays captured at press
+PASS drag release never emits a tap
+PASS UI-owned gesture never emits a world tap
+PASS pinch release never emits a tap
+PASS menu position stays fixed as guest moves
+PASS context action uses 88px logical touch height
+PASS outside invalid floor tap closes menu and preserves task
+PASS settings retain save and load while menu pauses time
+PASS real GUI click opens room choices without world movement
+PASS real GUI booking click creates one reservation
+PASS JSON save restores active reservation
+PASS malformed save leaves current progress untouched
+PASS resume button during a paused conversation really resumes
+PASS upstairs route uses public corridor instead of room two
+PASS invalid destination preserves booking and route
+PASS valid destination replaces booking and releases room
+PASS escape closes selection instead of exiting
+PASS escape from world opens settings
+PASS active floor remains indicated after menus
+PASS easy mode provides all three operating jobs
+PASS opening settlement caps combined cost at six
+PASS fourth day restores original settlement
+PASS recommendation prefers clean available room
+PASS recommended action creates manual reservation
+PASS staff leave time to read a new guest request
+PASS staff automatically admit unattended guest
+PASS easy transit closes secret cover
+PASS covered entrance remains usable by owner
+PASS service corridor reaches private entrance
+PASS guest grid excludes private warehouse
+PASS all four basement facilities exist at start
+PASS starting cash permits free experimentation
+PASS starter rooms connect to warehouse entrance
+PASS arrival route actually passes through front door
+PASS meal guest reserves table rather than reception
+PASS one pickaxe action starts on one adjacent cell
+PASS one pickaxe action opens exactly one cell
+PASS staff turn away lodging guest when all rooms occupied
+PASS room chute accepts a body inside the room
+PASS room chute transfers body without erasing evidence
+PASS all room chute outlets join starter basement
+PASS starter setup never duplicates facilities or money
+PASS outdoor player has a visible first floor footing
+PASS basement build menu offers all four structures
+PASS meal visitor reaches table and starts seated wait
+PASS meal visitor gets served then leaves
+PASS new basement facility queues on open floor
+PASS new basement facility completes and charges once
+PASS capture command accepts living target
+PASS one capture command physically escorts and imprisons
+PASS prison starts with six spaces and strong security
+PASS prisoner life tracks needs without starving
+PASS prisoner cycles through multiple daily activities
+PASS shared prison admits a second prisoner
+PASS simple feeding immediately improves hunger
+PASS prison expansion adds capacity and charges once
+PASS save restores shared prison and needs
+PASS secure prison stops an escape attempt
+PASS unsecured prison allows real escape path
+PASS prison dashboard keeps simulation running
+PASS inmate needs update in the open menu
+PASS prison sign is a direct clickable target
+PASS cancelled escort clears command and leaves target recoverable
+PASS one valid ground tap closes menu and moves
+PASS surface navigation extends well beyond the old map
+PASS west dining wing is connected to central hall
+PASS basement has more than eight hundred open cells
+PASS distant basement wings are genuinely connected
+PASS large expansion is applied only once
+PASS accepted case creates a real guest arriving at front door
+PASS reliable prisoner intelligence completes first case
+PASS case reward is paid exactly once
+PASS money extraction pays once and completes correct case
+PASS designated assassination satisfies third case
+PASS case identity and rewards survive saving
+PASS coerced information needs verification
+PASS verified information unlocks case completion
+PASS high tracking risk schedules an actual inspection
+PASS temporary lockdown expires even in empty prison
+PASS one care command restores needs and basic security
+PASS informant cooperation requires enough trust
+PASS trust allows cooperative informant recruitment
+PASS informant sends a timed persistent intelligence report
+PASS informant cannot report every frame
+PASS stock intelligence verifies statements without cash cost
+PASS informant and information records survive saving
+PASS case board presents the next required action first
+PASS open case board updates to claim without reopening
+PASS real primary action click collects the case reward
+PASS case checklist reflects collected reward
+FOCUSED CHECKS 101/101

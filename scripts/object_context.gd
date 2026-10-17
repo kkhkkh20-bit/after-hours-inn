@@ -16,6 +16,7 @@ var scroll: ScrollContainer
 var task_label: Label
 var cancel_button: Button
 var top: Control
+var next_live_refresh=0
 var detail_label: Label
 var fixed_header: HBoxContainer
 
@@ -81,15 +82,50 @@ func open(type_: String,id_: String="",detail_: String="") -> void:
 	title_label.text=host.context_title(kind,target)
 	if detail!="":
 		var note=label_(detail,22);note.custom_minimum_size.x=300;note.add_theme_color_override("font_color",Color("f4dbad"));column.add_child(note);detail_label=note
-	for entry in host.context_items(kind,target):
-		var action=str(entry[0]);var b=button_("",column,_perform.bind(action))
-		b.disabled=entry.size()>2 and not entry[2]
-		var l=label_(str(entry[1]),21);b.add_child(l);l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);l.offset_left=12;l.offset_right=-12;l.offset_top=6;l.offset_bottom=-6;l.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-		if b.disabled:l.modulate=Color("939a96")
-		controls[action]=b
+	draw_actions(host.context_items(kind,target))
+	next_live_refresh=0
 	panel.show();scroll.scroll_vertical=0
 	call_deferred("place")
 	refresh()
+
+func draw_actions(entries: Array) -> void:
+	for c in column.get_children():
+		if c is Button:column.remove_child(c);c.queue_free()
+	for key in controls.keys():
+		if not str(key).begins_with("@"):controls.erase(key)
+	for index in entries.size():
+		var entry=entries[index];var action=str(entry[0]);var b=button_("",column,_perform.bind(action))
+		b.set_meta("action",action);b.disabled=entry.size()>2 and not entry[2]
+		var l=label_(str(entry[1]),21);l.name="Caption";b.add_child(l);l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);l.offset_left=12;l.offset_right=-12;l.offset_top=6;l.offset_bottom=-6;l.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;l.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		if index==0:
+			var primary=b.get_theme_stylebox("normal").duplicate();primary.bg_color=Color("42644e");b.add_theme_stylebox_override("normal",primary)
+		l.modulate=Color("939a96") if b.disabled else Color.WHITE
+		controls[action]=b
+
+func sync_live_actions(force: bool=false) -> void:
+	if not panel.visible or kind not in ["contracts","questioning","prison","prison_roster","inmate","prison_overview","prison_policy","prison_settings"]:return
+	if not force and Time.get_ticks_msec()<next_live_refresh:return
+	next_live_refresh=Time.get_ticks_msec()+250
+	var entries: Array=host.context_items(kind,target)
+	var before=[]
+	for child in column.get_children():
+		if child is Button:before.append(str(child.get_meta("action","")))
+	var after=entries.map(func(row):return str(row[0]))
+	if before!=after:
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):return
+		var scroll_at=scroll.scroll_vertical;var old_position=panel.position
+		draw_actions(entries);scroll.scroll_vertical=scroll_at
+		call_deferred("reflow_live",old_position,kind,target)
+	else:
+		for row in entries:
+			var b: Button=controls[str(row[0])];b.disabled=row.size()>2 and not row[2]
+			var caption: Label=b.get_node("Caption");caption.text=str(row[1]);caption.modulate=Color("939a96") if b.disabled else Color.WHITE
+
+func reflow_live(old_position: Vector2,expected_kind: String,expected_target: String) -> void:
+	if not panel.visible or kind!=expected_kind or target!=expected_target:return
+	place()
+	var viewport=host.get_viewport().get_visible_rect().size
+	panel.position=Vector2(clampf(old_position.x,12,maxf(12,viewport.x-panel.size.x-12)),clampf(old_position.y,170,maxf(170,viewport.y-panel.size.y-16)))
 
 func place() -> void:
 	var viewport=host.get_viewport().get_visible_rect().size
@@ -112,8 +148,10 @@ func close() -> void:
 	panel.hide();kind="";target=""
 
 func refresh() -> void:
+	sync_live_actions()
 	if panel.visible and detail_label!=null:
 		if kind=="prison":detail_label.text=host.sim.Prison.summary(host.sim,target)
+		elif kind=="prison_overview":detail_label.text=host.sim.Prison.overview(host.sim)
 		elif kind=="inmate":detail_label.text=host.sim.Prison.inmate_summary(host.sim,target)
 		elif kind=="contracts":detail_label.text=host.sim.Contracts.summary(host.sim)
 		elif kind=="questioning":detail_label.text=host.sim.Contracts.questioning(host.sim,target)

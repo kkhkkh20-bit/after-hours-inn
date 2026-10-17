@@ -595,7 +595,7 @@ func sync_view(dt: float) -> void:
 		# Labels remain upright even when the body is lying on its side.
 		labels[id].global_rotation=Vector3.ZERO
 		labels[id].global_position=world_point(person.pos,person.floor,0.95 if person.state in ["down","dead"] else 2.03)
-		labels[id].text=str(person.name)
+		labels[id].text=("표적 · " if sim.Contracts.target(sim)==id and not sim.Contracts.current(sim).get("paid",false) else "")+str(person.name)
 		if Sandbox.active(sim) and person.get("known",false) and person.get("faction","")!="":labels[id].text+=" · "+str(person.faction)
 		if Sandbox.active(sim) and person.get("bubble_until",0)>d.clock:labels[id].text+="\n「"+str(person.get("bubble",""))+"」"
 		labels[id].pixel_size=(0.014 if Sandbox.active(sim) else (0.0045 if person.floor==1 else 0.007))
@@ -604,6 +604,7 @@ func sync_view(dt: float) -> void:
 		elif person.state=="waiting":labels[id].text+=" · 대기"
 		if person.state=="dead":labels[id].text+=" · 사망"
 		if person.state=="restrained":labels[id].text+=" · 붙잡힘"
+		if person.state=="captive" and person.get("life",{}).get("informant",false):labels[id].text+=" · 정보원"
 		if person.state=="captive":labels[id].text+=" · "+str(person.get("life",{}).get("action","구금"))
 		labels[id].modulate=Color("ffd394") if d.ops.selected==id else Color.WHITE
 	if Sandbox.active(sim):sync_sandbox_smoke()
@@ -1313,6 +1314,10 @@ func context_stats() -> String:
 func context_title(kind_: String,id_: String) -> String:
 	if kind_=="pick":return "대상 선택"
 	if kind_=="contracts":return "현상수배 게시판"
+	if kind_=="intel_archive":return "정보와 단서 기록"
+	if kind_=="prison_overview":return "감옥 전체 관리"
+	if kind_=="prison_policy":return "생활 일정"
+	if kind_=="prison_settings":return "경비와 증설"
 	if kind_=="questioning":return "심문과 금품"
 	if kind_=="zones":return "구역 바로 보기"
 	if kind_ in ["prison","prison_roster"]:return "감옥 생활 관리"
@@ -1343,7 +1348,7 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 		"room": pos=Sandbox.room_point(int(id_)) if Sandbox.active(sim) else Vector2(5.6,-2.0 if id_=="1" else 2.0); floor_=Sandbox.floor_of(int(id_))
 		"ground":pos=build_point;floor_=0
 		"cellar_floor":pos=Vector2(build_cell);floor_=1
-		"facility","prison","prison_roster":pos=Sandbox.facility(sim,id_).pos;floor_=1
+		"facility","prison","prison_roster","prison_policy","prison_settings":pos=Sandbox.facility(sim,id_).pos;floor_=1
 		"portal":
 			var e=Sandbox.entrance(sim,id_);pos=e.top if floor_==0 else Vector2(e.bottom)
 		"hatch": pos=Vector2.ZERO if floor_==1 else Simulation.HATCH
@@ -1363,17 +1368,32 @@ func context_items(kind_: String,id_: String) -> Array:
 		if sim.data.ops.drag!="" or sim.data.player.carry!="":items.append(["drop","운반 내려놓기"])
 		items.append(["build_tools","지하 시설 설치"] if sim.data.player.floor==1 else ["private_entry","비밀 창고로 이동"])
 		items.append(["contracts","현상수배 · 범죄 의뢰"])
+		if items.size()<4:items.append(["prison_overview","감옥 전체 관리"])
 		if items.size()<4:items.append(["dig_tools","구멍·통로 파기"])
 		return items
 	if kind_=="contracts":
 		sim.Contracts.ensure(sim);var case=sim.Contracts.current(sim)
-		if case.is_empty():return [["case_accept","의뢰 수락 · 표적을 여관으로 유도"]]
-		return [["case_dossier","표적 혐의 확인"],["case_focus","표적 위치 보기"],["case_claim","보상 %d닢 수령" %int(case.reward),case.get("ready",false) and not case.paid],["case_next","다음 사건" if case.paid else "도주·사망 표적 다시 추적",case.paid or sim.data.people.get(case.target,{}).get("state","") in ["gone","dead"]]]
-	if kind_=="questioning":return [["question","차분히 심문 · 진술 +35"],["ransom","금품 갈취 · 20닢, 대상당 한 번"],["coerce","고문 심문 · 진술 +60, 불확실·추적 증가"],["verify_intel","정보 대조 · 5닢"]]
+		var entries=[sim.Contracts.next_action(sim)]
+		if not case.is_empty():entries.append(["case_focus","표적 위치 보기"])
+		entries.append(["intel_archive","정보·단서 기록"]);entries.append(["prison_overview","감옥 전체 관리"]);return entries
+	if kind_=="questioning":
+		var p: Dictionary=sim.data.people[id_];sim.Prison.ensure(sim);sim.Contracts.profile(p)
+		var q: Dictionary=p.questioning;var ready=sim.data.clock>=float(q.cooldown) and not q.intel
+		return [["question","차분히 심문 · 진술 +35" if ready else "심문 대기 / 진술 확보됨",ready],["recruit_informant","협력 제안 · 정보원으로 영입" if not p.life.informant else "정보원이 보고 중",not p.life.informant and p.life.trust>=40 and p.life.mood>=40],["ransom","금품 회수 완료" if q.money else "금품 갈취 · 20닢",not q.money],["coerce","강압 심문 · 빠르지만 불확실",ready],["verify_intel","정보 대조 · 정보 1건 또는 5닢",q.intel and not q.reliable]]
+
 	if kind_=="zones":return [["zone:inn","중앙 여관"],["zone:west","서쪽 식당"],["zone:prison","지하 서쪽 수감동"],["zone:security","지하 동쪽 보안동"],["zone:expansion","지하 남쪽 확장동"]]
-	if kind_=="prison":
+	if kind_=="prison_overview":
+		sim.Prison.ensure(sim);var entries=[["secure_all","전체 식사·휴식·기본 경비 복구"]]
+		var cells=sim.Prison.cells(sim)
+		for index in cells.size():
+			var cell: Dictionary=cells[index];entries.append(["open_prison:"+str(cell.id),"%d번 감옥 · %d/%d명 · 보안 %d" %[index+1,cell.members.size(),cell.capacity,sim.Prison.security(cell)]])
+		return entries
+	if kind_=="prison":return [["group_care","식사·휴식·경비 한 번에 관리"],["prison_roster","수감자 목록"],["prison_policy","생활 일정 선택"],["prison_settings","경비·증설 설정"]]
+	if kind_=="prison_policy":return [["policy:balanced","균형 자동 관리"],["policy:comfort","휴식 우선 · 신뢰 회복"],["policy:lockdown","30초 임시 봉쇄 후 자동 해제"],["prison_back","감옥 관리로"]]
+	if kind_=="prison_settings":
 		var cell=Sandbox.facility(sim,id_);sim.Prison.ensure(sim)
-		return [["prison_roster","수감자 목록 · %d명" %cell.members.size()],["care_toggle","자동 돌봄 끄기" if cell.care else "자동 돌봄 켜기"],["security_toggle","경비·잠금 해제" if cell.guard else "경비·잠금 켜기"],["prison_expand","수용 인원 +2 · 8닢",int(cell.capacity)<12]]
+		return [["care_toggle","자동 돌봄 끄기" if cell.care else "자동 돌봄 켜기"],["security_toggle","경비·잠금 해제" if cell.guard else "경비·잠금 켜기"],["prison_expand","수용 인원 +2 · 8닢",int(cell.capacity)<12],["prison_back","감옥 관리로"]]
+
 	if kind_=="prison_roster":
 		sim.Prison.ensure(sim);var cell=Sandbox.facility(sim,id_);var entries=[]
 		for inmate in cell.members:entries.append(["inmate:"+inmate,sim.data.people[inmate].name+" · "+str(sim.data.people[inmate].life.action)])
@@ -1464,6 +1484,22 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		var index=int(action.get_slice(":",1))
 		if index>=0 and index<selection_options.size():activate_selection(selection_options[index])
 		return
+	if action=="prison_overview":object_context.open("prison_overview","",sim.Prison.overview(sim));return
+	if action=="secure_all":
+		for cell in sim.Prison.cells(sim):sim.Prison.group_care(sim,cell.id)
+		object_context.open("prison_overview","",sim.Prison.overview(sim));return
+	if action.begins_with("open_prison:"):
+		var id=action.trim_prefix("open_prison:");var cell=Sandbox.facility(sim,id);set_layer("below")
+		var point=world_point(cell.pos,1);var focus=focus_position();camera_offset=Vector2(point.x-focus.x,point.z-focus.z);camera_focus=point;camera.size=22;camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+		object_context.open("prison",id,sim.Prison.summary(sim,id));return
+	if action=="group_care":sim.Prison.group_care(sim,id_);object_context.open("prison",id_,sim.Prison.summary(sim,id_));return
+	if action in ["prison_policy","prison_settings"]:object_context.open(action,id_);return
+	if action.begins_with("policy:"):sim.Prison.policy(sim,id_,action.get_slice(":",1));object_context.open("prison",id_,sim.Prison.summary(sim,id_));return
+	if action=="recruit_informant":sim.Prison.recruit(sim,id_);object_context.open("inmate",id_,sim.Prison.inmate_summary(sim,id_));return
+	if action in ["case_question","case_ransom","case_verify"]:
+		var id=sim.Contracts.target(sim);sim.Contracts.act(sim,id,{"case_question":"question","case_ransom":"ransom","case_verify":"verify_intel"}[action]);sim.Contracts.tick(sim);object_context.open("contracts","",sim.Contracts.summary(sim));return
+	if action=="case_capture":Commands.cancel(self,true);sim.Prison.request(sim,sim.Contracts.target(sim));return
+	if action=="intel_archive":object_context.open("intel_archive","",sim.Contracts.archive(sim));return
 	if action=="contracts":sim.Contracts.ensure(sim);object_context.open("contracts","",sim.Contracts.summary(sim));return
 	if action=="case_accept":sim.Contracts.accept(sim);object_context.open("contracts","",sim.Contracts.summary(sim));return
 	if action=="case_dossier":

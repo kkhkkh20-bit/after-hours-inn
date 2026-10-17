@@ -248,5 +248,37 @@ func run() -> void:
 	check("verified information unlocks case completion",s.Contracts.current(s).ready and s.data.people[wanted].questioning.reliable)
 	s.data.contracts.alert=25;s.data.ops.inspector.state="idle";s.Contracts.tick(s)
 	check("high tracking risk schedules an actual inspection",s.data.ops.inspector.state=="scheduled" and s.data.ops.inspector.at>s.data.clock)
+	fresh();s=app.sim;s.Prison.ensure(s);var cell2=s.Prison.cells(s)[0]
+	s.Prison.policy(s,cell2.id,"lockdown");s.tick(31)
+	check("temporary lockdown expires even in empty prison",cell2.policy=="balanced")
+	s.Prison.admit(s,cell2,"guest_1");var source: Dictionary=s.data.people.guest_1
+	source.life.hunger=90;source.life.energy=5;source.life.mood=20;cell2.guard=false;cell2.locked=false
+	s.Prison.group_care(s,cell2.id)
+	check("one care command restores needs and basic security",source.life.hunger==50 and source.life.energy==25 and s.Prison.security(cell2)==99)
+	source.life.trust=39;source.life.mood=60
+	check("informant cooperation requires enough trust",not s.Prison.recruit(s,source.id))
+	source.life.trust=45
+	check("trust allows cooperative informant recruitment",s.Prison.recruit(s,source.id))
+	s.tick(31)
+	check("informant sends a timed persistent intelligence report",s.data.contracts.intel_stock==1 and s.data.contracts.records.size()==1 and s.Contracts.archive(s).contains(source.name))
+	var intel_before=int(s.data.contracts.intel_stock);s.tick(1)
+	check("informant cannot report every frame",int(s.data.contracts.intel_stock)==intel_before)
+	s.Contracts.profile(source);source.questioning.intel=true;source.questioning.reliable=false;var cash3=int(s.data.money)
+	s.Contracts.act(s,source.id,"verify_intel")
+	check("stock intelligence verifies statements without cash cost",s.data.contracts.intel_stock==0 and int(s.data.money)==cash3 and source.questioning.reliable)
+	var saved4=JSON.parse_string(JSON.stringify(s.snapshot()))
+	check("informant and information records survive saving",s.restore(saved4) and s.data.people.guest_1.life.informant and s.data.contracts.records.size()>=2)
+	fresh();s=app.sim;s.Contracts.accept(s);var focus_target=s.Contracts.target(s);s.Contracts.dossier(s,focus_target);s.Prison.admit(s,s.Prison.available_cell(s),focus_target)
+	app.object_context.open("contracts","",s.Contracts.summary(s));await process_frame;await process_frame
+	check("case board presents the next required action first",app.object_context.controls.has("case_question"))
+	for step in 3:s.Contracts.act(s,focus_target,"question");s.tick(4.1)
+	app.object_context.sync_live_actions(true);await process_frame;await process_frame
+	check("open case board updates to claim without reopening",app.object_context.controls.has("case_claim") and not app.object_context.controls["case_claim"].disabled)
+	var claim_button: Button=app.object_context.controls["case_claim"];var claim_center=claim_button.get_global_rect().get_center();var old_cash=int(s.data.money)
+	var press_claim=InputEventMouseButton.new();press_claim.position=claim_center;press_claim.button_index=MOUSE_BUTTON_LEFT;press_claim.pressed=true;root.push_input(press_claim,true);await process_frame
+	var release_claim=InputEventMouseButton.new();release_claim.position=claim_center;release_claim.button_index=MOUSE_BUTTON_LEFT;release_claim.pressed=false;root.push_input(release_claim,true);await process_frame
+	check("real primary action click collects the case reward",int(s.data.money)==old_cash+60 and s.Contracts.current(s).paid)
+	check("case checklist reflects collected reward",s.Contracts.checklist(s).contains("완료 보상 수령"))
+	app.object_context.close()
 	print("FOCUSED CHECKS ",checks.filter(func(x):return x).size(),"/",checks.size())
 	quit(0 if checks.all(func(x):return x) else 1)

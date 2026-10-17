@@ -1,0 +1,101 @@
+{
+  "_doc": "The event system exists to make stories out of mechanics that already exist. Every event's `effect` block is applied by EventManager against systems that were already there - none of these needs bespoke code.",
+  "events": {
+    "broken_plate": {
+      "name": "Broken Plate",
+      "rarity": "common", "weight": 10,
+      "text": "A plate goes down. Everyone in the room pretends not to look.",
+      "sfx": "plate_break", "vfx": "puff",
+      "effect": {"gold": -6, "atmosphere": -0.05}
+    },
+    "food_spill": {
+      "name": "Spill",
+      "rarity": "common", "weight": 9,
+      "text": "Something orange is on the floor. It was not there a second ago.",
+      "sfx": "plate", "vfx": "puff",
+      "effect": {"atmosphere": -0.08}
+    },
+    "dropped_coin": {
+      "name": "Dropped Coin",
+      "rarity": "common", "weight": 7,
+      "text": "A customer drops a coin and does not notice. You notice.",
+      "sfx": "coin", "vfx": "coin",
+      "effect": {"gold": 12}
+    },
+    "pantry_raid": {
+      "name": "Pantry Raid",
+      "rarity": "common", "weight": 6,
+      "text": "An ingredient is missing. Gloop is nearby, looking innocent and slightly larger.",
+      "sfx": "slime", "vfx": "slime_bubble",
+      "requires": {"customer_present": "gloop"},
+      "effect": {"steal_ingredient": 1}
+    },
+    "kitchen_fire": {
+      "name": "Kitchen Fire",
+      "rarity": "uncommon", "weight": 4,
+      "text": "The pan goes up. You have about three seconds of dignity left.",
+      "sfx": "fire_whoosh", "vfx": "fire",
+      "effect": {"ruin_cooking": true, "atmosphere": -0.15}
+    },
+    "customer_argument": {
+      "name": "Disagreement",
+      "rarity": "uncommon", "weight": 4,
+      "text": "Two customers discover they have opinions about each other.",
+      "sfx": "event", "vfx": "anger",
+      "requires": {"min_customers": 2},
+      "effect": {"atmosphere": -0.2, "patience_all": -0.15}
+    },
+    "stove_trouble": {
+      "name": "Stove Trouble",
+      "rarity": "uncommon", "weight": 3,
+      "text": "The range coughs, drops to a sulk, and refuses to hold heat.",
+      "sfx": "fail", "vfx": "smoke",
+      "effect": {"heat_penalty": 0.25, "duration": 60.0}
+    },
+    "famous_critic": {
+      "name": "A Famous Guest",
+      "rarity": "rare", "weight": 2,
+      "text": "Someone important just sat down. You can tell by how quiet it got.",
+      "sfx": "event", "vfx": "sparkle",
+      "requires": {"min_reputation": 2.5},
+      "effect": {"next_order_multiplier": 3.0, "reputation_stake": true}
+    },
+    "health_inspection": {
+      "name": "Inspection",
+      "rarity": "rare", "weight": 2,
+      "text": "A clipboard walks in. The clipboard has opinions.",
+      "sfx": "event",
+      "requires": {"min_day": 5},
+      "effect": {"inspection": true}
+    },
+    "bulk_order": {
+      "name": "Bulk Order",
+      "rarity": "rare", "weight": 2,
+      "text": "A party of six. All the same dish. All at once. Good luck.",
+      "sfx": "bell",
+      "requires": {"min_reputation": 2.0},
+      "effect": {"spawn_group": 3, "gold_multiplier": 1.5}
+    },
+    "magical_anomaly": {
+      "name": "Magical Anomaly",
+      "rarity": "very_rare", "weight": 1,
+      "text": "Every dish on the pass is briefly, gloriously perfect. Nobody knows why.",
+      "sfx": "magic", "vfx": "magic",
+      "effect": {"free_perfect": true, "atmosphere": 0.25}
+    },
+    "legendary_visitor": {
+      "name": "The Old Regular",
+      "rarity": "very_rare", "weight": 1,
+      "text": "Something very old sits at the corner table and orders exactly what your aunt used to make.",
+      "sfx": "magic", "vfx": "sparkle",
+      "requires": {"min_day": 8, "min_reputation": 3.5},
+      "effect": {"gold": 300, "reputation": 0.4, "unlock_recipe": "star_tart"}
+    },
+    "quiet_night": {
+      "name": "A Quiet Night",
+      "rarity": "uncommon", "weight": 3,
+      "text": "Nobody comes for a while. The lamps hum. It is not unpleasant.",
+      "effect": {"atmosphere": 0.15, "spawn_pause": 25.0}
+    }
+  }
+}

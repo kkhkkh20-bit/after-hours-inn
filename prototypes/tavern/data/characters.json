@@ -1,0 +1,180 @@
+{
+  "_doc": "Customers are personalities, not species. `prefers`/`dislikes` are tag weights fed to the satisfaction model; `patience` and `tempo` drive the shared state machine. A new monster is a new entry here plus a sprite folder - no new AI code.",
+  "characters": {
+    "blaze": {
+      "name": "호위병 에릭",
+      "species": "human",
+      "sprite": "cook",
+      "title": "the Unimpressed",
+      "prefers": {
+        "hot": 1.0,
+        "spicy": 0.8,
+        "large": 0.9,
+        "meat": 0.7
+      },
+      "dislikes": {
+        "cold": -0.9,
+        "sweet": -0.4
+      },
+      "favourite": "dragon_steak",
+      "patience": 85,
+      "tempo": 0.8,
+      "tip": 1.35,
+      "regular": true,
+      "arrival_weight": 3.0,
+      "unlock_day": 1,
+      "voice": "",
+      "desc": "Proud, impatient, and secretly the most generous customer you have. Tips like a king when impressed, sulks like one when not.",
+      "chaos": 0
+    },
+    "vex": {
+      "name": "상인 엘사",
+      "species": "human",
+      "sprite": "cook",
+      "title": "the Exacting",
+      "prefers": {
+        "cold": 0.9,
+        "bitter": 0.7,
+        "magical": 0.8,
+        "rare": 0.6
+      },
+      "dislikes": {
+        "hot": -0.7,
+        "spicy": -0.8
+      },
+      "favourite": "blood_pasta",
+      "patience": 90,
+      "tempo": 0.8450000000000001,
+      "tip": 1.6,
+      "quality_floor": "good",
+      "regular": true,
+      "arrival_weight": 2.2,
+      "unlock_day": 1,
+      "voice": "",
+      "desc": "Elegant, sarcastic, and physically incapable of accepting a merely adequate plate. Will wait a long time - and judge every second of it.",
+      "chaos": 0
+    },
+    "gloop": {
+      "name": "나그네 토마스",
+      "species": "human",
+      "sprite": "cook",
+      "title": "the Enthusiast",
+      "prefers": {
+        "sweet": 1.0,
+        "magical": 0.6
+      },
+      "dislikes": {
+        "bitter": -0.5
+      },
+      "favourite": "slime_pudding",
+      "patience": 95,
+      "tempo": 0.89,
+      "tip": 0.8,
+      "chaos": 0,
+      "regular": true,
+      "arrival_weight": 3.2,
+      "unlock_day": 1,
+      "voice": "",
+      "desc": "Curious, playful, and a walking incident report. Loves everything, absorbs some of it, apologises for none of it."
+    },
+    "mothwick": {
+      "name": "서기 요한",
+      "species": "human",
+      "sprite": "cook",
+      "title": "the Regular",
+      "prefers": {
+        "vegetable": 0.7,
+        "cold": 0.5,
+        "magical": 0.6
+      },
+      "dislikes": {
+        "spicy": -0.6,
+        "large": -0.3
+      },
+      "favourite": "moth_dumplings",
+      "patience": 100,
+      "tempo": 0.935,
+      "tip": 0.9,
+      "regular": true,
+      "arrival_weight": 2.6,
+      "unlock_day": 1,
+      "voice": "",
+      "desc": "Shy to the point of translucency. Comes in every evening, sits by the window, never complains - which makes disappointing him worse.",
+      "chaos": 0
+    },
+    "grit": {
+      "name": "석공 페터",
+      "species": "human",
+      "sprite": "cook",
+      "title": "the Mason",
+      "prefers": {
+        "large": 0.9,
+        "bitter": 0.6,
+        "meat": 0.5
+      },
+      "dislikes": {
+        "sweet": -0.4
+      },
+      "favourite": "stone_stew",
+      "patience": 105,
+      "tempo": 0.98,
+      "tip": 1.0,
+      "regular": true,
+      "arrival_weight": 2.0,
+      "unlock_day": 1,
+      "voice": "",
+      "desc": "Rebuilt your doorframe twice without being asked. Eats slowly, waits forever, and remembers everything.",
+      "chaos": 0
+    },
+    "marrow": {
+      "name": "약초상 마르타",
+      "species": "human",
+      "sprite": "cook",
+      "title": "the Supplier",
+      "prefers": {
+        "magical": 1.0,
+        "rare": 0.8,
+        "bitter": 0.4
+      },
+      "dislikes": {},
+      "favourite": "star_tart",
+      "patience": 110,
+      "tempo": 1.025,
+      "tip": 1.2,
+      "shopkeeper": true,
+      "regular": true,
+      "arrival_weight": 1.2,
+      "unlock_day": 1,
+      "voice": "",
+      "desc": "Sells you the ingredients, then turns up to eat them. Claims this is market research.",
+      "chaos": 0
+    }
+  },
+  "relationship_levels": [
+    {
+      "level": 0,
+      "name": "Unknown",
+      "threshold": 0
+    },
+    {
+      "level": 1,
+      "name": "Acquaintance",
+      "threshold": 6
+    },
+    {
+      "level": 2,
+      "name": "Friend",
+      "threshold": 18
+    },
+    {
+      "level": 3,
+      "name": "Close Friend",
+      "threshold": 38
+    },
+    {
+      "level": 4,
+      "name": "Trusted",
+      "threshold": 68
+    }
+  ]
+}

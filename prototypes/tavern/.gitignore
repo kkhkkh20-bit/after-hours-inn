@@ -1,0 +1,12 @@
+.godot/
+build/
+__pycache__/
+*.import
+assets/characters/
+assets/environment/
+assets/food/
+assets/vfx/
+assets/audio/
+assets/ui/
+assets/icon.png
+assets/manifest.json

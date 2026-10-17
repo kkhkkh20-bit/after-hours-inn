@@ -1,0 +1,117 @@
+{
+  "_doc": "Ingredients are property bags. Recipes and customer preferences are matched against `tags`, never against ingredient ids, so a new ingredient slots into the existing menu without touching code.",
+  "ingredients": {
+    "dragon_beef": {
+      "name": "Dragon Beef",
+      "tags": ["meat", "large", "hot"],
+      "cost": 24, "sell": 12, "rarity": "common",
+      "source": ["market"],
+      "desc": "Cut from cattle that graze too close to the volcano. Sears itself if you are slow."
+    },
+    "shadow_herb": {
+      "name": "Shadow Herb",
+      "tags": ["vegetable", "bitter", "magical"],
+      "cost": 14, "sell": 7, "rarity": "common",
+      "source": ["forest", "witch"],
+      "desc": "Grows in the dark under old roots. Tastes like a rumour."
+    },
+    "ember_pepper": {
+      "name": "Ember Pepper",
+      "tags": ["vegetable", "spicy", "hot"],
+      "cost": 18, "sell": 9, "rarity": "common",
+      "source": ["market", "forest"],
+      "desc": "Still warm. Always still warm."
+    },
+    "moon_berry": {
+      "name": "Moon Berry",
+      "tags": ["sweet", "cold", "magical"],
+      "cost": 20, "sell": 10, "rarity": "uncommon",
+      "source": ["forest"], "night_only": true,
+      "desc": "Only ripens under moonlight. Picks itself if you ask nicely."
+    },
+    "cave_mushroom": {
+      "name": "Cave Mushroom",
+      "tags": ["vegetable", "bitter"],
+      "cost": 10, "sell": 5, "rarity": "common",
+      "source": ["forest", "market"],
+      "desc": "Reliable, earthy, entirely unremarkable. The backbone of the menu."
+    },
+    "ghost_mushroom": {
+      "name": "Ghost Mushroom",
+      "tags": ["vegetable", "magical", "cold", "rare"],
+      "cost": 46, "sell": 26, "rarity": "rare",
+      "source": ["forest"], "night_only": true,
+      "desc": "Visible only at night. Cooks in a pan you are not holding."
+    },
+    "gold_mushroom": {
+      "name": "Gold Mushroom",
+      "tags": ["vegetable", "sweet", "rare"],
+      "cost": 52, "sell": 30, "rarity": "rare",
+      "source": ["forest"],
+      "desc": "Worth more than the dish it goes in. Use it anyway."
+    },
+    "frost_root": {
+      "name": "Frost Root",
+      "tags": ["vegetable", "cold"],
+      "cost": 16, "sell": 8, "rarity": "common",
+      "source": ["market", "forest"],
+      "desc": "Keeps the kitchen cold and the desserts colder."
+    },
+    "bone_meal": {
+      "name": "Bone Meal",
+      "tags": ["meat", "bitter", "large"],
+      "cost": 12, "sell": 6, "rarity": "common",
+      "source": ["market"],
+      "desc": "Do not ask whose. The Countess insists it is traditional."
+    },
+    "wheat_flour": {
+      "name": "Wheat Flour",
+      "tags": ["sweet"],
+      "cost": 8, "sell": 4, "rarity": "common",
+      "source": ["market"],
+      "desc": "Boring. Load-bearing."
+    },
+    "night_cheese": {
+      "name": "Night Cheese",
+      "tags": ["sweet", "large", "magical"],
+      "cost": 28, "sell": 15, "rarity": "uncommon",
+      "source": ["market", "witch"],
+      "desc": "Aged in a cellar that is bigger on the inside."
+    },
+    "witch_salt": {
+      "name": "Witch Salt",
+      "tags": ["magical", "bitter"],
+      "cost": 22, "sell": 11, "rarity": "uncommon",
+      "source": ["witch"],
+      "desc": "Marrow will not say where it comes from. It fixes almost anything."
+    },
+    "star_syrup": {
+      "name": "Star Syrup",
+      "tags": ["sweet", "magical", "rare"],
+      "cost": 58, "sell": 34, "rarity": "rare",
+      "source": ["witch"],
+      "desc": "Collected during meteor showers. Sticky. Faintly humming."
+    },
+    "crimson_sap": {
+      "name": "Crimson Sap",
+      "tags": ["sweet", "cold", "magical"],
+      "cost": 34, "sell": 18, "rarity": "uncommon",
+      "source": ["forest", "witch"],
+      "desc": "The Countess calls it 'acceptable'. From her, that is a rave."
+    },
+    "swamp_greens": {
+      "name": "Swamp Greens",
+      "tags": ["vegetable", "bitter", "cold"],
+      "cost": 9, "sell": 4, "rarity": "common",
+      "source": ["forest", "market"],
+      "desc": "Wash twice. Then once more."
+    },
+    "thunder_egg": {
+      "name": "Thunder Egg",
+      "tags": ["large", "magical", "hot"],
+      "cost": 40, "sell": 22, "rarity": "uncommon",
+      "source": ["market", "forest"],
+      "desc": "Hums before it cracks. Gives you about two seconds of warning."
+    }
+  }
+}

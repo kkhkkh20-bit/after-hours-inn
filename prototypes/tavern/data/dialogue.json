@@ -1,0 +1,148 @@
+{
+  "_doc": "Lines are picked by (character, situation, relationship level). The picker falls back down the relationship ladder and then to `any`, so a new character only needs the lines that make it distinctive.",
+  "lines": {
+    "blaze": {
+      "order": {
+        "0": ["I'm starving. Something that fights back.", "Meat. Fire. Now."],
+        "2": ["The usual. And do not rush it this time.", "You know what I want. Prove it."],
+        "4": ["Surprise me. I trust you. Do not make me regret saying that."]
+      },
+      "perfect": {
+        "0": ["...Huh. That is actually correct.", "Fine. FINE. It's good."],
+        "2": ["Now THAT is a steak. Keep this exact fire.", "I could weep. I won't. But I could."],
+        "4": ["You cook like you mean it. I tell everyone, you know."]
+      },
+      "good": { "0": ["Acceptable.", "It'll do. Barely."] },
+      "bad": {
+        "0": ["What IS this?", "I have eaten rocks with more character."],
+        "2": ["We both know you can do better than this."]
+      },
+      "wait": { "0": ["Any century now.", "I can SEE the kitchen from here."] },
+      "leave_happy": { "0": ["Same time tomorrow. Don't be late."] },
+      "leave_angry": { "0": ["I am telling the whole mountain about this."] }
+    },
+    "vex": {
+      "order": {
+        "0": ["Something cold. Something correct.", "I will have the pasta. Precisely the pasta."],
+        "2": ["The usual, and I do mean the usual.", "You have improved. Do not squander it."],
+        "4": ["Cook whatever moves you, darling. I have faith. Mostly."]
+      },
+      "perfect": {
+        "0": ["Oh. Oh that is *exact*.", "Flawless. I am almost annoyed."],
+        "2": ["This is why I keep returning to this ridiculous little room.", "Perfection. Do it again tomorrow."],
+        "4": ["Three hundred years of dinners and this is the table I choose."]
+      },
+      "good": { "0": ["Adequate. I have had worse this decade."] },
+      "bad": {
+        "0": ["I would rather starve. And I have tried.", "Take it away before it upsets the cutlery."],
+        "2": ["Beneath you. Genuinely beneath you."]
+      },
+      "wait": { "0": ["I have all night. Literally. That is not an invitation."] },
+      "leave_happy": { "0": ["Charming. Do not let it go to your head."] },
+      "leave_angry": { "0": ["I shall dine elsewhere. Somewhere with standards."] }
+    },
+    "gloop": {
+      "order": {
+        "0": ["oh oh oh SWEET? sweet please!!", "hi hi hi what's good today what's good"],
+        "2": ["puddiiiing! please please please", "you're the best you know that? food now?"],
+        "4": ["anything!! i trust you completely!! (pudding though)"]
+      },
+      "perfect": {
+        "0": ["AAAAA IT'S PERFECT", "*absorbs it immediately* MORE"],
+        "2": ["i love it i love it i'm keeping some inside me forever"],
+        "4": ["you made this FOR me. i'm going to cry. slimes can cry right?"]
+      },
+      "good": { "0": ["yum!! thank you!!", "gloop approves!"] },
+      "bad": { "0": ["oh. um. that's okay! ...it's not okay.", "*sad wobble*"] },
+      "wait": { "0": ["*bounces impatiently*", "is it soon? is it? is it?"] },
+      "leave_happy": { "0": ["BYE!! see you tomorrow!! *leaves a small puddle*"] },
+      "leave_angry": { "0": ["...oh. okay. bye."] }
+    },
+    "mothwick": {
+      "order": {
+        "0": ["...the dumplings. If it's no trouble.", "Something quiet, please."],
+        "2": ["The usual. Thank you for remembering.", "You always know. It's nice."],
+        "4": ["Whatever you'd like me to try. I don't mind waiting."]
+      },
+      "perfect": {
+        "0": ["Oh. That's... that's lovely, actually.", "*hums quietly*"],
+        "2": ["This is the best part of my evening. Every evening."],
+        "4": ["I drift past four other kitchens to get here, you know."]
+      },
+      "good": { "0": ["Thank you. Really."] },
+      "bad": { "0": ["...that's alright. Don't worry about it.", "No, no. It's fine. Honestly."] },
+      "wait": { "0": ["*waits patiently*", "Take your time. I've got all night."] },
+      "leave_happy": { "0": ["Same time tomorrow? ...if that's alright."] },
+      "leave_angry": { "0": ["...I'll come back. Probably."] }
+    },
+    "grit": {
+      "order": {
+        "0": ["STEW.", "SOMETHING HEAVY."],
+        "2": ["STEW. YOU KNOW THE ONE.", "I BROUGHT MY OWN ROCK. OPTIONAL."],
+        "4": ["YOUR CHOICE. I HAVE TIME."]
+      },
+      "perfect": {
+        "0": ["GOOD. VERY GOOD.", "*slow satisfied grinding noise*"],
+        "2": ["I WILL FIX YOUR DOOR AGAIN. FREE."],
+        "4": ["THIS PLACE IS BUILT WELL. THE FOOD TOO."]
+      },
+      "good": { "0": ["SOLID."] },
+      "bad": { "0": ["HM.", "...NO."] },
+      "wait": { "0": ["*waits, geologically*"] },
+      "leave_happy": { "0": ["I RETURN."] },
+      "leave_angry": { "0": ["HM."] }
+    },
+    "marrow": {
+      "order": {
+        "0": ["Show me what my ingredients became.", "Something with a bit of a hum to it."],
+        "2": ["Surprise me, dear. I stocked you well enough."],
+        "4": ["I taught you nothing and you learned everything. Feed me."]
+      },
+      "perfect": {
+        "0": ["Well now. That is craft.", "You used the good syrup. I noticed."],
+        "2": ["I am raising my prices. You can clearly afford it."],
+        "4": ["Take the rare stock at cost, from now on. Don't argue."]
+      },
+      "good": { "0": ["Nicely done."] },
+      "bad": { "0": ["You wasted my herbs on this?", "Hm. Try again. I'll wait."] },
+      "wait": { "0": ["*inspects your shelves, judging silently*"] },
+      "leave_happy": { "0": ["New stock in tomorrow. Come early."] },
+      "leave_angry": { "0": ["Prices going up. Nothing personal."] }
+    },
+    "any": {
+      "order": { "0": ["Something good, please.", "I'll have whatever's ready."] },
+      "perfect": { "0": ["Incredible!", "That's the best I've had here."] },
+      "good": { "0": ["Thanks!", "That hit the spot."] },
+      "bad": { "0": ["...oh.", "That's not what I hoped for."] },
+      "wait": { "0": ["*checks the door*", "Still waiting..."] },
+      "leave_happy": { "0": ["I'll be back!"] },
+      "leave_angry": { "0": ["Hmph."] }
+    }
+  },
+  "story": {
+    "day_1": {
+      "speaker": "narrator",
+      "lines": [
+        "Your aunt left you a restaurant, a stove that still works, and a note.",
+        "The note said: THEY ARE NOT DANGEROUS. THEY ARE HUNGRY. THERE IS A DIFFERENCE.",
+        "Outside, something with wings is already waiting for you to open."
+      ]
+    },
+    "day_3": {
+      "speaker": "narrator",
+      "lines": [
+        "Word travels fast in a town this small and this strange.",
+        "Three regulars now. One of them keeps leaving small puddles.",
+        "You are, technically, running a restaurant."
+      ]
+    },
+    "day_7": {
+      "speaker": "narrator",
+      "lines": [
+        "A week. The stove has stopped surprising you.",
+        "You know who wants what before they sit down.",
+        "Your aunt's note is still pinned above the pass. You have stopped needing it."
+      ]
+    }
+  }
+}

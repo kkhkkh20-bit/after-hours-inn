@@ -1,0 +1,199 @@
+{
+  "_doc": "A recipe is pure data. `prep` is the ordered list of cooking stages the CookingSystem drives; `heat` and `time` are the target windows on the cooking gauge; `tags` are derived from ingredients at load time but can be overridden here. Adding a recipe requires no code.",
+  "_stages": "chop | mix | fry | boil | bake | season | plate",
+  "recipes": {
+    "dragon_steak": {
+      "name": "구운 고기",
+      "ingredients": [
+        "dragon_beef",
+        "ember_pepper"
+      ],
+      "prep": [
+        "chop",
+        "fry",
+        "season"
+      ],
+      "heat": 0.78,
+      "heat_tolerance": 0.13,
+      "time": 0.66,
+      "time_tolerance": 0.12,
+      "difficulty": 1,
+      "value": 18,
+      "unlocked": true,
+      "desc": ""
+    },
+    "soul_soup": {
+      "name": "버섯 수프",
+      "ingredients": [
+        "cave_mushroom",
+        "shadow_herb",
+        "witch_salt"
+      ],
+      "prep": [
+        "chop",
+        "boil",
+        "season"
+      ],
+      "heat": 0.42,
+      "heat_tolerance": 0.15,
+      "time": 0.72,
+      "time_tolerance": 0.14,
+      "difficulty": 1,
+      "value": 20,
+      "unlocked": true,
+      "desc": ""
+    },
+    "slime_pudding": {
+      "name": "우유 푸딩",
+      "ingredients": [
+        "night_cheese",
+        "moon_berry",
+        "wheat_flour"
+      ],
+      "prep": [
+        "mix",
+        "boil",
+        "plate"
+      ],
+      "heat": 0.34,
+      "heat_tolerance": 0.16,
+      "time": 0.55,
+      "time_tolerance": 0.16,
+      "difficulty": 2,
+      "value": 22,
+      "unlocked": true,
+      "unlock": {
+        "friendship": [
+          "gloop",
+          2
+        ]
+      },
+      "desc": ""
+    },
+    "blood_pasta": {
+      "name": "토마토 국수",
+      "ingredients": [
+        "wheat_flour",
+        "crimson_sap",
+        "shadow_herb"
+      ],
+      "prep": [
+        "mix",
+        "boil",
+        "season",
+        "plate"
+      ],
+      "heat": 0.52,
+      "heat_tolerance": 0.09,
+      "time": 0.6,
+      "time_tolerance": 0.08,
+      "difficulty": 3,
+      "value": 24,
+      "unlocked": true,
+      "unlock": {
+        "friendship": [
+          "vex",
+          2
+        ]
+      },
+      "desc": ""
+    },
+    "ember_pie": {
+      "name": "채소 파이",
+      "ingredients": [
+        "wheat_flour",
+        "ember_pepper",
+        "thunder_egg"
+      ],
+      "prep": [
+        "mix",
+        "bake",
+        "plate"
+      ],
+      "heat": 0.7,
+      "heat_tolerance": 0.12,
+      "time": 0.8,
+      "time_tolerance": 0.11,
+      "difficulty": 2,
+      "value": 26,
+      "unlocked": true,
+      "unlock": {
+        "reputation": 3.0
+      },
+      "desc": ""
+    },
+    "moth_dumplings": {
+      "name": "채소 만두",
+      "ingredients": [
+        "wheat_flour",
+        "swamp_greens",
+        "cave_mushroom"
+      ],
+      "prep": [
+        "chop",
+        "mix",
+        "boil"
+      ],
+      "heat": 0.46,
+      "heat_tolerance": 0.16,
+      "time": 0.58,
+      "time_tolerance": 0.15,
+      "difficulty": 1,
+      "value": 28,
+      "unlocked": true,
+      "desc": ""
+    },
+    "stone_stew": {
+      "name": "고기 스튜",
+      "ingredients": [
+        "bone_meal",
+        "swamp_greens",
+        "frost_root"
+      ],
+      "prep": [
+        "chop",
+        "boil",
+        "season"
+      ],
+      "heat": 0.5,
+      "heat_tolerance": 0.18,
+      "time": 0.85,
+      "time_tolerance": 0.16,
+      "difficulty": 1,
+      "value": 30,
+      "unlocked": true,
+      "unlock": {
+        "friendship": [
+          "grit",
+          1
+        ]
+      },
+      "desc": ""
+    },
+    "star_tart": {
+      "name": "꿀 타르트",
+      "ingredients": [
+        "wheat_flour",
+        "star_syrup",
+        "gold_mushroom"
+      ],
+      "prep": [
+        "mix",
+        "bake",
+        "season",
+        "plate"
+      ],
+      "heat": 0.62,
+      "heat_tolerance": 0.07,
+      "time": 0.74,
+      "time_tolerance": 0.07,
+      "difficulty": 4,
+      "value": 32,
+      "unlocked": true,
+      "unlock": {
+        "reputation": 4.2
+      },
+      "desc": ""
+    }
+  }
+}

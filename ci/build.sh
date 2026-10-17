@@ -24,3 +24,20 @@ cp prototypes/sideview/assets/OFL.txt build/windows/sideview/licenses/
 printf '%s\n' "${GITHUB_SHA:-local}" > build/web/sideview/version.txt
 
 python3 ci/mobile_shell.py build/web/index.html build/web/sideview/index.html
+
+# Separate top-down inn fork. Restore original source-generated assets at build time.
+tavern_project="$PWD/prototypes/tavern"
+python3 -m pip install --quiet -r "$tavern_project/requirements-assets.txt"
+python3 "$tavern_project/tools/build_assets.py"
+cp assets/fonts/InnKorean.otf "$tavern_project/assets/ui/font/InnKorean.otf"
+cp assets/fonts/OFL.txt "$tavern_project/assets/ui/font/OFL.txt"
+mkdir -p build/web/tavern build/windows/tavern/licenses
+godot --headless --path "$tavern_project" --editor --import
+godot --headless --path "$tavern_project" --export-release "Web" "$PWD/build/web/tavern/index.html"
+godot --headless --path "$tavern_project" --export-release "Windows Desktop" "$PWD/build/windows/tavern/AfterHoursTavern.exe"
+cp "$tavern_project/LICENSE" build/windows/tavern/licenses/restaurant-for-monsters-MIT.txt
+cp "$tavern_project/UPSTREAM.md" build/windows/tavern/licenses/
+cp assets/fonts/OFL.txt build/windows/tavern/licenses/font-OFL.txt
+cp "$tavern_project/README.md" build/windows/tavern/
+printf '%s\n' "${GITHUB_SHA:-local}" > build/web/tavern/version.txt
+python3 ci/mobile_shell.py build/web/tavern/index.html

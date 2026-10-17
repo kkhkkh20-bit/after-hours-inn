@@ -928,10 +928,7 @@ func repair_tools() -> bool:
 	note("곡괭이와 삽을 수리했다. 내구도 24.")
 	return true
 
-func queue_move(target: Vector2) -> bool:
-	if data.paused:note("일시정지 중입니다. 영업을 재개해주세요.");return false
-	if Sandbox.active(self) and (not data.work.is_empty() or not data.dig.is_empty()):cancel_work()
-	if not data.work.is_empty() or not data.dig.is_empty():return false
+func move_route(target: Vector2) -> Array:
 	var closest:=Vector2.ZERO
 	var distance:=INF
 	if data.player.floor==1:
@@ -950,9 +947,17 @@ func queue_move(target: Vector2) -> bool:
 				var delta:=point.distance_squared_to(target)
 				if delta<distance:distance=delta;closest=point
 	if distance>1.25*1.25:
-		note("그 지점은 벽이나 가구에 막혀 있습니다. 가까운 빈 바닥을 선택해주세요.");return false
+		note("그 지점은 벽이나 가구에 막혀 있습니다. 가까운 빈 바닥을 선택해주세요.");return []
 	var route: Array=gallery_route(data.player.pos,closest) if data.player.floor==2 else (path_to(data.player.pos,closest) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,closest))
-	if route.is_empty():note("그곳까지 이어지는 통로가 없다.");return false
+	if route.is_empty():note("그곳까지 이어지는 통로가 없다.");return []
+	return route
+
+func queue_move(target: Vector2) -> bool:
+	if data.paused:note("일시정지 중입니다. 영업을 재개해주세요.");return false
+	var route: Array=move_route(target)
+	if route.is_empty():return false
+	if Sandbox.active(self) and (not data.work.is_empty() or not data.dig.is_empty()):cancel_work()
+	if not data.work.is_empty() or not data.dig.is_empty():return false
 	data.excavation.path=route
 	data.excavation.intent="move"
 	return true

@@ -823,8 +823,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if Campaign.active(sim) and event.physical_keycode not in [KEY_ESCAPE,KEY_M,KEY_F5,KEY_F9]:return
 		match event.physical_keycode:
 			KEY_ESCAPE:
-				if OS.has_feature("web"):sim.data.paused=not sim.data.paused
-				else:get_tree().quit()
+				if object_context.panel.visible:object_context.close()
+				elif dig_mode!="":
+					dig_mode=""
+					if dig_cancel!=null:dig_cancel.hide()
+				else:object_context.open("system")
 			KEY_SPACE:sim.data.paused=not sim.data.paused
 			KEY_TAB:sim.data.speed=1 if sim.data.speed==3 else 3
 			KEY_1:sim.assign_room(1)

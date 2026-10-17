@@ -86,5 +86,18 @@ func run() -> void:
 	check("resume button during a paused conversation really resumes",not s.data.paused and not app.object_context.panel.visible)
 	var stair_route: Array=s.guest_path(Vector2(-1.75,.25),s.STAIRS)
 	check("upstairs route uses public corridor instead of room two",not stair_route.is_empty() and stair_route.all(func(point):return not Rect2(2.2,.2,4.5,3.5).has_point(point)))
+	fresh();s=app.sim
+	s.request_room(2,"guest_1")
+	var previous_booking: Dictionary=s.data.booking_request.duplicate(true)
+	var previous_path: Array=s.data.excavation.path.duplicate()
+	check("invalid destination preserves booking and route",not app.Commands.move(app,Vector2(500,500)) and s.data.booking_request==previous_booking and s.data.excavation.path==previous_path and s.data.rooms["2"].reserved=="guest_1")
+	check("valid destination replaces booking and releases room",app.Commands.move(app,Vector2(-4,2)) and s.data.booking_request.is_empty() and s.data.rooms["2"].reserved=="" and s.data.excavation.intent=="move")
+	var escape=InputEventKey.new();escape.physical_keycode=KEY_ESCAPE;escape.pressed=true
+	app.object_context.open("owner");app._unhandled_input(escape)
+	check("escape closes selection instead of exiting",not app.object_context.panel.visible and not s.data.paused)
+	app._unhandled_input(escape)
+	check("escape from world opens settings",app.object_context.kind=="system" and app.object_context.panel.visible)
+	app.object_context.close();app.set_layer("rooms");app.object_context.refresh()
+	check("active floor remains indicated after menus",app.object_context.controls.has("@view:rooms") and app.object_context.controls["@view:rooms"].modulate!=app.object_context.controls["@view:surface"].modulate)
 	print("FOCUSED CHECKS ",checks.filter(func(x):return x).size(),"/",checks.size())
 	quit(0 if checks.all(func(x):return x) else 1)

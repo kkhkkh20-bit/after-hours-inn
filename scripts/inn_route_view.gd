@@ -5,7 +5,7 @@ func update_route(host) -> void:
 	var path: Array=d.excavation.path
 	visible=not path.is_empty() and host.Selection.visible_floor(host,d.player.floor)
 	if not visible:return
-	var key=str(d.player.floor)+":"+str(path.size())+":"+str(path.back())
+	var key=str(d.player.floor)+":"+str(path)+":"+str(d.player.pos.snapped(Vector2(.1,.1)))
 	if key==stamp:return
 	stamp=key
 	var m=ImmediateMesh.new();m.surface_begin(Mesh.PRIMITIVE_LINES)

@@ -49,6 +49,7 @@ func setup(owner_) -> void:
 			else:host.set_layer(value))
 		b.custom_minimum_size.x=88
 		b.add_theme_font_size_override("font_size",18)
+		if value in ["surface","rooms","below","all"]:controls["@view:"+value]=b
 		if value=="pause":controls["@pause"]=b
 		if value=="speed":controls["@speed"]=b
 	task_label=label_("",19);task_label.position=Vector2(24,236);task_label.size=Vector2(490,34);top.add_child(task_label)
@@ -67,7 +68,10 @@ func open(type_: String,id_: String="",detail_: String="") -> void:
 	if type_ in ["person","conversation","actions","other"] and (not host.sim.data.people.has(id_) or host.sim.data.people[id_].state=="gone"):return
 	if panel.visible:close()
 	kind=type_;target=id_;detail=detail_;
-	var pause_control=controls.get("@pause");var speed_control=controls.get("@speed");controls.clear()
+	var persistent={}
+	for key in controls:
+		if str(key).begins_with("@"):persistent[key]=controls[key]
+	var pause_control=controls.get("@pause");var speed_control=controls.get("@speed");controls=persistent
 	if pause_control!=null:controls["@pause"]=pause_control
 	if speed_control!=null:controls["@speed"]=speed_control
 	anchor=host.context_anchor(kind,target)
@@ -112,6 +116,8 @@ func refresh() -> void:
 	heading.text="%d일 · %s" %[int(host.sim.data.campaign.day) if host.Campaign.active(host.sim) else 1,host.view_name()] if host.Campaign.active(host.sim) else "문 닫은 뒤"
 	if controls.has("@pause"):controls["@pause"].text="재개" if host.sim.data.paused else "정지"
 	if controls.has("@speed"):controls["@speed"].text="%d배" %host.sim.data.speed
+	for view in ["surface","rooms","below","all"]:
+		if controls.has("@view:"+view):controls["@view:"+view].modulate=Color("f5d79b") if host.view_layer==view else Color.WHITE
 	stats.text="%d닢 · %s" %[host.sim.data.money,host.sim.calendar_text().get_slice(" · ",0).get_slice(" ",1)]
 	top.visible=not ((host.journal!=null and host.journal.opened) or (host.episode_ui!=null and host.episode_ui.opened))
 	var job: String=host.command_status()

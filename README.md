@@ -1,3 +1,7 @@
+## 1.7.1 조작 개선
+
+막힌 바닥을 눌러도 기존 안내를 유지하고, Esc는 종료 대신 창 닫기·설정 열기로 동작한다. 현재 층 버튼 강조와 이동 경로 갱신도 보완했다. [변경 내용](docs/usability-v171.md)
+
 ## 1.7 — 기존 3D의 클릭·선택창·예약 처리 개편
 
 실행: https://kkhkkh20-bit.github.io/after-hours-inn/?v=interaction17

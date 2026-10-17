@@ -111,6 +111,7 @@ var pending_chat=""
 var touch_points: Dictionary={}
 var pinch_span=0.0
 var displayed_floor=-1
+var footing: MeshInstance3D
 var apron: Node3D
 var travel_marker: MeshInstance3D
 
@@ -534,6 +535,11 @@ func sync_view(dt: float) -> void:
 	var d: Dictionary=sim.data
 	var surface_shown: bool=view_layer!="below"
 	if apron!=null: apron.visible=view_layer=="surface"
+	if footing==null:
+		var previous_root=world_root;world_root=surface
+		footing=box(Vector3(2.2,.12,2.2),Vector3.ZERO,Color("626551"));world_root=previous_root
+	footing.position=Vector3(d.player.pos.x,-.12,d.player.pos.y)
+	footing.visible=surface_shown and int(d.player.floor)==0 and not Rect2(-10,-6,20,12).has_point(d.player.pos)
 	if travel_marker!=null:
 		travel_marker.visible=not d.excavation.path.is_empty()
 		if travel_marker.visible: travel_marker.position=world_point(d.excavation.path.back(),d.player.floor,0.05)
@@ -574,6 +580,11 @@ func sync_view(dt: float) -> void:
 			labels[id]=world_label(person.name,Vector3(0,1.95,0),actors[id])
 		actors[id].visible=(cellar_shown if person.floor==1 else surface_shown) and person.state!="gone" and Selection.visible_floor(self,person.floor)
 		sync_actor(actors[id],person.pos,dt,person.floor)
+		if person.state=="dining" and person.get("visit","")=="meal":
+			var seated=Vector2(-7.5 if person.pos.x<-6 else -4.8,1.6 if person.pos.y>0 else -.7)
+			actors[id].position=world_point(seated,0,-.28)
+			actors[id].rotation.y=0 if person.pos.y>0 else PI
+			actors[id].get_node("LeftLeg").rotation.x=-PI/2;actors[id].get_node("RightLeg").rotation.x=-PI/2
 		actors[id].rotation.z=PI/2 if person.state in ["down","dead"] else 0
 		if person.state in ["down","dead"]:
 			actors[id].position=world_point(person.pos,person.floor,0.35)
@@ -587,7 +598,7 @@ func sync_view(dt: float) -> void:
 		if Sandbox.active(sim) and person.get("bubble_until",0)>d.clock:labels[id].text+="\n「"+str(person.get("bubble",""))+"」"
 		labels[id].pixel_size=(0.014 if Sandbox.active(sim) else (0.0045 if person.floor==1 else 0.007))
 		if Campaign.active(sim) and person.state in ["waiting","arriving","dining"]:
-			labels[id].text+=" · 말 걸기" if not person.get("known",false) else (" · 식사" if person.get("visit","")=="meal" else "")
+			labels[id].text+=(" · 식사 중" if d.orders.values().any(func(o):return o.guest==id and o.status=="served") else " · 주문 대기") if person.state=="dining" else (" · 말 걸기" if not person.get("known",false) else "")
 		elif person.state=="waiting":labels[id].text+=" · 대기"
 		if person.state=="dead":labels[id].text+=" · 사망"
 		if person.state=="restrained":labels[id].text+=" · 붙잡힘"
@@ -598,6 +609,9 @@ func sync_view(dt: float) -> void:
 	if Tycoon.active(sim):sync_dig_visual()
 	if last_cell_count!=d.cells.size():rebuild_basement()
 	if Sandbox.active(sim) and sandbox_revision!=int(d.sandbox.revision):preload("res://scripts/inn_sandbox_view.gd").build(self)
+	if sandbox_visual!=null:
+		for child in sandbox_visual.get_children():
+			if child.has_meta("floor"):child.visible=Selection.visible_floor(self,int(child.get_meta("floor")))
 	staff_marker.text=("마라" if Campaign.active(sim) else "직원")+" · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
 	staff_marker.modulate=Color("ffb882") if d.stealth.suspicion>=10 else Color.WHITE
 	if Sandbox.active(sim):staff_marker.text="마라 · 홀 맡는 중";staff_marker.pixel_size=0.014;hatch_lid.hide()
@@ -607,7 +621,7 @@ func sync_view(dt: float) -> void:
 		vision_clock=0
 		refresh_vision()
 	tool_pivot.visible=d.player.floor==1 and d.ops.drag==""
-	tool_pivot.rotation.x=sin(d.clock*13)*0.85-0.3 if not d.dig.is_empty() else -0.2
+	tool_pivot.rotation.x=sin(clampf(1.0-float(d.dig.remaining)/float(d.dig.get("duration",.8)),0,1)*PI)*0.85-0.3 if not d.dig.is_empty() else -0.2
 	pick_head.visible=not d.stealth.quiet
 	shovel_head.visible=d.stealth.quiet
 	hatch_lid.rotation.x=-1.25 if d.excavation.hatch_open else 0
@@ -622,7 +636,7 @@ func world_point(pos: Vector2, floor_: int, height: float=0.0) -> Vector3:
 func focus_position() -> Vector3:
 	if overview and Sandbox.active(sim):
 		if view_layer=="all":return Vector3(5,-.5,7)
-		if view_layer=="below":return Sandbox.OFFSET+Vector3(8,0,0)
+		if view_layer=="below":return Sandbox.OFFSET+Vector3(10,0,-5)
 		if view_layer=="rooms":return Vector3(1.5,3.2,-4.8)
 		return Vector3(3.0,.8,.7)
 	if overview:return CELLAR_OFFSET+Vector3(4,.7,1) if view_layer=="below" else Vector3(0,1,0)
@@ -631,7 +645,7 @@ func focus_position() -> Vector3:
 func set_layer(value: String) -> void:
 	if object_context!=null:object_context.close()
 	view_layer=value;overview=true;camera_offset=Vector2.ZERO
-	camera.size={"all":39.5,"below":24.0,"rooms":24.0,"surface":31.0}.get(value,31.0)
+	camera.size={"all":39.5,"below":31.0,"rooms":24.0,"surface":31.0}.get(value,31.0)
 	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
 
@@ -889,7 +903,11 @@ func world_tap(point: Vector2,captured: Variant=null) -> void:
 		request_anchor=point;object_context.open("navigation",str(target_floor),"화면만 보고 있습니다. 주인을 이 층으로 이동할까요?");return
 	if sim.data.player.floor==1:
 		var soil=soil_at(point)
-		if soil!=Vector2i(99,99):context_soil=soil;object_context.open("soil");return
+		if soil!=Vector2i(99,99):
+			context_soil=soil
+			if Tycoon.active(sim):sim.data.sandbox.tunnel_plan=[];sim.queue_dig(soil)
+			else:object_context.open("soil")
+			return
 	var hit: Variant=walking_hit(point)
 	if hit!=null:Commands.move(self,Vector2(hit.x,hit.z))
 
@@ -1293,6 +1311,7 @@ func context_title(kind_: String,id_: String) -> String:
 	if kind_=="cellar_floor":return "지하 시설 공사"
 	if kind_=="portal":return Sandbox.entrance(sim,id_).get("name","비밀 입구")
 	if kind_=="dig_tools":return "구멍과 통로 파기"
+	if kind_=="build_tools":return "지하 시설 설치"
 	if kind_=="view_tools":return "화면 방향"
 	if kind_=="automation":return "알바 고용 · 여관 성장"
 	if kind_=="facility":return Sandbox.TYPES[Sandbox.facility(sim,id_).type].name
@@ -1329,7 +1348,7 @@ func context_items(kind_: String,id_: String) -> Array:
 		var items=[]
 		if command_status()!="":items.append(["stop","현재 작업 취소"])
 		if sim.data.ops.drag!="" or sim.data.player.carry!="":items.append(["drop","운반 내려놓기"])
-		items.append(["private_entry","비밀 창고로 이동"])
+		items.append(["build_tools","지하 시설 설치"] if sim.data.player.floor==1 else ["private_entry","비밀 창고로 이동"])
 		items.append(["journal","영업 장부"])
 		if items.size()<4:items.append(["dig_tools","구멍·통로 파기"])
 		return items
@@ -1341,7 +1360,8 @@ func context_items(kind_: String,id_: String) -> Array:
 			items.append(["pick:"+str(i),name_])
 		return items
 	if kind_=="navigation":return [["go_floor","이 층으로 이동"]]
-	if kind_=="dig_tools":return [["place_shaft","구멍 파기 · 지상 위치 지정 / 3닢"],["place_tunnel","통로 파기 · 지하 목적지 지정"],["stop_dig","굴착 계획 취소"]]
+	if kind_=="build_tools":return [["place_build:prison","감옥 · 6닢"],["place_build:stash","은닉 창고 · 4닢"],["place_build:refuge","은신처 · 6닢"],["place_build:furnace","처리 화로 · 10닢"]]
+	if kind_=="dig_tools":return [["build_tools","지하 시설 설치",sim.data.player.floor==1],["place_shaft","구멍 파기 · 지상 위치 지정 / 3닢"],["place_tunnel","통로 파기 · 지하 목적지 지정"],["stop_dig","굴착 계획 취소"]]
 	if kind_=="view_tools":return [["view_front","앞에서 보기"],["view_back","뒤에서 보기"],["view_left","왼쪽에서 보기"],["view_right","오른쪽에서 보기"]]
 	if kind_=="automation":
 		var t: Dictionary=sim.data.tycoon
@@ -1363,7 +1383,7 @@ func context_items(kind_: String,id_: String) -> Array:
 			"owner":return [["stop","현재 행동 취소"],["automation","알바 고용 · 여관 성장"],["floor","가까운 입구로 층 이동"],["dig_tools","구멍·통로 파기"],["drop","운반 내려놓기"],["journal","장부 · 의뢰"],["system","저장 · 화면 설정"]]
 			"room":
 				var level=int(sim.data.tycoon.rooms[id_]) if Tycoon.active(sim) else 0
-				return [["room_chat","묵는 손님과 이야기"],["upgrade_room","객실 개선 · %d닢 / 숙박비 +2닢" %(8+level*6),level<3],["clean","정리하기"],["automation","알바 고용 · 자동화"]]
+				return [["room_chat","묵는 손님과 이야기"],["room_chute_target","객실 시신을 비밀 통로로 보내기"],["upgrade_room","객실 개선 · %d닢 / 숙박비 +2닢" %(8+level*6),level<3],["clean","정리하기"],["automation","알바 고용 · 자동화"]]
 	if kind_=="guard_talk":
 		var items=[["guard_honest","장부를 보여드리겠습니다."],["guard_lie","식재료 창고뿐입니다."],["guard_pay","수고비를 받으시죠. · 8닢"]]
 		if sim.data.campaign.ledger_found:items.push_front(["guard_evidence","이 반입 허가를 확인해보시죠."])
@@ -1374,7 +1394,7 @@ func context_items(kind_: String,id_: String) -> Array:
 	match kind_:
 		"person":
 			var p: Dictionary=sim.data.people[id_]
-			if p.state=="dead": return [["drag","끌기 / 내려놓기"],["greet","상태 확인"]]
+			if p.state=="dead": return [["room_chute","객실 비밀 통로로 지하에 보내기"],["drag","끌기 / 내려놓기"],["greet","상태 확인"]] if sim.Layout.room_of_body(sim,id_)>0 else [["drag","끌기 / 내려놓기"],["greet","상태 확인"]]
 			if p.state=="restrained": return [["sleep","잠시 기절시키기"],["kill","살해"],["drop","놓아주기"]]
 			if p.state in ["down","captive"]: return [["drag","끌기 / 석방"],["kill","살해"],["greet","상태 확인"]]
 			if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":
@@ -1417,12 +1437,22 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		var index=int(action.get_slice(":",1))
 		if index>=0 and index<selection_options.size():activate_selection(selection_options[index])
 		return
+	if action=="build_tools":object_context.open("build_tools");return
+	if action.begins_with("place_build:"):set_dig_mode("build:"+action.get_slice(":",1));return
 	if action=="easy_toggle":
 		Tycoon.set_easy(sim,not sim.data.get("tycoon",{}).get("easy",false));sim.note("쉬운 운영 설정을 변경했습니다.");return
 	if action=="go_floor":
 		Commands.cancel(self,true)
 		pending_context_action={"kind":"arrival","id":"","action":"floor_arrived","floor":int(id_)}
 		travel_to_floor(int(id_));return
+	if action=="room_chute_target":
+		for body in sim.data.people:
+			if sim.Layout.room_of_body(sim,body)==int(id_):context_action("person",body,"room_chute");return
+		sim.note("객실 안에 옮길 시신이 없습니다.");return
+	if action=="room_chute":
+		if sim.data.player.floor!=sim.data.people[id_].floor:
+			Commands.cancel(self,true);pending_context_action={"kind":"person","id":id_,"action":"room_chute","floor":int(sim.data.people[id_].floor)};travel_to_floor(int(sim.data.people[id_].floor));return
+		sim.Layout.send_body(sim,id_);return
 	if action=="floor_arrived":return
 	if action=="counter_more":object_context.open("counter_more");return
 	if action=="stop":
@@ -1941,18 +1971,20 @@ func camera_arm() -> Vector3:return CAMERA_ARM.rotated(Vector3.UP,view_angle)
 
 func set_dig_mode(value: String) -> void:
 	object_context.close()
-	dig_mode=value;set_layer("all")
+	dig_mode=value;set_layer("below" if value.begins_with("build:") else "all")
 	if dig_cancel==null:
 		dig_cancel=Button.new();dig_cancel.text="취소";dig_cancel.position=Vector2(580,121);dig_cancel.size=Vector2(115,60);dig_cancel.add_theme_font_override("font",ui_font);dig_cancel.add_theme_font_size_override("font_size",24);journal.root.add_child(dig_cancel);dig_cancel.pressed.connect(func():dig_mode="";dig_cancel.hide())
 	dig_cancel.show()
-	sim.note("지상의 빈 바닥을 한 번 누르면 입구를 자동으로 만듭니다." if value=="shaft" else "지하에서 원하는 목적지를 한 번 누르세요. 그곳까지 자동으로 이어 팝니다.")
+	sim.note("열린 지하 바닥을 한 번 누르면 시설을 설치합니다." if value.begins_with("build:") else ("지상의 빈 바닥을 한 번 누르면 입구를 자동으로 만듭니다." if value=="shaft" else "지하에서 원하는 목적지를 한 번 누르세요. 그곳까지 자동으로 이어 팝니다."))
 
 func apply_dig_point(point: Vector2) -> void:
 	var plane_y=0.08 if dig_mode=="shaft" else Sandbox.OFFSET.y+0.08
 	var hit: Variant=Plane(Vector3.UP,plane_y).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
 	if hit==null:return
 	var okay=false
-	if dig_mode=="shaft":okay=Excavation.shaft(sim,Vector2(hit.x,hit.z))
+	if dig_mode.begins_with("build:"):
+		var local: Vector3=hit-Sandbox.OFFSET;okay=Sandbox.build(sim,dig_mode.get_slice(":",1),Vector2i(roundi(local.x),roundi(local.z)))
+	elif dig_mode=="shaft":okay=Excavation.shaft(sim,Vector2(hit.x,hit.z))
 	else:
 		var local: Vector3=hit-Sandbox.OFFSET;okay=Excavation.dig_to(sim,Vector2i(roundi(local.x),roundi(local.z)))
 	if okay:dig_mode="";dig_cancel.hide();route_count=-1

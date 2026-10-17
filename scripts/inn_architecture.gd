@@ -105,3 +105,8 @@ static func build(h) -> void:
 	for z in range(-1,5):h.box(Vector3(.48,.018,.82),Vector3(12.75,.07,z+.5),Color("486c65"))
 	h.world_label("객실·계단",Vector3(4,.18,5.3),h.surface).pixel_size=.009
 	h.world_label("창고 통로",Vector3(13.3,.18,.3),h.surface).pixel_size=.009
+
+	h.box(Vector3(2.1,.16,2.4),Vector3(.25,-.1,6.9),Color("76715d"))
+	h.world_label("정문 · 숙박 접수",Vector3(.25,.35,6.25),h.surface).pixel_size=.01
+	h.world_label("식사 손님 자리",Vector3(-6.5,.3,2.8),h.surface).pixel_size=.009
+	for x in range(1,23):h.box(Vector3(.85,.025,.45),Vector3(x+.25,-.05,8.25),Color("82775b"))

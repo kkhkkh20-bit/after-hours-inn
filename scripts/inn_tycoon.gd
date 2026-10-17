@@ -9,6 +9,7 @@ static func start(s) -> void:
 	s.data.campaign.freeplay=true
 	Sandbox.finish(s,{"kind":"entrance","point":PRIVATE_ENTRY,"cell":Sandbox.underground(PRIVATE_ENTRY)})
 	s.data.sandbox.entrances[0].name="창고 안 비밀 입구"
+	s.Layout.setup(s)
 	s.data.player.pos=Vector2(-0.25,2.25)
 	s.note("마라: 접수·식사·청소는 저희가 맡을게요. 손님을 눌러 직접 안내해도 돼요. 비밀 입구는 뒤편 창고에 있어요.")
 static func wage(s) -> int:return (4 if s.data.staff.hired else 0)+(2 if s.data.tycoon.reception else 0)+(2 if s.data.tycoon.cleaning else 0)
@@ -54,6 +55,8 @@ static func tick(s,dt: float) -> void:
 		for id in s.data.people:
 			var p: Dictionary=s.data.people[id]
 			if p.state=="waiting" and p.get("role","")=="" and p.get("visit","")!="meal" and s.data.get("booking_request",{}).get("guest","")!=id and (not t.get("easy",false) or s.data.clock-float(p.get("arrival",s.data.clock))>=18):
+				if s.data.rooms.values().all(func(r):return r.guest!="" or r.get("reserved","")!=""):
+					s.Layout.route_depart(s,p);s.note("토마가 만실을 안내하고 %s을 정문으로 돌려보냈다." %p.name);break
 				if check_in(s,id):s.note("토마가 %s의 숙박비를 받고 %d호로 안내했다." %[p.name,p.room])
 				break
 	if s.data.clock>=float(t.get("next_missing_check",0)):
@@ -85,6 +88,7 @@ static func goal(s) -> String:
 	return "자동 운영 중 · 손님·객실·주방을 눌러 관리"
 
 static func ensure(s) -> void:
+	if s.data.sandbox.get("starter_version",0)<1:s.Layout.setup(s)
 	for n in s.data.rooms:
 		var room_: Dictionary=s.data.rooms[n]
 		if not room_.has("reserved"):room_.reserved=""

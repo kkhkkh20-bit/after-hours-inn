@@ -8,7 +8,7 @@ static func build(h) -> void:
 		for floor_ in [0,1]:
 			var p: Vector2=e.top if floor_==0 else Vector2(e.bottom)
 			var at: Vector3=h.world_point(p,floor_)
-			var node=Node3D.new();root.add_child(node);node.position=at;h.world_root=node
+			var node=Node3D.new();root.add_child(node);node.set_meta("floor",floor_);node.position=at;h.world_root=node
 			h.box(Vector3(1.25,0.06,1.25),Vector3(0,0.025,0),Color("171f22"))
 			for x in [-0.64,0.64]:h.box(Vector3(0.08,0.1,1.4),Vector3(x,0.09,0),Color("b28c51"))
 			var lid=h.box(Vector3(1.1,0.08,1.0),Vector3(0,0.12,-0.12),Color("645039"));lid.rotation.x=-1.1 if e.open else 0.0
@@ -18,7 +18,7 @@ static func build(h) -> void:
 				for y in range(5):h.box(Vector3(0.8,0.07,0.07),Vector3(0,y*0.3+0.2,-0.3),Color("c9ac6a"))
 			var title=h.world_label(e.name+ (" · 열림" if e.open else " · 숨김"),Vector3(0,0.35,0.9),node);title.pixel_size=0.009
 	for f in h.sim.data.sandbox.facilities:
-		var node=Node3D.new();root.add_child(node);node.position=h.world_point(f.pos,1);h.world_root=node
+		var node=Node3D.new();root.add_child(node);node.set_meta("floor",1);node.position=h.world_point(f.pos,1);h.world_root=node
 		h.box(Vector3(2.4,0.08,2.4),Vector3(0,0.07,0),Color("534638"))
 		match f.type:
 			"prison":
@@ -39,9 +39,17 @@ static func build(h) -> void:
 		var name_=Rules.TYPES[f.type].name
 		if f.occupant!="":name_+=" · 사용 중"
 		var title=h.world_label(name_,Vector3(0,0.25,1.25),node);title.pixel_size=0.01
+	for key in h.sim.data.rooms:
+		var n=int(key);var room_: Dictionary=h.sim.data.rooms[key]
+		if not room_.has("secret_bottom"):continue
+		var point: Vector2=Rules.room_point(n)
+		h.world_root=root
+		var lid=h.box(Vector3(.65,.045,.65),h.world_point(point+Vector2(.55,0),Rules.floor_of(n),.06),Color("41544d"));lid.set_meta("floor",Rules.floor_of(n))
+		h.world_label("비밀 통로",h.world_point(point+Vector2(.7,0),Rules.floor_of(n),.25),root).set_meta("floor",Rules.floor_of(n))
+		h.world_label("%s호 통로 아래" %key,h.world_point(Vector2(room_.secret_bottom),1,.2),root).set_meta("floor",1)
 	# Visible continuous section, distinct from the ground floor without hiding it.
 	h.world_root=root
-	var label=h.world_label("지하 · 열린 바닥에 시설 설치 / 흙벽을 눌러 통로 연결",h.world_point(Vector2(8,6),1,0.3),root);label.pixel_size=0.012
+	var label=h.world_label("지하 · 흙벽 클릭은 한 칸 굴착 / 주인 클릭으로 시설 추가",h.world_point(Vector2(8,6),1,0.3),root);label.pixel_size=0.012
 	h.world_label("마당 · 우회 통로와 비밀 입구",Vector3(16,0.2,8.3),root).pixel_size=0.011
 	h.world_label("식당",Vector3(-6,0.25,3.8),root).pixel_size=0.01
 	for n in [1,2,3,4,5]:

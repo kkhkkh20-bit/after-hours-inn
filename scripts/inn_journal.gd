@@ -58,7 +58,7 @@ func refresh() -> void:
 	var c: Dictionary=sim.data.campaign
 	goal.text=host.Campaign.goal(sim)
 	if host.view_layer=="below":goal.text="지상 영업 · 객실 %d/%d · 문의 %d · 주문 %d" %[sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.rooms.size(),sim.waiting().size(),sim.data.orders.values().filter(func(o):return o.status not in ["served","cancelled"]).size()]
-	if host.dig_mode!="":goal.text="구멍을 팔 지상 위치를 누르세요" if host.dig_mode=="shaft" else "통로를 이을 지하 목적지를 누르세요"
+	if host.dig_mode!="":goal.text="열린 지하 바닥을 눌러 시설 설치" if host.dig_mode.begins_with("build:") else ("구멍을 팔 지상 위치를 누르세요" if host.dig_mode=="shaft" else "통로를 이을 지하 목적지를 누르세요")
 	var message=host.episode_notice()
 	if message!=last_notice:last_notice=message;until=Time.get_ticks_msec()+4200
 	notice.text=message if Time.get_ticks_msec()<until and not opened else ""

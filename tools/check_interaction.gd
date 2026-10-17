@@ -123,5 +123,55 @@ func run() -> void:
 	check("covered entrance remains usable by owner",s.data.player.floor==0 and not entry.open)
 	check("service corridor reaches private entrance",not s.path_to(Vector2(-.25,2.25),app.Tycoon.PRIVATE_ENTRY).is_empty())
 	check("guest grid excludes private warehouse",s.guest_path(Vector2(-.25,2.25),app.Tycoon.PRIVATE_ENTRY).is_empty())
+	fresh();s=app.sim
+	check("all four basement facilities exist at start",["prison","stash","refuge","furnace"].all(func(type_):return s.data.sandbox.facilities.any(func(f):return f.type==type_)))
+	check("starting cash permits free experimentation",int(s.data.money)>=300)
+	var entry2: Dictionary=s.data.sandbox.entrances[0]
+	check("starter rooms connect to warehouse entrance",s.data.sandbox.facilities.all(func(f):return not s.Intrigue.basement_route(s,Vector2(entry2.bottom),f.pos).is_empty()))
+	var in_route: Array=s.Layout.route_in(s,s.GATE,Vector2(-1.75,-.25))
+	check("arrival route actually passes through front door",not in_route.is_empty() and in_route.has(s.Layout.FRONT) and in_route.has(s.Layout.PORCH))
+	s.spawn_guest();var meal_id="guest_2"
+	check("meal guest reserves table rather than reception",s.data.people[meal_id].visit=="meal" and s.Layout.TABLES.has(s.data.people[meal_id].arrival_target))
+	var edge=Vector2i.ZERO;var stand=Vector2i.ZERO;var found=false
+	for key in s.data.cells:
+		if found:break
+		var cell=s.parse_cell(key)
+		for offset in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+			if not s.data.cells.has(s.cell_key(cell+offset)):edge=cell+offset;stand=cell;found=true;break
+	s.data.player.floor=1;s.data.player.pos=Vector2(stand);var cell_count=s.data.cells.size()
+	check("one pickaxe action starts on one adjacent cell",s.queue_dig(edge))
+	s.tick(1)
+	check("one pickaxe action opens exactly one cell",s.data.cells.size()==cell_count+1 and s.data.cells.has(s.cell_key(edge)))
+	fresh();s=app.sim;s.data.clock=30;s.data.people.guest_1.arrival=0
+	for room_ in s.data.rooms.values():room_.guest="occupied"
+	s.data.tycoon.reception=true;app.Tycoon.tick(s,.1)
+	check("staff turn away lodging guest when all rooms occupied",s.data.people.guest_1.get("full_rejected",false) and s.data.people.guest_1.state=="leaving")
+	fresh();s=app.sim;var body=s.data.people.guest_1;body.state="dead";body.room=1;body.floor=0;body.pos=s.Sandbox.room_point(1);body.path=[]
+	s.data.rooms["1"].guest=body.id;s.data.player.floor=0;s.data.player.pos=body.pos+Vector2(0,-.5)
+	check("room chute accepts a body inside the room",s.Layout.send_body(s,body.id))
+	s.tick(4)
+	check("room chute transfers body without erasing evidence",body.floor==1 and body.state=="dead" and body.pos==Vector2(s.data.rooms["1"].secret_bottom) and s.data.rooms["1"].guest=="")
+	check("all room chute outlets join starter basement",s.data.rooms.values().all(func(r):return not s.Intrigue.basement_route(s,Vector2(r.secret_bottom),Vector2(s.data.sandbox.entrances[0].bottom)).is_empty()))
+	fresh();s=app.sim;var count=s.data.sandbox.facilities.size();s.Layout.setup(s)
+	check("starter setup never duplicates facilities or money",s.data.sandbox.facilities.size()==count and s.data.money==300)
+	s.data.player.floor=0;s.data.player.pos=Vector2(12.75,4);app.set_layer("all");app.sync_view(0)
+	check("outdoor player has a visible first floor footing",app.footing.visible and app.footing.position.x==12.75)
+	check("basement build menu offers all four structures",app.context_items("build_tools","").size()==4)
+	fresh();s=app.sim;s.data.people.guest_1.state="gone";s.spawn_guest()
+	var diner: Dictionary=s.data.people.guest_2
+	for step in 600:
+		s.tick(.1)
+		if diner.state=="dining":break
+	check("meal visitor reaches table and starts seated wait",diner.state=="dining" and s.Layout.TABLES.has(diner.pos))
+	for step in 900:
+		s.tick(.1)
+		if diner.state=="gone":break
+	check("meal visitor gets served then leaves",s.data.orders.values().any(func(o):return o.guest==diner.id and o.status=="served" and o.paid) and diner.state=="gone")
+	fresh();s=app.sim;s.data.player.floor=1;s.data.player.pos=Vector2(s.data.sandbox.entrances[0].bottom)
+	var facility_count=s.data.sandbox.facilities.size();var before_money=int(s.data.money)
+	var build_at: Vector2i=s.data.sandbox.entrances[0].bottom+Vector2i(-3,0)
+	check("new basement facility queues on open floor",s.Sandbox.build(s,"prison",build_at))
+	s.tick(9)
+	check("new basement facility completes and charges once",s.data.sandbox.facilities.size()==facility_count+1 and int(s.data.money)==before_money-6)
 	print("FOCUSED CHECKS ",checks.filter(func(x):return x).size(),"/",checks.size())
 	quit(0 if checks.all(func(x):return x) else 1)

@@ -1,6 +1,7 @@
 extends RefCounted
 ## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
 
+const Layout=preload("res://scripts/inn_layout.gd")
 const Tycoon=preload("res://scripts/inn_tycoon.gd")
 const Sandbox=preload("res://scripts/inn_sandbox.gd")
 const Intrigue = preload("res://scripts/intrigue.gd")
@@ -188,12 +189,12 @@ func start_gentle_opening() -> void:
 
 func spawn_guest() -> void:
 	if Tycoon.active(self) and data.rooms.values().all(func(r):return r.guest!="" or r.dirty or r.get("reserved","")!="") and data.people.values().filter(func(p):return p.get("visit","")=="meal" and p.state not in ["gone","leaving"]).size()>=2:return
-	if waiting().filter(func(id): return data.people[id].get("role","") not in ["worker","broker"]).size() >= 2: return
+	if waiting().filter(func(id): return data.people[id].get("role","") not in ["worker","broker"]).size() >= 3: return
 
 	var natural: bool=data.get("opening",{}).get("natural",false)
 	var meal_only=natural and (int(data.serial)+1)%3==2
-	if natural and data.rooms.values().all(func(room_):return room_.guest!="" or room_.dirty or room_.get("reserved","")!=""):meal_only=true
-	if meal_only and data.people.values().filter(func(p): return p.get("visit","")=="meal" and p.state!="gone").size()>=2:return
+	
+	if meal_only and data.people.values().filter(func(p): return p.get("visit","")=="meal" and p.state not in ["gone","leaving"]).size()>=4:return
 	data.serial += 1
 	var id := "guest_%d" % data.serial
 	var templates := [["행상 로웬","조용한 방을 원한다",10],["전령 에다","식사를 서둘러 달라고 한다",8],["병사 브란","낯선 사람을 경계한다",12],["약초상 메린","먼 길을 걸어 피곤해한다",9]]
@@ -205,7 +206,7 @@ func spawn_guest() -> void:
 	if data.get("opening",{}).get("natural",false):
 		var seats=[Vector2(-8.75,1.75),Vector2(-6.25,1.75),Vector2(-5.75,2.25),Vector2(-3.75,2.25)] if Sandbox.active(self) else [Vector2(-3.75,1.75),Vector2(-6.25,2.75),Vector2(-1.25,0.75)]
 		var p: Dictionary=data.people[id]
-		p.pos=Vector2(14.25,3.25); p.state="arriving"
+		p.pos=GATE; p.state="arriving"
 		p.path=guest_path(p.pos,seats[(int(data.serial)-1)%seats.size()])
 		if Tycoon.active(self):retarget_arrival(id)
 	if Sandbox.active(self):
@@ -440,6 +441,7 @@ func _step(dt: float) -> void:
 	update_work(dt)
 	Sandbox.tick(self,dt)
 	Tycoon.tick(self,dt)
+	if Sandbox.active(self):Layout.tick(self)
 	update_awareness(dt)
 	update_worker(dt)
 	update_money()
@@ -621,7 +623,8 @@ func start_dig(cell: Vector2i) -> bool:
 	data.excavation.path=[]
 	data.excavation.intent=""
 	if not Sandbox.active(self):data.excavation.durability-=1
-	data.dig={"cell":cell_key(cell),"remaining":(2.5 if data.stealth.quiet else 0.8) if Sandbox.active(self) else (10.0 if data.stealth.quiet else 4.0),"quiet":data.stealth.quiet}
+	var duration=(2.5 if data.stealth.quiet else 0.8) if Sandbox.active(self) else (10.0 if data.stealth.quiet else 4.0)
+	data.dig={"cell":cell_key(cell),"remaining":duration,"duration":duration,"quiet":data.stealth.quiet}
 	note(("조용히 굴착 · 2.5초" if data.stealth.quiet else "직접 굴착 · 0.8초") if Sandbox.active(self) else ("조용한 굴착 10초. 중단 버튼." if data.stealth.quiet else "빠른 굴착 4초. 소리가 크다. 중단 버튼."))
 	return true
 
@@ -1124,13 +1127,13 @@ func approach_point(target: Vector2) -> Variant:
 func retarget_arrival(id: String) -> void:
 	if not data.people.has(id):return
 	var p: Dictionary=data.people[id]
-	var points=[Vector2(-8.75,1.75),Vector2(-6.25,1.75),Vector2(-5.75,2.75),Vector2(-3.75,2.75)] if p.get("visit","")=="meal" else [Vector2(-1.75,-.25),Vector2(-.25,-.25),Vector2(-3.25,-.25)]
+	var points=Layout.TABLES if p.get("visit","")=="meal" else Layout.QUEUE
 	for candidate in points:
 		var occupied=false
 		for other in data.people.values():
 			if other.id!=id and other.state not in ["gone","leaving"] and (other.pos.distance_to(candidate)<.9 or other.get("arrival_target",Vector2(99,99)).distance_to(candidate)<.9):occupied=true
 		if occupied:continue
-		var path: Array=guest_path(p.pos,candidate)
+		var path: Array=Layout.route_in(self,p.pos,candidate)
 		if path.is_empty():continue
-		p.path=path;p.arrival_target=candidate;return
+		p.path=path;p.arrival_target=candidate;p.front_door=true;return
 	p.state="leaving";p.path=guest_path(p.pos,GATE)

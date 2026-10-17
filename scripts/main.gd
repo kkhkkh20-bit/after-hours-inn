@@ -301,7 +301,7 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.is_empty():
 		sim.start_gentle_opening(); episode.data.briefed=true; episode_ui.refresh()
-	if "--capture-context" in args or "--capture-context-clean" in args:
+	if "--capture-context" in args or "--capture-context-clean" in args or "--capture-actions" in args:
 		await capture_context("--capture-context" in args); return
 	if "--capture-episode" in args or "--capture-episode-cellar" in args:
 		await capture_episode("--capture-episode-cellar" in args)
@@ -471,7 +471,7 @@ func sync_actor(visual: Node3D, pos: Vector2, dt: float, floor_: int=0) -> void:
 	visual.position=world_point(pos,floor_,0.08)
 	if moving and dt>0:
 		var diff:=pos-before
-		visual.rotation.y=atan2(-diff.x,-diff.y)
+		visual.rotation.y=lerp_angle(visual.rotation.y,atan2(-diff.x,-diff.y),minf(1.0,dt*12.0))
 	var swing:=sin(sim.data.clock*10)*0.45 if moving else 0.0
 	visual.get_node("LeftLeg").rotation.x=swing
 	visual.get_node("RightLeg").rotation.x=-swing
@@ -515,14 +515,19 @@ func sync_view(dt: float) -> void:
 			labels[id]=world_label(person.name,Vector3(0,1.95,0),actors[id])
 		actors[id].visible=(cellar_shown if person.floor==1 else surface_shown) and person.state!="gone"
 		sync_actor(actors[id],person.pos,dt,person.floor)
-		actors[id].rotation.z=PI/2 if person.state=="down" else 0
-		if person.state=="down":actors[id].position=world_point(person.pos,person.floor,0.35)
+		actors[id].rotation.z=PI/2 if person.state in ["down","dead"] else 0
+		if person.state in ["down","dead"]:
+			actors[id].position=world_point(person.pos,person.floor,0.35)
+			actors[id].get_node("LeftLeg").rotation.x=0; actors[id].get_node("RightLeg").rotation.x=0
+		if person.state=="restrained": actors[id].position=world_point(person.pos+Vector2(0.45,0.15),person.floor,0.08)
 		# Labels remain upright even when the body is lying on its side.
 		labels[id].global_rotation=Vector3.ZERO
-		labels[id].global_position=world_point(person.pos,person.floor,0.95 if person.state=="down" else 2.03)
+		labels[id].global_position=world_point(person.pos,person.floor,0.95 if person.state in ["down","dead"] else 2.03)
 		labels[id].text=str(person.name)
 		labels[id].pixel_size=0.0045 if person.floor==1 else 0.007
 		if person.state=="waiting":labels[id].text+=" · 대기"
+		if person.state=="dead":labels[id].text+=" · 사망"
+		if person.state=="restrained":labels[id].text+=" · 붙잡힘"
 		if person.state=="captive":labels[id].text+=" · 구금"
 		labels[id].modulate=Color("ffd394") if d.ops.selected==id else Color.WHITE
 	if last_cell_count!=d.cells.size():rebuild_basement()
@@ -771,6 +776,7 @@ func world_tap(point: Vector2) -> void:
 	if mobile_ui.blocks_point(point):return
 	if object_context.panel.visible:
 		object_context.close()
+	if sim.data.work.get("type","")=="quick": sim.cancel_work()
 	if (view_layer=="surface" and sim.data.player.floor==1) or (view_layer=="below" and sim.data.player.floor!=1):return
 	pointer_position=point
 	var inspector: Dictionary=sim.data.ops.inspector
@@ -778,7 +784,7 @@ func world_tap(point: Vector2) -> void:
 		object_context.open("inspector"); return
 	if sim.data.player.floor==0:
 		for number in [1,2]:
-			if point.distance_to(camera.unproject_position(world_point(sim.room_target(number)+Vector2(1,0),0,0.55)))<30:
+			if point.distance_to(camera.unproject_position(world_point(Vector2(5.6,-2.0 if number==1 else 2.0),0,0.55)))<30:
 				object_context.open("room",str(number)); return
 		if sim.data.staff.hired and point.distance_to(camera.unproject_position(world_point(sim.data.staff.pos,0,0.9)))<28:
 			object_context.open("staff"); return
@@ -1118,7 +1124,7 @@ func episode_font() -> Font:
 func episode_facts() -> Dictionary:
 	var bodies=0
 	for p in sim.data.people.values():
-		if p.state in ["down","captive"]: bodies+=1
+		if p.state in ["down","captive","restrained","dead"]: bodies+=1
 	return {"opening":sim.gentle_opening(),"booked":2-sim.data.rooms.values().filter(func(room_): return room_.guest=="").size(),"money":sim.data.money,"served":sim.data.served,"near_counter":sim.near_counter(),"risk":int(sim.data.stealth.suspicion)+int(sim.data.ops.reports)*12,"bodies":bodies,"hatch":sim.data.excavation.hatch_open,"dug":maxi(0,sim.data.cells.size()-55)}
 
 func start_challenge() -> void:
@@ -1189,9 +1195,9 @@ func context_title(kind_: String,id_: String) -> String:
 func context_anchor(kind_: String,id_: String) -> Vector2:
 	var pos: Vector2=Simulation.COUNTER; var floor_: int=sim.data.player.floor
 	match kind_:
-		"person","actions":
+		"person","actions","other":
 			if sim.data.people.has(id_): pos=sim.data.people[id_].pos; floor_=sim.data.people[id_].floor
-		"room": pos=sim.room_target(int(id_)); floor_=0
+		"room": pos=Vector2(5.6,-2.0 if id_=="1" else 2.0); floor_=0
 		"hatch": pos=Vector2.ZERO if floor_==1 else Simulation.HATCH
 		"stairs": pos=Simulation.STAIRS
 		"soil": pos=Vector2(context_soil)
@@ -1206,7 +1212,9 @@ func context_items(kind_: String,id_: String) -> Array:
 	match kind_:
 		"person":
 			var p: Dictionary=sim.data.people[id_]
-			if p.state in ["down","captive"]: return [["drag","끌기 / 석방"],["greet","상태 확인"]]
+			if p.state=="dead": return [["drag","끌기 / 내려놓기"],["greet","상태 확인"]]
+			if p.state=="restrained": return [["sleep","잠시 기절시키기"],["kill","살해"],["drop","놓아주기"]]
+			if p.state in ["down","captive"]: return [["drag","끌기 / 석방"],["kill","살해"],["greet","상태 확인"]]
 			if p.state in ["waiting","arriving"]:
 				var items=[["admit1","1호로 안내",sim.data.rooms["1"].guest=="" and not sim.data.rooms["1"].dirty],["admit2","2호로 안내",sim.data.rooms["2"].guest=="" and not sim.data.rooms["2"].dirty],["greet","말 걸기"]]
 				if not sim.gentle_opening() or sim.data.served>=3: items.append(["actions","다른 행동"])
@@ -1214,7 +1222,8 @@ func context_items(kind_: String,id_: String) -> Array:
 			var items=[["service","식사 내어주기"],["greet","말 걸기"]]
 			if not sim.gentle_opening() or sim.data.served>=3: items.append(["actions","다른 행동"])
 			return items
-		"actions": return [["dismiss","내보내기"],["subdue","제압 시도"],["contract","의뢰 확인"],["protect","의뢰 거절 · 보호"]]
+		"actions": return [["grab","붙잡기"],["sleep","잠시 기절시키기"],["kill","살해"],["other","다른 조치"]]
+		"other": return [["dismiss","내보내기"],["contract","의뢰 확인"],["protect","의뢰 거절 · 보호"]]
 		"counter":
 			if sim.gentle_opening() and sim.data.served<1: return [["journal","운영 안내"],["system","저장 · 화면 설정"]]
 			return [["journal","오늘의 장부 · 사건/결산"],["staff","직원 고용 / 업무 맡기기"],["repair","도구 수리 · 2닢"],["system","저장 · 화면 설정"]]
@@ -1241,7 +1250,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		"pause": sim.data.paused=true; return
 		"journal": episode_ui.open(); return
 		"system": object_context.open("system"); return
-		"actions": object_context.open("actions",id_); return
+		"actions","other": object_context.open(action,id_); return
 		"overview": set_layer("surface" if sim.data.player.floor!=1 else "below"); return
 		"follow": frame_owner(); camera.size=18; return
 		"save": save_game(); return
@@ -1261,7 +1270,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 			if selected=="" or not sim.data.people.has(selected): sim.note("먼저 배정할 손님을 선택하자."); return
 			sim.queue_command("admit"+id_,selected); return
 	if action=="greet": pending_chat=id_
-	if kind_ in ["person","actions"]: sim.data.ops.selected=id_
+	if kind_ in ["person","actions","other"]: sim.data.ops.selected=id_
 	sim.queue_command(action,id_)
 
 func build_backdrop() -> void:
@@ -1377,7 +1386,33 @@ func input_verify() -> void:
 	await pointer_click(camera.unproject_position(world_point(Simulation.COUNTER,0,0.9)))
 	checks.append(object_context.kind=="inspector")
 	await click_context("inspect")
-	checks.append(sim.data.ops.inspector.state=="search")
+	var guard_reached=sim.data.ops.inspector.state=="search"
+	await pointer_click(camera.unproject_position(world_point(Vector2(5.6,-2.0),0,0.55)))
+	checks.append(guard_reached and object_context.kind=="room" and object_context.target=="1")
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid()
+	sim.data.player.pos=Simulation.ENTRY; sim.data.ops.selected="guest_1"
+	object_context.open("actions","guest_1"); await click_context("grab")
+	checks.append(sim.data.work.get("action","")=="grab")
+	sim.tick(1); checks.append(sim.data.people.guest_1.state=="restrained" and sim.data.ops.drag=="guest_1")
+	object_context.open("person","guest_1"); await click_context("sleep"); sim.tick(2)
+	checks.append(sim.data.people.guest_1.state=="down" and sim.data.people.guest_1.wake_at>sim.data.clock+40)
+	object_context.open("person","guest_1"); await click_context("kill"); sim.cancel_work(); sim.tick(2)
+	checks.append(sim.data.people.guest_1.state=="down")
+	object_context.open("person","guest_1"); await click_context("kill"); sim.tick(3)
+	checks.append(sim.data.people.guest_1.state=="dead")
+	object_context.open("owner"); await click_context("drop")
+	checks.append(sim.data.ops.drag=="")
+	sim.tick(55); checks.append(sim.data.people.guest_1.state=="dead")
+	var saved=sim.snapshot(); sim.data.people.guest_1.state="waiting"
+	checks.append(sim.restore(saved) and sim.data.people.guest_1.state=="dead")
+	sim.data.money=100; sim.data.ops.inspector.resolved=false; sim.data.ops.inspector.pos=sim.data.people.guest_1.pos; sim.data.ops.inspector.floor=0
+	checks.append(Simulation.Intrigue.discover(sim) and sim.data.money==60 and sim.data.people.guest_1.state=="dead")
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.ops.selected="guest_1"
+	sim.data.player.pos=Simulation.ENTRY; Simulation.Intrigue.quick_action(sim,"grab"); sim.tick(1); Simulation.Intrigue.drag_or_release(sim)
+	checks.append(sim.data.people.guest_1.state=="leaving" and sim.data.ops.drag=="")
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.ops.selected="guest_1"
+	sim.data.player.pos=Simulation.ENTRY; Simulation.Intrigue.quick_action(sim,"sleep"); sim.tick(2); sim.tick(46)
+	checks.append(sim.data.people.guest_1.state in ["leaving","gone"])
 	var failed=0
 	for i in range(checks.size()):
 		if not checks[i]: failed+=1; print("CONTEXT POINTER FAIL ",i)
@@ -1392,9 +1427,11 @@ func capture_context(show_menu: bool) -> void:
 	set_layer("surface"); sync_view(0); episode_ui.refresh()
 	if show_menu:
 		sim.data.ops.selected="guest_2"; object_context.open("person","guest_2")
+	if "--capture-actions" in OS.get_cmdline_user_args():
+		sim.data.served=3; sim.data.ops.selected="guest_2"; object_context.open("actions","guest_2")
 	await get_tree().process_frame
 	await get_tree().process_frame
 	object_context.refresh()
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png("res://docs/context-3d-"+("guest" if show_menu else "inn")+".png")
+	get_viewport().get_texture().get_image().save_png("res://docs/context-3d-"+("actions" if "--capture-actions" in OS.get_cmdline_user_args() else ("guest" if show_menu else "inn"))+".png")
 	get_tree().quit()

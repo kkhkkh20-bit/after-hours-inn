@@ -808,7 +808,7 @@ func update_excavation(dt: float) -> void:
 		elif action=="dig":start_dig(parse_cell(job.cell))
 		elif action.begins_with("command:"):
 			var command: String=action.trim_prefix("command:"); var id: String=str(job.get("target",""))
-			if command in ["admit1","admit2","greet","dismiss","subdue","drag","deliver"] and data.people.has(id) and not Intrigue.close(self,id): queue_command(command,id)
+			if command in ["admit1","admit2","greet","dismiss","subdue","grab","sleep","kill","drag","deliver"] and data.people.has(id) and not Intrigue.close(self,id): queue_command(command,id)
 			else: perform_command(command,id)
 
 func repair_tools() -> bool:
@@ -848,7 +848,7 @@ func queue_move(target: Vector2) -> bool:
 func queue_command(command: String, id: String="") -> bool:
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
 	var target: Vector2=COUNTER
-	if command in ["subdue","drag","deliver","approach","admit1","admit2","greet","dismiss"]:
+	if command in ["subdue","grab","sleep","kill","drag","deliver","approach","admit1","admit2","greet","dismiss"]:
 		if not data.people.has(id) or data.people[id].floor!=data.player.floor or data.people[id].state=="gone":note("현재 층에서 대상을 다시 선택하자.");return false
 		target=data.people[id].pos
 	elif command=="hatch":target=Vector2.ZERO if data.player.floor==1 else HATCH
@@ -894,6 +894,7 @@ func perform_command(command: String, id: String="") -> void:
 		"protect":Intrigue.contract_action(self,true)
 		"inspect":Intrigue.inspector_action(self)
 		"bribe":Intrigue.inspector_action(self,true)
+		"grab","sleep","kill":Intrigue.quick_action(self,command)
 		"subdue":Intrigue.subdue(self)
 		"drag":Intrigue.drag_or_release(self)
 		"cell","build":Intrigue.build_or_hold(self)

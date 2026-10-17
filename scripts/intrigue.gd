@@ -67,12 +67,50 @@ static func subdue(sim) -> bool:
 	sim.note("제압 시도 2초. 목격되면 신고될 수 있다. 중단 버튼으로 취소.")
 	return true
 
+static func quick_action(sim, action: String) -> bool:
+	if not available(sim) or sim.data.player.carry!="":return false
+	var id:=select_near(sim)
+	if id=="" or not close(sim,id):return false
+	var person: Dictionary=sim.data.people[id]
+	if person.state not in ["arriving","waiting","staying","entering","restrained","down","captive"]:return false
+	if sim.data.ops.drag!="" and sim.data.ops.drag!=id:return false
+	if action=="grab" and person.state in ["down","captive","restrained"]:return false
+	sim.data.work={"type":"quick","action":action,"target":id,"remaining":0.7 if action=="grab" else (1.5 if action=="sleep" else 2.0)}
+	sim.note({"grab":"다가가 붙잡는 중…","sleep":"기절시키는 중…","kill":"위험 행동 진행 중…"}[action])
+	return true
+
+static func update_quick_action(sim, dt: float) -> void:
+	if sim.data.work.get("type","")!="quick":return
+	sim.data.work.remaining-=dt
+	if sim.data.work.remaining>0:return
+	var job: Dictionary=sim.data.work.duplicate(); sim.data.work={}
+	var id: String=job.target
+	if not close(sim,id) or sim.data.people[id].state not in ["arriving","waiting","staying","entering","restrained","down","captive"]:
+		sim.note("대상이 멀어져 행동을 멈췄다.");return
+	clear_orders(sim,id)
+	var p: Dictionary=sim.data.people[id]
+	p.incident+=1; p.path=[]
+	sim.data.noise+=1.5 if job.action=="grab" else 3.0
+	match job.action:
+		"grab":
+			p.state="restrained"; sim.data.ops.drag=id
+			sim.note("붙잡았다. 이동하거나 상대를 눌러 다음 행동을 고른다.")
+		"sleep":
+			p.state="down"; p.wake_at=sim.data.clock+45
+			sim.note("잠시 기절했다. 45초 뒤 깨어난다.")
+		"kill":
+			p.state="dead"; release_room(sim,id)
+			sim.note("상대가 사망했다. 시신과 목격 위험이 남는다.")
+	witness(sim,id,"attack")
+
 static func drag_or_release(sim) -> bool:
 	if not available(sim):return false
 	var ops: Dictionary=sim.data.ops
 	if ops.drag!="":
 		sync_drag(sim)
+		var held: String=ops.drag
 		ops.drag=""
+		if sim.data.people[held].state=="restrained": flee(sim,held); sim.note("붙잡은 상대를 놓았다. 달아나 신고하려 한다."); return true
 		sim.note("대상을 바닥에 내려놓았다. 회복 시간은 계속 흐른다.")
 		return true
 	var id:=select_near(sim)
@@ -82,7 +120,7 @@ static func drag_or_release(sim) -> bool:
 		flee(sim,id)
 		sim.note("구금을 풀었다. 상대는 출구로 달아나 신고하려 한다.")
 		return true
-	if person.state!="down" or sim.data.player.carry!="":return false
+	if person.state not in ["down","dead"] or sim.data.player.carry!="":return false
 	ops.drag=id
 	sync_drag(sim)
 	sim.note("대상을 끌고 간다. 이동이 느려지며 층 이동 버튼으로 함께 내려간다.")
@@ -113,6 +151,7 @@ static func build_or_hold(sim) -> bool:
 	var id: String=ops.drag
 	if id=="":return false
 	var person: Dictionary=sim.data.people[id]
+	if person.state=="dead":sim.note("시신은 구금할 수 없다. 내려놓을 위치를 선택하자.");return false
 	person.pos=ops.cell
 	person.floor=1
 	person.state="captive"
@@ -268,9 +307,13 @@ static func discover(sim) -> bool:
 	if inspector.resolved:return false
 	for id in sim.data.people:
 		var person: Dictionary=sim.data.people[id]
-		if person.state not in ["down","captive"]:continue
+		if person.state not in ["down","captive","dead","restrained"]:continue
 		if sees(sim,inspector,person.pos,person.floor,false):
 			inspector.resolved=true
+			if person.state=="dead":
+				sim.charge(40,"시신 발견 조사"); sim.data.ops.heat=mini(100,int(sim.data.ops.heat)+25)
+				sim.note("경비가 시신을 발견했다. 중범죄 조사 비용과 기록이 남는다.")
+				end_inspection(sim); return true
 			sim.charge(20,"불법 구금 적발 벌금")
 			flee(sim,id)
 			# Already part of this case: this released person's exit is not a new case.
@@ -325,6 +368,7 @@ static func inspector_action_for_timeout(sim) -> void:
 static func tick(sim, dt: float) -> void:
 	var ops: Dictionary=sim.data.ops
 	sync_drag(sim)
+	update_quick_action(sim,dt)
 	if sim.data.work.get("type","")=="subdue":
 		sim.data.work.remaining-=dt
 		if sim.data.work.remaining<=0:
@@ -342,6 +386,7 @@ static func tick(sim, dt: float) -> void:
 			else:sim.note("대상이 멀어져 제압에 실패했다.")
 	for id in sim.data.people.keys():
 		var person: Dictionary=sim.data.people[id]
+		if person.state in ["dead","restrained"]:witness(sim,id,"body")
 		if person.state=="down":
 			witness(sim,id,"body")
 			if sim.data.clock>=person.wake_at:
@@ -372,7 +417,7 @@ static func tick(sim, dt: float) -> void:
 		elif target.state=="captive":
 			contract.held+=dt
 			if contract.held>=30:contract.state="ready";sim.note("억류 의뢰 조건 달성. 의뢰 창에서 보수를 받는다.")
-		elif target.state in ["gone","escaping","leaving"] or sim.data.clock>contract.deadline:
+		elif target.state in ["gone","escaping","leaving","dead"] or sim.data.clock>contract.deadline:
 			contract.state="failed"
 			sim.note("의뢰를 실패했다. 대상이 떠났거나 제한 시간이 지났다.")
 	update_inspector(sim,dt)

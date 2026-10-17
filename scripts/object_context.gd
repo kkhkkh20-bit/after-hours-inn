@@ -36,7 +36,7 @@ func open(type_: String,id_: String="",detail_: String="") -> void:
 		var b=Button.new(); b.text=entry[1]; b.custom_minimum_size=Vector2(248,76); b.focus_mode=Control.FOCUS_NONE
 		b.disabled=entry.size()>2 and not entry[2]
 		b.add_theme_font_override("font",host.episode_font()); b.add_theme_font_size_override("font_size",23)
-		var normal=StyleBoxFlat.new(); normal.bg_color=Color("34473f"); normal.set_corner_radius_all(7); b.add_theme_stylebox_override("normal",normal)
+		var normal=StyleBoxFlat.new(); normal.bg_color=Color("633c38" if entry[0]=="kill" else ("354b58" if entry[0]=="sleep" else "34473f")); normal.set_corner_radius_all(7); b.add_theme_stylebox_override("normal",normal)
 		var press=StyleBoxFlat.new(); press.bg_color=Color("8a6f45"); press.set_corner_radius_all(7); b.add_theme_stylebox_override("pressed",press)
 		b.pressed.connect(_perform.bind(entry[0])); column.add_child(b); controls[entry[0]]=b
 	var close_=Button.new(); close_.text="닫기"; close_.custom_minimum_size.y=64; close_.add_theme_font_override("font",host.episode_font()); close_.pressed.connect(close); column.add_child(close_)

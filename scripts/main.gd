@@ -71,6 +71,7 @@ var dig_cursor: MeshInstance3D
 var hover_cell := Vector2i(99,99)
 var capturing := false
 var camera_focus := Vector3.ZERO
+var owner_beacon: Label3D
 var earth_edges: Dictionary = {}
 var earth_faces: Array = []
 var viewed_floor := 0
@@ -302,7 +303,10 @@ func _ready() -> void:
 	world_label("국경 경비",Vector3(0,1.95,0),inspector_visual)
 	carried_visuals["player"] = make_tray(player)
 	carried_visuals["staff"] = make_tray(staff_visual)
-	world_label("주인",Vector3(0,1.95,0),player)
+	owner_beacon=world_label("▼ 주인",Vector3(0,2.7,0),player)
+	owner_beacon.pixel_size=0.012;owner_beacon.modulate=Color("ffe29a");owner_beacon.no_depth_test=true
+	var owner_ring=MeshInstance3D.new();var ring=TorusMesh.new();ring.inner_radius=0.39;ring.outer_radius=0.49;owner_ring.mesh=ring;owner_ring.position.y=0.09
+	var ring_mat=material(Color("ffe29a"));ring_mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED;ring_mat.no_depth_test=true;owner_ring.material_override=ring_mat;player.add_child(owner_ring)
 	staff_marker=world_label("직원",Vector3(0,1.95,0),staff_visual)
 	setup_stealth_effects()
 	noise_visual=MeshInstance3D.new()
@@ -780,7 +784,7 @@ func start_campaign() -> void:
 		if child is Label3D and child.text.begins_with("지하 입구"):child.hide()
 	world_root=surface
 	box(Vector3(1.65,0.18,1.65),Vector3(Simulation.HATCH.x,-0.02,Simulation.HATCH.y),Color("604c36"))
-	episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false;set_layer("surface")
+	episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false;frame_owner()
 
 func context_opened(kind_: String) -> void:
 	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk","automation","pick","room","navigation","person","actions","other","system"] and not dialogue_paused:
@@ -826,6 +830,10 @@ func load_game() -> void:
 	sync_view(0)
 
 func pan_camera(relative: Vector2) -> void:
+	if not overview:
+		var at=focus_position()+Vector3(camera_offset.x,0,camera_offset.y)
+		overview=true
+		var base=focus_position();camera_offset=Vector2(at.x-base.x,at.z-base.z)
 	var scale_: float=camera.size/get_viewport().get_visible_rect().size.x
 	var right:=Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
 	var down:=Vector2(camera.global_basis.z.x,camera.global_basis.z.z).normalized()
@@ -945,7 +953,8 @@ func _physics_process(delta: float) -> void:
 		if sandbox_visual!=null:sandbox_visual.visible=true
 	if sim.data.player.floor!=displayed_floor:
 		displayed_floor=sim.data.player.floor
-		if view_layer!="all":set_layer("below" if displayed_floor==1 else ("rooms" if displayed_floor==2 else "surface"))
+		if not overview:frame_owner()
+		elif view_layer!="all":set_layer("below" if displayed_floor==1 else ("rooms" if displayed_floor==2 else "surface"))
 		object_context.close()
 	if not pending_context_action.is_empty() and sim.data.excavation.intent=="" and sim.data.work.is_empty():
 		var job=pending_context_action
@@ -961,7 +970,8 @@ func _physics_process(delta: float) -> void:
 			dig_cursor.position=Vector3(hover_cell.x,0.07,hover_cell.y)
 	if not overview and sim.data.excavation.intent!="":camera_offset=camera_offset.lerp(Vector2.ZERO,minf(1,delta*3))
 	var focus_target:=focus_position()+Vector3(camera_offset.x,0,camera_offset.y)
-	camera_focus=camera_focus.lerp(focus_target,minf(1,delta*4))
+	if not pointer.pressed and not object_context.panel.visible:
+		camera_focus=camera_focus.lerp(focus_target,1.0-exp(-delta*6))
 	camera.position=camera_focus+camera_arm()
 	camera.look_at(camera_focus)
 	sync_view(delta)
@@ -1054,14 +1064,20 @@ func touch_control(key: String) -> void:
 	await get_tree().process_frame
 	sync_view(0)
 
-func frame_owner() -> void:
-	overview=false
-	view_layer="all"
-	camera.size=14
-	camera_focus=focus_position()
-	camera.position=camera_focus+camera_arm()
-	camera.look_at(camera_focus)
+func follow_owner(snap: bool=true) -> void:
+	var floor_=int(sim.data.player.floor)
+	var layer_="below" if floor_==1 else ("rooms" if floor_==2 else "surface")
+	if view_layer!=layer_ and object_context!=null:object_context.close()
+	view_layer=layer_;overview=false;camera_offset=Vector2.ZERO
+	if snap:
+		camera.size=24
+		camera_focus=focus_position()
+		camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
+
+func frame_owner() -> void:
+	if object_context!=null:object_context.close()
+	follow_owner(true)
 
 # Small deterministic procedural sounds: no external service or paid asset.
 func sound_sample(kind: String) -> AudioStreamWAV:
@@ -1599,7 +1615,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		"system": object_context.open("system"); return
 		"actions","other": object_context.open(action,id_); return
 		"overview": set_layer("all"); return
-		"follow": frame_owner(); camera.size=18; return
+		"follow": frame_owner(); return
 		"save": save_game(); return
 		"load": load_game(); return
 		"fullscreen": DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if DisplayServer.window_get_mode()!=DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_WINDOWED); return

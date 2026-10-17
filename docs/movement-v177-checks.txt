@@ -1,0 +1,17 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS new game follows owner on current floor
+PASS find owner clears remote offset and returns to correct floor
+PASS manual pan freezes view without jumping to map center
+PASS manual overview stays put while owner walks
+PASS ground command resumes owner follow
+PASS precise body click remains selectable
+PASS empty ground beside person no longer has giant click halo
+PASS visible name remains clickable
+PASS touch keeps a modest forgiving body target
+PASS real touch on find owner returns from basement view
+PASS find owner touch does not issue world movement
+PASS basement follow uses basement world coordinates
+PASS upstairs find owner picks upstairs layer
+PASS owner beacon is distinctive and visible through occlusion
+MOVEMENT CHECKS 14/14

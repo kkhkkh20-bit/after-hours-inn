@@ -16,10 +16,11 @@ static func body(host,screen: Vector2,pos: Vector2,floor_: int,kind: String,id: 
 	var radius: float=maxf(10.0,projected_height*0.20)
 	var closest: Vector2=Geometry2D.get_closest_point_to_segment(screen,foot,head)
 	var distance: float=screen.distance_to(closest)
-	var name_rect=Rect2(head-Vector2(65,14),Vector2(130,34))
+	var name_rect=Rect2(head-Vector2(48,10),Vector2(96,24))
 	var on_name=name_rect.has_point(screen)
-	if distance>maxf(48,radius) and not on_name:return {}
-	return {"kind":kind,"id":id,"distance":minf(distance,screen.distance_to(head)) if on_name else distance,"direct":distance<=radius or on_name,"point":head.lerp(foot,0.5),"depth":host.camera.global_position.distance_to(at)}
+	var touch: bool=host.pointer.fingers.size()>0
+	if distance>maxf(28 if touch else radius,radius) and not on_name:return {}
+	return {"kind":kind,"id":id,"distance":minf(distance,screen.distance_to(head)) if on_name else distance,"body":distance<=radius,"direct":distance<=radius or on_name,"point":head.lerp(foot,0.5),"depth":host.camera.global_position.distance_to(at)}
 
 static func candidates(host,screen: Vector2) -> Array:
 	var result: Array=[]
@@ -43,6 +44,8 @@ static func candidates(host,screen: Vector2) -> Array:
 	if p.state not in ["idle","scheduled"]:
 		hit=body(host,screen,p.pos,p.floor,"inspector","")
 		if not hit.is_empty():result.append(hit)
+	if result.any(func(c):return c.get("body",false)):
+		result=result.filter(func(c):return c.get("body",false))
 	if result.any(func(c):return c.direct):result=result.filter(func(c):return c.direct)
 	result.sort_custom(func(a,b):
 		if absf(a.distance-b.distance)>3:return a.distance<b.distance

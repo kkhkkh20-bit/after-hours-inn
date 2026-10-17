@@ -18,6 +18,7 @@ var cancel_button: Button
 var top: Control
 var next_live_refresh=0
 var detail_label: Label
+var owner_button: Button
 var fixed_header: HBoxContainer
 
 func label_(text_: String,size_: int) -> Label:
@@ -54,6 +55,7 @@ func setup(owner_) -> void:
 		if value in ["surface","rooms","below","all"]:controls["@view:"+value]=b
 		if value=="pause":controls["@pause"]=b
 		if value=="speed":controls["@speed"]=b
+	owner_button=button_("주인 찾기",top,func():host.frame_owner(),56);owner_button.position=Vector2(20,164);owner_button.size.x=260;controls["@owner"]=owner_button
 	task_label=label_("",19);task_label.position=Vector2(24,236);task_label.size=Vector2(490,34);top.add_child(task_label)
 	cancel_button=button_("취소",top,func():close();host.context_action("owner","","stop"),64);cancel_button.position=Vector2(565,220);cancel_button.size.x=130;cancel_button.hide()
 	panel=PanelContainer.new();root.add_child(panel);panel.mouse_filter=Control.MOUSE_FILTER_STOP
@@ -164,10 +166,11 @@ func refresh() -> void:
 		if controls.has("@view:"+view):controls["@view:"+view].modulate=Color("f5d79b") if host.view_layer==view else Color.WHITE
 	stats.text="%d닢 · %s" %[host.sim.data.money,host.sim.calendar_text().get_slice(" · ",0).get_slice(" ",1)]
 	top.visible=not ((host.journal!=null and host.journal.opened) or (host.episode_ui!=null and host.episode_ui.opened))
+	owner_button.text=("주인 · 따라가는 중" if not host.overview else "주인에게 돌아가기")+" · "+{0:"1층",1:"지하",2:"2층"}.get(int(host.sim.data.player.floor),"")
 	var job: String=host.command_status()
 	task_label.text=job;cancel_button.visible=job!=""
 	if panel.visible and kind in ["person","conversation","actions","other","inmate","questioning"]:
 		if not host.sim.data.people.has(target) or host.sim.data.people[target].state=="gone" or (kind in ["inmate","questioning"] and host.sim.data.people[target].state!="captive"):close()
 
 func blocks(point: Vector2) -> bool:
-	return point.y<158 or (cancel_button.visible and cancel_button.get_global_rect().has_point(point)) or (panel.visible and panel.get_global_rect().has_point(point))
+	return point.y<158 or (owner_button.visible and owner_button.get_global_rect().has_point(point)) or (cancel_button.visible and cancel_button.get_global_rect().has_point(point)) or (panel.visible and panel.get_global_rect().has_point(point))

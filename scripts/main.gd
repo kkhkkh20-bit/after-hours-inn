@@ -702,8 +702,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			var target_id:=pick_person(event.position)
 			if target_id!="":sim.data.ops.selected=target_id
 			elif sim.data.player.floor==1:
-				var hit: Variant=Plane(Vector3.UP,0.9).intersects_ray(camera.project_ray_origin(event.position),camera.project_ray_normal(event.position))
-				if hit!=null:sim.queue_dig(Vector2i(roundi(hit.x),roundi(hit.z)))
+				sim.queue_dig(soil_at(event.position))
 			elif event.position.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<40:sim.queue_floor()
 			else:sim.data.ops.selected=""
 
@@ -718,13 +717,10 @@ func _physics_process(delta: float) -> void:
 		sim.tick(delta*sim.data.speed)
 		update_stealth_audio(delta)
 	if sim.data.player.floor==1:
-		var mouse:=pointer_position
-		var hit: Variant=Plane(Vector3.UP,0.9).intersects_ray(camera.project_ray_origin(mouse),camera.project_ray_normal(mouse))
-		if hit!=null:
-			hover_cell=Vector2i(roundi(hit.x),roundi(hit.z))
-			if dig_cursor!=null:
-				dig_cursor.visible=earth_edges.has(Simulation.cell_key(hover_cell))
-				dig_cursor.position=Vector3(hover_cell.x,0.94,hover_cell.y)
+		hover_cell=soil_at(pointer_position)
+		if dig_cursor!=null:
+			dig_cursor.visible=earth_edges.has(Simulation.cell_key(hover_cell))
+			dig_cursor.position=Vector3(hover_cell.x,0.94,hover_cell.y)
 	var focus_target:=Vector3(sim.data.player.pos.x,0,sim.data.player.pos.y)
 	camera_focus=camera_focus.lerp(focus_target,minf(1,delta*4))
 	camera.position=camera_focus+Vector3(16,18,21)
@@ -1029,3 +1025,17 @@ func attach_tools() -> void:
 func toggle_information() -> void:
 	panels_hidden=not panels_hidden
 	for node in information_controls:node.visible=not panels_hidden
+
+func soil_at(screen: Vector2) -> Vector2i:
+	var origin:=camera.project_ray_origin(screen)
+	var direction:=camera.project_ray_normal(screen)
+	var nearest:=INF
+	var chosen:=Vector2i(99,99)
+	for key in earth_edges:
+		var cell:=Simulation.parse_cell(key)
+		var bounds:=AABB(Vector3(cell.x-0.485,0,cell.y-0.485),Vector3(0.97,0.9,0.97))
+		var hit: Variant=bounds.intersects_ray(origin,direction)
+		if hit!=null:
+			var distance: float=origin.distance_squared_to(hit)
+			if distance<nearest:nearest=distance;chosen=cell
+	return chosen

@@ -1,6 +1,7 @@
 extends RefCounted
 ## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
 
+const Intrigue = preload("res://scripts/intrigue.gd")
 const COUNTER := Vector2(-1.75, -1.75)
 const ENTRY := Vector2(0.25, 3.25)
 const HATCH := Vector2(-3.25, 2.75)
@@ -19,6 +20,7 @@ func _init() -> void:
 		"collector":false,"tax_paid":false,"cells":{}, "dig":{}, "noise":0.0,
 		"logs":[], "served":0, "departed":0}
 	data.stealth = stealth_defaults()
+	data.ops=Intrigue.defaults()
 	for x in range(-1,2):
 		for y in range(-1,2): data.cells[cell_key(Vector2i(x,y))] = true
 	spawn_guest()
@@ -72,6 +74,7 @@ func move_player(offset: Vector2) -> void:
 		if walkable(p+Vector2(0,step.y),data.player.floor): p.y += step.y
 		data.player.pos = p
 		remaining -= step
+	Intrigue.sync_drag(self)
 
 func spawn_guest() -> void:
 	if waiting().size() >= 2: return
@@ -82,6 +85,7 @@ func spawn_guest() -> void:
 	data.people[id] = {"id":id,"name":sample[0],"trait":sample[1],"rate":sample[2],
 		"pos":ENTRY,"state":"waiting","room":0,"path":[],"arrival":data.clock,
 		"checkout":0.0,"order_at":0.0,"meals":0}
+	Intrigue.register(data.people[id])
 	if data.serial > 1: note("%s 도착: %s" % [sample[0],sample[1]])
 
 func waiting() -> Array:
@@ -183,6 +187,8 @@ func interact() -> void:
 	if not data.work.is_empty() or not data.dig.is_empty():
 		note("작업 중이다. X로 중단할 수 있다.")
 		return
+	if Intrigue.inspector_action(self):return
+	if data.ops.drag!="":note("끌고 있는 대상을 먼저 C로 내려놓아야 한다.");return
 	if explain_noise(): return
 	if data.player.carry != "":
 		if not deliver(data.player.carry,"player"): note("주문한 손님 가까이로 가야 한다.")
@@ -278,6 +284,7 @@ func _step(dt: float) -> void:
 					data.work={}
 					pickup(order_id,"player")
 					note("식사가 준비됐다. 주문한 손님에게 전달하자.")
+	Intrigue.tick(self,dt)
 	update_work(dt)
 	update_awareness(dt)
 	update_worker(dt)
@@ -352,6 +359,7 @@ func update_worker(dt: float) -> void:
 			worker.mode="delivery"
 			return
 		else: return
+	if Intrigue.staff_alarm_step(self,dt):return
 	if investigate(dt): return
 	if not worker.delegated:
 		return_staff(dt)
@@ -407,12 +415,14 @@ func change_floor() -> bool:
 		observe_hatch()
 		data.player.floor=1
 		data.player.pos=Vector2.ZERO
+		Intrigue.sync_drag(self)
 		note("지하로 내려왔다. 입구에서 Q로 복귀 / 흙벽을 클릭하면 굴착한다.")
 		return true
 	if data.player.floor==1 and data.player.pos.length()<1.1:
 		observe_hatch()
 		data.player.floor=0
 		data.player.pos=HATCH
+		Intrigue.sync_drag(self)
 		note("위층으로 돌아왔다.")
 		return true
 	note("계단 입구 가까이에서 Q를 눌러야 한다.")
@@ -426,7 +436,7 @@ static func parse_cell(key: String) -> Vector2i:
 	return Vector2i(int(parts[0]),int(parts[1]))
 
 func start_dig(cell: Vector2i) -> bool:
-	if data.paused or data.player.floor!=1 or not data.work.is_empty() or not data.dig.is_empty(): return false
+	if data.paused or data.ops.drag!="" or data.player.floor!=1 or not data.work.is_empty() or not data.dig.is_empty(): return false
 	if absi(cell.x)>12 or absi(cell.y)>8 or data.cells.has(cell_key(cell)): return false
 	if data.money<1:
 		note("굴착 도구 비용 1닢이 부족하다.")
@@ -492,6 +502,7 @@ func restore(saved: Variant) -> bool:
 	var candidate: Dictionary=decode(saved.state)
 	# Existing 0.3 saves acquire awareness defaults; in-flight jobs remain valid.
 	if not candidate.has("stealth"): candidate.stealth=stealth_defaults()
+	if not candidate.has("ops"):candidate.ops=Intrigue.defaults()
 	for key in data:
 		if not candidate.has(key): return false
 	if not candidate.staff.has("facing"): candidate.staff.facing=Vector2.DOWN
@@ -501,6 +512,7 @@ func restore(saved: Variant) -> bool:
 	for person in candidate.people.values():
 		for key in ["room","rate","meals"]: person[key]=int(person[key])
 	data=candidate
+	Intrigue.migrate(self)
 	return true
 
 # Awareness PoC: sound travels through the single basement hatch, never by
@@ -553,7 +565,7 @@ func update_awareness(dt: float) -> void:
 	if s.heard>0.7:
 		s.suspicion=minf(100,s.suspicion+dt*(s.heard-0.7)*6)
 	elif s.phase=="idle": s.suspicion=maxf(minf(60,float(s.memory)*15),s.suspicion-dt*1.4)
-	if s.phase=="idle" and s.suspicion>=10 and data.clock>=s.cooldown and data.clock>=s.refuse_until:
+	if s.phase=="idle" and s.heard>0.7 and s.suspicion>=10 and data.clock>=s.cooldown and data.clock>=s.refuse_until:
 		s.phase="alert"
 		s.warning+=1
 		s.confirmed=false

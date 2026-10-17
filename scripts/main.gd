@@ -32,6 +32,12 @@ var viewed_floor := 0
 var surface_zoom := 24.0
 var basement_zoom := 12.0
 var pointer_position := Vector2.ZERO
+var action_buttons: Dictionary={}
+var contract_panel: Label
+var target_panel: Label
+var inspector_visual: CharacterBody3D
+var holding_visual: Node3D
+var holding_position:=Vector2(99,99)
 var awareness: Label
 var staff_marker: Label3D
 var vision_mesh: MeshInstance3D
@@ -248,6 +254,8 @@ func _ready() -> void:
 	player = actor(Vector3.ZERO,Color("8f7147"))
 	staff_visual = actor(Vector3.ZERO,Color("4a7771"))
 	collector_visual = actor(Vector3.ZERO,Color("6d3b47"))
+	inspector_visual=actor(Vector3.ZERO,Color("933e32"))
+	world_label("국경 경비",Vector3(0,1.95,0),inspector_visual)
 	carried_visuals["player"] = make_tray(player)
 	carried_visuals["staff"] = make_tray(staff_visual)
 	world_label("주인",Vector3(0,1.95,0),player)
@@ -274,7 +282,7 @@ func _ready() -> void:
 		get_tree().quit(result)
 	elif "--input-verify" in args:
 		await input_verify()
-	elif "--capture" in args or "--capture-basement" in args or "--capture-stealth" in args:
+	elif "--capture" in args or "--capture-basement" in args or "--capture-stealth" in args or "--capture-operation" in args or "--capture-prison" in args:
 		capturing = true
 		sim.data.player.pos = Simulation.COUNTER
 		sim.assign_room(1)
@@ -295,11 +303,39 @@ func _ready() -> void:
 			sim.data.player.pos=Vector2(2,0)
 			sim.start_dig(Vector2i(3,0))
 			sim.tick(1.5)
+		if "--capture-operation" in args or "--capture-prison" in args:
+			# Stage using the same commands/state transitions as gameplay.
+			sim.data.player.pos=Simulation.HATCH
+			sim.change_floor()
+			sim.data.player.pos=Vector2(1,0)
+			sim.start_dig(Vector2i(2,0))
+			sim.tick(4.1)
+			sim.data.player.pos=Vector2(2,0)
+			Simulation.Intrigue.build_or_hold(sim)
+			sim.data.player.pos=Vector2.ZERO
+			sim.change_floor()
+			sim.data.player.pos=Simulation.COUNTER
+			sim.data.ops.selected="guest_1"
+			Simulation.Intrigue.contract_action(sim)
+			sim.data.player.pos=sim.data.people.guest_1.pos
+			Simulation.Intrigue.subdue(sim)
+			sim.tick(2.1)
+			Simulation.Intrigue.drag_or_release(sim)
+			if "--capture-prison" in args:
+				sim.data.player.pos=Simulation.HATCH
+				sim.change_floor()
+				sim.data.player.pos=Vector2(2,0)
+				Simulation.Intrigue.sync_drag(sim)
+				Simulation.Intrigue.build_or_hold(sim)
+				sim.data.player.pos=Vector2(1,0)
+				sim.tick(30.1)
 		sync_view(0)
 		await get_tree().process_frame
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v04-surface.png")
+		if "--capture-operation" in args:output="res://docs/v05-operation.png"
+		if "--capture-prison" in args:output="res://docs/v05-prison.png"
 		get_viewport().get_texture().get_image().save_png(output)
 		get_tree().quit()
 
@@ -340,7 +376,7 @@ func ui_label(canvas: CanvasLayer, pos: Vector2, size_: Vector2, font_size: int)
 	canvas.add_child(label)
 	return label
 
-func button(canvas: CanvasLayer, text_: String, pos: Vector2, size_: Vector2, callback: Callable) -> void:
+func button(canvas: CanvasLayer, text_: String, pos: Vector2, size_: Vector2, callback: Callable) -> Button:
 	var control:=Button.new()
 	control.text=text_
 	control.position=pos
@@ -350,6 +386,7 @@ func button(canvas: CanvasLayer, text_: String, pos: Vector2, size_: Vector2, ca
 	control.focus_mode=Control.FOCUS_NONE
 	control.pressed.connect(callback)
 	canvas.add_child(control)
+	return control
 
 func make_ui() -> void:
 	var canvas:=CanvasLayer.new()
@@ -374,6 +411,16 @@ func make_ui() -> void:
 	hint=ui_label(canvas,Vector2(34,670),Vector2(1210,100),17)
 	panel(canvas,Vector2(320,138),Vector2(650,82))
 	awareness=ui_label(canvas,Vector2(334,146),Vector2(622,70),17)
+	panel(canvas,Vector2(20,320),Vector2(266,134))
+	contract_panel=ui_label(canvas,Vector2(32,328),Vector2(242,78),15)
+	button(canvas,"의뢰 / 보수 [J]",Vector2(32,412),Vector2(130,32),func():Simulation.Intrigue.contract_action(sim))
+	button(canvas,"거절 / 보호 [K]",Vector2(166,412),Vector2(108,32),func():Simulation.Intrigue.contract_action(sim,true))
+	panel(canvas,Vector2(320,552),Vector2(650,90))
+	target_panel=ui_label(canvas,Vector2(334,558),Vector2(620,36),16)
+	action_buttons["subdue"]=button(canvas,"제압 2초 [Z]",Vector2(334,601),Vector2(140,32),func():Simulation.Intrigue.subdue(sim))
+	action_buttons["drag"]=button(canvas,"끌기 / 풀기 [C]",Vector2(480,601),Vector2(152,32),func():Simulation.Intrigue.drag_or_release(sim))
+	action_buttons["cell"]=button(canvas,"구금칸 [B]",Vector2(638,601),Vector2(140,32),func():Simulation.Intrigue.build_or_hold(sim))
+	action_buttons["bribe"]=button(canvas,"경비 뇌물 [O]",Vector2(784,601),Vector2(168,32),func():Simulation.Intrigue.inspector_action(sim,true))
 
 func room_text(number: int) -> String:
 	var room_: Dictionary=sim.data.rooms[str(number)]
@@ -389,7 +436,7 @@ func refresh_ui() -> void:
 	var minute:=int(420+d.clock*6)
 	var day:=minute/1440+1
 	var within:=minute%1440
-	hud.text="문 닫은 뒤  /  국경 여관  0.4\n%d일  %02d:%02d    보유 %d닢    미납 %d닢    %s    %s" % [day,within/60,within%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층","일시정지" if d.paused else "%d배속" % d.speed]
+	hud.text="문 닫은 뒤  /  국경 여관  0.5\n%d일  %02d:%02d    보유 %d닢    미납 %d닢    %s    %s" % [day,within/60,within%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층","일시정지" if d.paused else "%d배속" % d.speed]
 	var queue:=sim.waiting()
 	if queue.is_empty(): reception.text="접수 대기  0명\n다음 손님을 기다리는 중"
 	else:
@@ -406,7 +453,7 @@ func refresh_ui() -> void:
 	var staff_status: String="미고용 / 준비금 3닢"
 	if d.staff.hired:
 		staff_status="위임 중" if d.staff.delegated else "위임 해제"
-		var modes: Dictionary={"idle":"대기","counter":"접수대 이동","cooking":"식사 준비","delivery":"서빙","return":"복귀","investigate":"지하 확인","refuse":"업무 거부"}
+		var modes: Dictionary={"idle":"대기","counter":"접수대 이동","cooking":"식사 준비","delivery":"서빙","return":"복귀","investigate":"지하 확인","refuse":"업무 거부","alarm":"경비 부르러 이동"}
 		staff_status+=" · "+str(modes.get(d.staff.mode,d.staff.mode))
 	status.text="객실\n%s\n%s\n\n직원  %s\n\n주문 %d건 / 제공 %d회\n%s\n\n예정 납기\n%s 임금 4닢\n%s 임대료 12닢\n%s 세금 8닢" % [room_text(1),room_text(2),staff_status,pending,d.served,"\n".join(order_lines.slice(0,3)),when_text(d.dues.wage),when_text(d.dues.rent),when_text(d.dues.tax)]
 	if d.collector:status.text+="\n징수원 대기: 접수대 E"
@@ -428,7 +475,35 @@ func refresh_ui() -> void:
 	awareness.text="직원 경계 %d / 100  ·  %s  ·  확인 기억 %d\n굴착 %s  |  소음 %.1f  |  직원에게 들리는 소리 %.1f" % [int(stealth.suspicion),stage,int(stealth.memory),"조용히 10초" if stealth.quiet else "빠르게 4초",d.noise,stealth.heard]
 	awareness.modulate=Color("ffb882") if stealth.phase!="idle" or d.clock<stealth.refuse_until else Color("c3d8d0")
 	if stealth.phase in ["approach","listen"] and d.player.floor==0:hint.text="직원 시야 안 가까이 E: 물자 확인이었다고 설명 / X: 작업 중단\n"+hint.text
+	var contract: Dictionary=d.ops.contract
+	var contract_names: Dictionary={"offered":"그림자 의뢰 / 보수 24닢","active":"억류 의뢰 진행","ready":"조건 달성 / 접수대 J 보수","paid":"보수 수령 / 구금자는 남아 있음","protected":"의뢰 폭로 / 손님 보호","declined":"의뢰 거절 / 정상 영업","failed":"의뢰 실패"}
+	contract_panel.text=str(contract_names.get(contract.state,contract.state))
+	if contract.target!="":contract_panel.text+="\n"+str(d.people[contract.target].name)
+	if contract.state=="active":contract_panel.text+=" / 남은 %.0f초\n지하 구금 %.0f / 30초" % [maxf(0,contract.deadline-d.clock),contract.held]
+	elif contract.state=="offered":contract_panel.text+="\n손님을 지하에 30초 억류\nJ 수락 / K 거절 · 접수대에서"
+	var target_id: String=Simulation.Intrigue.selected(sim)
+	target_panel.text="손님 클릭으로 선택 / Z 제압 · C 끌기/내려놓기/석방 · 지하 B 구금칸 8닢"
+	if target_id!="":
+		var target: Dictionary=d.people[target_id]
+		var states: Dictionary={"waiting":"접수 대기","entering":"입실 중","staying":"투숙","down":"기절 %.0f초" % maxf(0,target.wake_at-d.clock),"captive":"지하 구금","escaping":"탈출 중","leaving":"퇴장 중"}
+		target_panel.text="선택: %s / %s / %s" % [target.name,states.get(target.state,target.state),"지하" if target.floor==1 else "위층"]
+	if d.ops.drag!="":target_panel.text+="  ·  끄는 중: "+str(d.people[d.ops.drag].name)
+	var near_id: String=Simulation.Intrigue.select_near(sim)
+	var actionable: bool=Simulation.Intrigue.available(sim)
+	var reachable: bool=near_id!="" and Simulation.Intrigue.close(sim,near_id)
+	action_buttons.subdue.disabled=not (actionable and reachable and d.people[near_id].state in ["waiting","staying","entering"] and d.ops.drag=="" and d.player.carry=="")
+	action_buttons.drag.disabled=not (actionable and (d.ops.drag!="" or (reachable and d.people[near_id].state in ["down","captive"])))
+	action_buttons.cell.disabled=not actionable or d.player.floor!=1
+	action_buttons.cell.text="구금 [B]" if d.ops.built else "구금칸 8닢 [B]"
+	action_buttons.bribe.disabled=not actionable or not sim.near_counter() or d.ops.inspector.state!="waiting"
+	var investigation: Dictionary=d.ops.inspector
+	if investigation.state!="idle":
+		var phases_i: Dictionary={"scheduled":"경비 방문 %.0f초" % maxf(0,investigation.at-d.clock),"entering":"경비 도착","waiting":"접수대 E 조사 허용 / O 뇌물 12닢","search":"경비 입구 조사","sweep":"경비 지하 조사","return_below":"경비 복귀","leaving":"경비 퇴장"}
+		awareness.text+="\n신고 %d건 · %s" % [int(d.ops.reports),phases_i.get(investigation.state,investigation.state)]
+		awareness.add_theme_font_size_override("font_size",15)
+	else:awareness.add_theme_font_size_override("font_size",17)
 	notice.text=""
+	if d.ops.drag!="":notice.text="대상 운반 중 · 이동이 느려진다 / 지하 B 구금 / C 내려놓기"
 	if d.player.carry!="":notice.text="식사 운반 중 → "+str(d.people[d.orders[d.player.carry].guest].name)
 	if d.player.floor==1 and pending>0:notice.text="위층 주문 %d건 · 직원 %s" % [pending,staff_status]
 
@@ -459,6 +534,11 @@ func sync_view(dt: float) -> void:
 	sync_actor(staff_visual,d.staff.pos,dt)
 	staff_visual.rotation.y=atan2(-d.staff.facing.x,-d.staff.facing.y)
 	collector_visual.position=Vector3(-0.2,0.08,-1.5)
+	var inspection: Dictionary=d.ops.inspector
+	inspector_visual.visible=inspection.state not in ["idle","scheduled"] and inspection.floor==d.player.floor
+	sync_actor(inspector_visual,inspection.pos,dt)
+	if d.ops.built and holding_position!=d.ops.cell:build_holding_visual()
+	if holding_visual!=null:holding_visual.visible=d.ops.built and not upstairs
 	carried_visuals.player.visible=d.player.carry!=""
 	carried_visuals.staff.visible=d.staff.carry!=""
 	for id in actors.keys():
@@ -471,9 +551,18 @@ func sync_view(dt: float) -> void:
 		if not actors.has(id):
 			actors[id]=actor(Vector3.ZERO,Color("667f8c") if int(id.get_slice("_",1))%2 else Color("77534d"))
 			labels[id]=world_label(person.name,Vector3(0,1.95,0),actors[id])
-		actors[id].visible=upstairs and person.state!="gone"
+		actors[id].visible=person.floor==d.player.floor and person.state!="gone"
 		sync_actor(actors[id],person.pos,dt)
-		labels[id].text=person.name+" · 대기" if person.state=="waiting" else person.name
+		actors[id].rotation.z=PI/2 if person.state=="down" else 0
+		if person.state=="down":actors[id].position.y=0.35
+		# Labels remain upright even when the body is lying on its side.
+		labels[id].global_rotation=Vector3.ZERO
+		labels[id].global_position=Vector3(person.pos.x,0.95 if person.state=="down" else 2.03,person.pos.y)
+		labels[id].text=str(person.name)
+		labels[id].pixel_size=0.0045 if person.floor==1 else 0.007
+		if person.state=="waiting":labels[id].text+=" · 대기"
+		if person.state=="captive":labels[id].text+=" · 구금"
+		labels[id].modulate=Color("ffd394") if d.ops.selected==id else Color.WHITE
 	if last_cell_count!=d.cells.size():rebuild_basement()
 	staff_marker.text="직원 · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
 	staff_marker.modulate=Color("ffb882") if d.stealth.suspicion>=10 else Color.WHITE
@@ -541,6 +630,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_H:sim.toggle_staff()
 			KEY_Q:sim.change_floor()
 			KEY_X:sim.cancel_work()
+			KEY_Z:Simulation.Intrigue.subdue(sim)
+			KEY_C:Simulation.Intrigue.drag_or_release(sim)
+			KEY_B:Simulation.Intrigue.build_or_hold(sim)
+			KEY_J:Simulation.Intrigue.contract_action(sim)
+			KEY_K:Simulation.Intrigue.contract_action(sim,true)
+			KEY_O:Simulation.Intrigue.inspector_action(sim,true)
 			KEY_R:sim.toggle_dig_mode()
 			KEY_V:show_vision=not show_vision
 			KEY_M:muted=not muted
@@ -549,7 +644,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(8 if sim.data.player.floor==1 else 15,camera.size-1)
 		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(32,camera.size+1)
-		if event.button_index==MOUSE_BUTTON_LEFT and sim.data.player.floor==1:sim.start_dig(hover_cell)
+		if event.button_index==MOUSE_BUTTON_LEFT:
+			var target_id:=pick_person(event.position)
+			if target_id!="":sim.data.ops.selected=target_id
+			elif sim.data.player.floor==1:sim.start_dig(hover_cell)
+			else:sim.data.ops.selected=""
 
 func _physics_process(delta: float) -> void:
 	if capturing:return
@@ -557,7 +656,7 @@ func _physics_process(delta: float) -> void:
 		var direction:=Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))-float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP))).normalized()
 		var right:=Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
 		var down:=Vector2(camera.global_basis.z.x,camera.global_basis.z.z).normalized()
-		var speed_: float=2.2 if sim.data.player.carry!="" else 2.9
+		var speed_: float=1.15 if sim.data.ops.drag!="" else (2.2 if sim.data.player.carry!="" else 2.9)
 		sim.move_player((right*direction.x+down*direction.y)*delta*speed_*sim.data.speed)
 		sim.tick(delta*sim.data.speed)
 		update_stealth_audio(delta)
@@ -654,6 +753,44 @@ func input_verify() -> void:
 	checks.append(not show_vision)
 	await send_key(KEY_M)
 	checks.append(muted)
+	var geometry: Array=sim.obstacles.duplicate()
+	sim=Simulation.new()
+	sim.obstacles.assign(geometry)
+	sim.rebuild_grid()
+	sim.data.player.pos=Simulation.COUNTER
+	sync_view(0)
+	var target_point:=camera.unproject_position(Vector3(sim.data.people.guest_1.pos.x,0.65,sim.data.people.guest_1.pos.y))
+	mouse=InputEventMouseButton.new()
+	mouse.position=target_point
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.pressed=true
+	get_viewport().push_input(mouse,true)
+	await get_tree().process_frame
+	mouse=InputEventMouseButton.new()
+	mouse.position=target_point
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.pressed=false
+	get_viewport().push_input(mouse,true)
+	await get_tree().process_frame
+	checks.append(sim.data.ops.selected=="guest_1")
+	await send_key(KEY_J)
+	checks.append(sim.data.ops.contract.state=="active")
+	sim.data.player.pos=sim.data.people.guest_1.pos
+	await send_key(KEY_Z)
+	checks.append(sim.data.work.get("type","")=="subdue")
+	sim.tick(2.1)
+	await send_key(KEY_C)
+	checks.append(sim.data.ops.drag=="guest_1")
+	sim.data.player.pos=Simulation.HATCH
+	await send_key(KEY_Q)
+	checks.append(sim.data.people.guest_1.floor==1 and sim.data.people.guest_1.pos==sim.data.player.pos)
+	sim.data.cells["2,0"]=true
+	sim.data.player.pos=Vector2(2,0)
+	Simulation.Intrigue.sync_drag(sim)
+	await send_key(KEY_B)
+	checks.append(sim.data.ops.built)
+	await send_key(KEY_B)
+	checks.append(sim.data.people.guest_1.state=="captive" and sim.data.ops.drag=="")
 	var failed:=0
 	for i in range(checks.size()):
 		if not checks[i]:
@@ -744,3 +881,29 @@ func update_stealth_audio(delta: float) -> void:
 	if sim.data.player.floor==0 and sim.data.staff.hired and sim.data.staff.mode in ["delivery","counter","return","investigate"]:
 		step_sound.position=staff_visual.position
 		step_sound.play()
+
+func pick_person(screen: Vector2) -> String:
+	var id: String=""
+	var distance:=38.0
+	for key in sim.data.people:
+		var person: Dictionary=sim.data.people[key]
+		if person.state=="gone" or person.floor!=sim.data.player.floor:continue
+		var point:=camera.unproject_position(Vector3(person.pos.x,0.65,person.pos.y))
+		var delta:=screen.distance_to(point)
+		if delta<distance:id=key;distance=delta
+	return id
+
+func build_holding_visual() -> void:
+	if holding_visual!=null:holding_visual.queue_free()
+	holding_visual=Node3D.new()
+	basement.add_child(holding_visual)
+	holding_position=sim.data.ops.cell
+	holding_visual.position=Vector3(holding_position.x,0.08,holding_position.y)
+	world_root=holding_visual
+	box(Vector3(0.95,0.04,0.95),Vector3.ZERO,Color("60372e"))
+	for x in [-0.45,-0.15,0.15,0.45]:
+		box(Vector3(0.055,1.25,0.055),Vector3(x,0.625,-0.45),Color("333c3b"))
+	box(Vector3(1,0.07,0.08),Vector3(0,1.25,-0.45),Color("525a54"))
+	var label:=world_label("구금칸",Vector3(-0.3,0.2,0.65),holding_visual)
+	label.pixel_size=0.004
+	world_root=surface

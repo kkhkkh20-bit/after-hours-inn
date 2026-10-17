@@ -221,6 +221,7 @@ static func run(obstacles: Array) -> int:
 	busy.data.stealth.phase="alert"
 	busy.tick(20)
 	expect(busy.data.served==1 and busy.data.stealth.phase in ["approach","listen","idle"],"Existing meal ownership completes before investigation",results)
+	preload("res://scripts/intrigue_tests.gd").run(obstacles,results)
 	var failures:=0
 	for result in results:
 		if not result[0]:failures+=1

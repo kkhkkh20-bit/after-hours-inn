@@ -70,13 +70,13 @@ static func next_day(sim) -> void:
 static func goal(sim) -> String:
 	var c: Dictionary=sim.data.campaign
 	if c.ending!="":return c.ending
+	if sim.data.ops.inspector.state=="waiting":return "순찰대가 주인의 설명을 기다립니다"
+	if c.deal=="waiting" and c.broker!="":return "회색 망토가 은밀한 제안을 기다립니다"
+	if int(c.day)==2 and c.fugitive!="" and not c.protected and sim.data.people[c.fugitive].state not in ["gone","leaving"]:return "부상 입은 전령을 도울지 결정하세요"
 	if c.talks==0:return "도착한 손님을 눌러 인사하세요"
 	if c.bookings==0:return "손님의 요구를 듣고 객실을 제안하세요"
 	if sim.data.served==0:return "손님에게 말을 걸어 식사를 준비하세요"
 	if c.worker!="" and not sim.data.staff.hired:return "마라와 이야기하면 영업을 맡길 수 있습니다" if sim.data.people[c.worker].state not in ["gone","leaving"] else "접수대에서 일할 사람을 다시 구할 수 있습니다"
-	if c.deal=="waiting" and c.broker!="":return "회색 망토가 은밀한 제안을 기다립니다"
-	if sim.data.ops.inspector.state=="waiting":return "순찰대가 주인의 설명을 기다립니다"
-	if int(c.day)==2 and c.fugitive!="" and not c.protected:return "부상 입은 전령을 도울지 결정하세요"
 	return "다음 날 08시 결산 · 새벽 납부 %d닢" %[rent(int(c.day))+(4 if sim.data.staff.hired else 0)+(8 if int(c.day)==3 and not c.tax_paid else 0)]
 
 static func hire(sim,id: String) -> bool:

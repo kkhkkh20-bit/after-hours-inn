@@ -12,6 +12,7 @@ func run(obstacles: Array) -> int:
 	check(C.active(s) and s.data.campaign.day==1,"campaign starts")
 	check(not s.data.people.guest_1.get("known",false),"unknown guest is not pre-received")
 	check(not s.request_room(1,"guest_1"),"booking cannot skip the conversation")
+	s.data.ops.inspector.state="waiting";check(C.goal(s).contains("순찰대"),"urgent visitors override tutorial hints");s.data.ops.inspector.state="idle"
 	var line=D.begin(s,"guest_1")
 	check(line.contains("조용한") and s.data.campaign.talks==1,"listen to the actual request")
 	check(D.options(s,"guest_1").any(func(x):return x[0]=="offer_room") and not D.options(s,"guest_1").any(func(x):return x[0]=="book1"),"room numbers require a proposal first")

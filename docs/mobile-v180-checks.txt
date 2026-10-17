@@ -1,0 +1,40 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS new game starts in stable inn overview
+PASS inn overview does not chase owner while operating
+PASS all important zones have touch controls
+PASS gate and front door project inside portrait viewport
+PASS zone targets do not overlap
+PASS mobile cancel control is always present
+PASS cancel becomes available during physical floor travel
+PASS one touch cancels floor travel with no right click
+PASS ground movement keeps managerial overview
+PASS one reception touch opens guest request
+PASS ordinary service menu prioritizes room instead of prison
+PASS map badges hide behind conversation
+PASS second touch reserves recommended room
+PASS operating objective shows rooms and demand
+PASS hidden person labels do not keep invisible name hit areas
+PASS owner follow is still available by explicit choice
+PASS ground floor control returns to inn overview
+PASS touch controls stay separated from status text
+MOBILE INN CHECKS 18/18
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS upstairs button starts physical stair route
+PASS upstairs route arrives and follows owner
+PASS upstairs stair slope is a down target
+PASS single upstairs stair tap starts descent
+PASS descent returns to ground
+PASS exact entrance takes owner to basement
+PASS ladder body above foot is clickable
+PASS single ladder body tap queues ascent without menu
+PASS ladder ascent completes through chosen entrance
+PASS basement to upstairs begins with ground transfer
+PASS basement to upstairs chains both legs
+PASS upstairs to basement chains both legs
+PASS stop cancels multi-floor journey
+PASS new ground command cancels floor destination
+PASS paused travel does not silently unpause
+FLOOR TRAVEL CHECKS 15/15

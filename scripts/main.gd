@@ -2,6 +2,9 @@ extends Node3D
 const Pointer=preload("res://scripts/inn_pointer.gd")
 const Selection=preload("res://scripts/inn_selection.gd")
 const Commands=preload("res://scripts/inn_commands.gd")
+var mobile_scene=preload("res://scripts/inn_mobile_scene.gd").new()
+var inn_view=false
+var world_hints: Array[Label3D]=[]
 var comfort=preload("res://scripts/inn_comfort.gd").new()
 var pointer=Pointer.new()
 var selection_options: Array=[]
@@ -282,14 +285,14 @@ func _ready() -> void:
 	environment.background_color = Color("111d29")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color("8da0b5")
-	environment.ambient_light_energy = 0.48
+	environment.ambient_light_energy = 0.62
 	env.environment = environment
 	add_child(env)
 	var sun := DirectionalLight3D.new()
 	add_child(sun)
 	sun.rotation_degrees = Vector3(-55,-30,0)
 	sun.light_color = Color("a3b7ce")
-	sun.light_energy = 0.35
+	sun.light_energy = 0.50
 	sun.shadow_enabled = true
 	build_surface()
 	build_backdrop()
@@ -350,6 +353,7 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	journal=preload("res://scripts/inn_journal.gd").new();add_child(journal);journal.setup(self)
 	comfort.setup(self)
+	mobile_scene.setup(self)
 	if args.is_empty():start_campaign();comfort.offer_resume()
 	if "--capture-sandbox" in args:
 		await capture_sandbox();return
@@ -502,6 +506,7 @@ func world_label(text_: String, pos: Vector3, owner_: Node3D) -> Label3D:
 	label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
 	owner_.add_child(label)
 	label.position=pos
+	world_hints.append(label)
 	return label
 
 func make_ui() -> void:
@@ -652,6 +657,7 @@ func world_point(pos: Vector2, floor_: int, height: float=0.0) -> Vector3:
 	return Vector3(pos.x,height+Simulation.floor_height(pos,floor_),pos.y)+((Sandbox.OFFSET if Sandbox.active(sim) else CELLAR_OFFSET) if floor_==1 else Vector3.ZERO)
 
 func focus_position() -> Vector3:
+	if inn_view:return Vector3(-2,0,1)
 	if overview and Sandbox.active(sim):
 		if view_layer=="all":return Vector3(5,-.5,7)
 		if view_layer=="below":return Sandbox.OFFSET+Vector3(10,0,-5)
@@ -662,7 +668,7 @@ func focus_position() -> Vector3:
 
 func set_layer(value: String) -> void:
 	if object_context!=null:object_context.close()
-	view_layer=value;overview=true;camera_offset=Vector2.ZERO
+	inn_view=false;view_layer=value;overview=true;camera_offset=Vector2.ZERO
 	camera.size={"all":68.0,"below":48.0,"rooms":24.0,"surface":44.0}.get(value,31.0)
 	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
@@ -788,7 +794,7 @@ func start_campaign() -> void:
 		if child is Label3D and child.text.begins_with("지하 입구"):child.hide()
 	world_root=surface
 	box(Vector3(1.65,0.18,1.65),Vector3(Simulation.HATCH.x,-0.02,Simulation.HATCH.y),Color("604c36"))
-	episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false;frame_owner()
+	episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false;show_inn()
 
 func context_opened(kind_: String) -> void:
 	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk","automation","pick","room","navigation","person","actions","other","system","confirm","comfort","help","recent","resume"] and not dialogue_paused:
@@ -962,7 +968,8 @@ func _physics_process(delta: float) -> void:
 		if sandbox_visual!=null:sandbox_visual.visible=true
 	if sim.data.player.floor!=displayed_floor:
 		displayed_floor=sim.data.player.floor
-		if not overview:frame_owner()
+		if displayed_floor==0:show_inn()
+		elif not overview:frame_owner()
 		elif view_layer!="all":set_layer("below" if displayed_floor==1 else ("rooms" if displayed_floor==2 else "surface"))
 		object_context.close()
 	advance_floor_journey()
@@ -992,6 +999,7 @@ func _physics_process(delta: float) -> void:
 		if ambience!=null:ambience.volume_db=-80 if muted else -26
 	if journal!=null:journal.refresh()
 	comfort.tick(delta)
+	mobile_scene.update()
 
 func send_key(key: int) -> void:
 	var event:=InputEventKey.new()
@@ -1076,6 +1084,7 @@ func touch_control(key: String) -> void:
 	sync_view(0)
 
 func follow_owner(snap: bool=true) -> void:
+	inn_view=false
 	var floor_=int(sim.data.player.floor)
 	var layer_="below" if floor_==1 else ("rooms" if floor_==2 else "surface")
 	if view_layer!=layer_ and object_context!=null:object_context.close()
@@ -1516,7 +1525,10 @@ func travel_to_floor(target: int) -> void:
 func request_floor(target: int,entry: String="") -> void:
 	if object_context!=null:object_context.close()
 	if sim.data.paused:sim.note("일시정지 중입니다. 상단 재개를 눌러주세요.");return
-	if int(sim.data.player.floor)==target:frame_owner();return
+	if int(sim.data.player.floor)==target:
+		if target==0:show_inn()
+		else:frame_owner()
+		return
 	Commands.cancel(self,true)
 	floor_journey=target;journey_entry=entry
 	follow_owner(true)
@@ -1525,7 +1537,10 @@ func request_floor(target: int,entry: String="") -> void:
 func advance_floor_journey() -> void:
 	if floor_journey<0 or sim.data.paused:return
 	if sim.data.player.floor==floor_journey:
-		floor_journey=-1;journey_entry="";follow_owner(false);return
+		var arrived=floor_journey;floor_journey=-1;journey_entry=""
+		if arrived==0:show_inn()
+		else:follow_owner(false)
+		return
 	if sim.data.excavation.intent!="" or not sim.data.work.is_empty():return
 	if not floor_route_step(floor_journey,journey_entry):
 		floor_journey=-1;journey_entry="";sim.note("층 이동 경로가 막혀 있습니다. 다른 입구를 선택해주세요.")
@@ -2144,7 +2159,7 @@ func sync_tycoon_workers(dt: float) -> void:
 		tycoon_room_marks[n].text="%s호 · %s%s" %[n,"예약 중" if room_.get("reserved","")!="" else ("청소 필요" if room_.dirty else ("이용 중" if room_.guest!="" else "빈방"))," · 개선 %d" %int(sim.data.tycoon.rooms[n]) if int(sim.data.tycoon.rooms[n])>0 else ""]
 		tycoon_room_marks[n].modulate=Color("c6a06b") if room_.dirty else (Color("a9bd89") if room_.guest=="" else Color("d4d6cf"))
 
-func camera_arm() -> Vector3:return CAMERA_ARM.rotated(Vector3.UP,view_angle)
+func camera_arm() -> Vector3:return Vector3(26,34,0) if inn_view else CAMERA_ARM.rotated(Vector3.UP,view_angle)
 
 func set_dig_mode(value: String) -> void:
 	object_context.close()
@@ -2214,3 +2229,11 @@ func cancel_everything() -> void:
 func _notification(what: int) -> void:
 	if what==NOTIFICATION_APPLICATION_FOCUS_OUT and comfort!=null and comfort.host!=null:
 		comfort.background()
+
+func show_inn() -> void:
+	if object_context!=null:object_context.close()
+	view_layer="surface";inn_view=true;overview=true;camera_offset=Vector2.ZERO;camera.size=28
+	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+	sync_view(0)
+	if mobile_scene.host!=null:mobile_scene.update()
+	if journal!=null:journal.refresh()

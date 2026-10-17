@@ -67,7 +67,10 @@ func restore_meta(saved: Dictionary) -> void:
 	var meta: Dictionary=host.sim.decode(saved.get("comfort",{}))
 	host.floor_journey=int(meta.get("floor_journey",-1));host.journey_entry=str(meta.get("entry",""))
 	host.pending_context_action=meta.get("pending",{});host.pending_chat=str(meta.get("chat",""));host.auto_floor_goal=meta.get("goal",{})
-	host.sim.data.paused=bool(meta.get("paused",false));host.frame_owner();say("저장한 영업을 불러왔습니다.")
+	host.sim.data.paused=bool(meta.get("paused",false))
+	if host.sim.data.player.floor==0:host.show_inn()
+	else:host.frame_owner()
+	say("저장한 영업을 불러왔습니다.")
 func offer_resume() -> void:
 	if FileAccess.file_exists(AUTO) or FileAccess.file_exists("user://inn-tycoon-v15.json"):
 		host.object_context.open("resume","","이전 영업 기록이 있습니다. 이어서 할까요?")
@@ -139,7 +142,9 @@ func items(kind: String) -> Array:
 func description(kind: String) -> String:
 	if kind=="comfort":return "표시·소리 설정은 다음 실행에도 유지됩니다."
 	if kind=="operations":return "손님이나 객실을 누르면 해당 위치를 보여줍니다. 영업 작업은 직원이 계속 처리합니다."
-	if kind=="help":return "빈 바닥: 이동\n사람: 요구와 행동 선택\n계단·사다리: 한 번 눌러 층 이동\n1층·2층·지하: 주인이 실제로 이동\n전체: 둘러보기\n드래그: 자유 관찰\n주인 버튼: 내 위치로 복귀\n취소 또는 우클릭: 현재 작업 중지\n설정: 자동 저장·수동 저장·화면 조절"
+	if kind=="help":return "빈 바닥: 이동\n사람: 요구와 행동 선택\n계단·사다리: 한 번 눌러 층 이동\n1층·2층·지하: 주인이 실제로 이동\n전체: 둘러보기
+여관 보기: 정문·마당·영업 한눈에\n드래그: 자유 관찰\n주인 버튼: 내 위치로 복귀\n상단 취소 버튼: 현재 작업 중지
+PC에서는 우클릭으로도 취소\n설정: 자동 저장·수동 저장·화면 조절"
 	if kind=="recent":
 		var lines: Array=[]
 		for row in host.sim.data.logs:lines.push_front("[%d초] %s" %[int(row.time),row.text])

@@ -59,7 +59,7 @@ static func options(sim,id: String) -> Array:
 		if not p.get("case_target",false):result.append(["offer_room","직접 방 선택"])
 	else:
 		if p.get("visit","")=="meal" and p.state=="arriving" or sim.data.orders.values().any(func(o):return o.guest==id and o.status not in ["served","cancelled"]):result.append(["serve_meal","따뜻한 식사를 내오겠습니다."])
-	result.append(["imprison","감옥에 가두기 · 자동 호송"])
+	if p.get("case_target",false):result.append(["imprison","감옥에 가두기 · 자동 호송"])
 	if result.size()<2:result.append(["ask_story","길에서는 별일 없었습니까?"])
 	if p.get("rival","")!="" and result.size()<3:result.append(["mediate","여기서는 싸우지 마세요."])
 	if int(p.room)>0:result.append(["relocate","다른 방으로 옮겨드릴까요?"])

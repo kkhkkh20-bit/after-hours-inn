@@ -18,6 +18,7 @@ var cancel_button: Button
 var top: Control
 var next_live_refresh=0
 var detail_label: Label
+var inn_button: Button
 var owner_button: Button
 var fixed_header: HBoxContainer
 
@@ -38,7 +39,7 @@ func setup(owner_) -> void:
 	host=owner_;layer=26
 	root=Control.new();root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(root)
 	top=Control.new();top.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.add_child(top)
-	var header=ColorRect.new();header.color=Color("14232bf2");header.position=Vector2(8,6);header.size=Vector2(704,150);header.mouse_filter=Control.MOUSE_FILTER_IGNORE;top.add_child(header)
+	var header=ColorRect.new();header.color=Color("14232bf2");header.position=Vector2(8,6);header.size=Vector2(704,124);header.mouse_filter=Control.MOUSE_FILTER_IGNORE;top.add_child(header)
 	heading=label_("문 닫은 뒤",21);heading.position=Vector2(20,12);heading.size=Vector2(680,34);heading.autowrap_mode=TextServer.AUTOWRAP_OFF;top.add_child(heading)
 	stats=label_("",20);stats.position=Vector2(250,12);stats.size=Vector2(450,34);stats.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT;stats.autowrap_mode=TextServer.AUTOWRAP_OFF;top.add_child(stats)
 	var bar=HBoxContainer.new();bar.position=Vector2(20,56);bar.add_theme_constant_override("separation",8);top.add_child(bar)
@@ -51,14 +52,15 @@ func setup(owner_) -> void:
 			elif value=="speed":host.sim.data.speed=2 if host.sim.data.speed==1 else 1
 			elif value=="all":host.set_layer(value)
 			else:host.request_floor({"surface":0,"rooms":2,"below":1}[value]))
-		b.custom_minimum_size.x=88
+		b.custom_minimum_size=Vector2(88,64)
 		b.add_theme_font_size_override("font_size",18)
 		if value in ["surface","rooms","below","all"]:controls["@view:"+value]=b
 		if value=="pause":controls["@pause"]=b
 		if value=="speed":controls["@speed"]=b
-	owner_button=button_("주인 찾기",top,func():host.frame_owner(),56);owner_button.position=Vector2(20,164);owner_button.size.x=260;controls["@owner"]=owner_button
-	task_label=label_("",19);task_label.position=Vector2(24,286);task_label.size=Vector2(490,34);top.add_child(task_label)
-	cancel_button=button_("취소",top,func():close();host.context_action("owner","","stop"),64);cancel_button.position=Vector2(565,280);cancel_button.size.x=130;cancel_button.hide()
+	inn_button=button_("여관 보기",top,func():host.show_inn(),56);inn_button.position=Vector2(20,134);inn_button.size.x=210;controls["@inn"]=inn_button
+	owner_button=button_("주인 찾기",top,func():host.frame_owner(),56);owner_button.position=Vector2(244,134);owner_button.size.x=210;controls["@owner"]=owner_button
+	task_label=label_("",19);task_label.position=Vector2(24,282);task_label.size=Vector2(490,34);top.add_child(task_label)
+	cancel_button=button_("취소",top,func():close();host.context_action("owner","","stop"),56);cancel_button.position=Vector2(468,134);cancel_button.size.x=232;cancel_button.hide()
 	panel=PanelContainer.new();root.add_child(panel);panel.mouse_filter=Control.MOUSE_FILTER_STOP
 	var s=StyleBoxFlat.new();s.bg_color=Color("162930");s.border_color=Color("b89d6e");s.set_border_width_all(2);s.set_corner_radius_all(12);s.set_content_margin_all(14);panel.add_theme_stylebox_override("panel",s)
 	var outer=VBoxContainer.new();outer.add_theme_constant_override("separation",10);panel.add_child(outer)
@@ -128,7 +130,7 @@ func reflow_live(old_position: Vector2,expected_kind: String,expected_target: St
 	if not panel.visible or kind!=expected_kind or target!=expected_target:return
 	place()
 	var viewport=host.get_viewport().get_visible_rect().size
-	panel.position=Vector2(clampf(old_position.x,12,maxf(12,viewport.x-panel.size.x-12)),clampf(old_position.y,346,maxf(170,viewport.y-panel.size.y-16)))
+	panel.position=Vector2(clampf(old_position.x,12,maxf(12,viewport.x-panel.size.x-12)),clampf(old_position.y,326,maxf(170,viewport.y-panel.size.y-16)))
 
 func place() -> void:
 	var viewport=host.get_viewport().get_visible_rect().size
@@ -136,11 +138,11 @@ func place() -> void:
 	column.custom_minimum_size.x=width-32
 	var header_height=maxf(88,fixed_header.get_combined_minimum_size().y)+42
 	var wanted=column.get_combined_minimum_size().y+header_height
-	panel.size=Vector2(width,minf(wanted,maxf(280,viewport.y-360)))
-	scroll.custom_minimum_size=Vector2(width-32,minf(wanted-header_height,maxf(180,viewport.y-360-header_height)))
+	panel.size=Vector2(width,minf(wanted,maxf(280,viewport.y-340)))
+	scroll.custom_minimum_size=Vector2(width-32,minf(wanted-header_height,maxf(180,viewport.y-340-header_height)))
 	var x=anchor.x+34
 	if x+width>viewport.x-12:x=anchor.x-width-34
-	panel.position=Vector2(clampf(x,12,maxf(12,viewport.x-width-12)),clampf(anchor.y-panel.size.y*.40,346,maxf(170,viewport.y-panel.size.y-16)))
+	panel.position=Vector2(clampf(x,12,maxf(12,viewport.x-width-12)),clampf(anchor.y-panel.size.y*.40,326,maxf(170,viewport.y-panel.size.y-16)))
 
 func _perform(action: String) -> void:
 	if not controls.has(action) or controls[action].disabled:return
@@ -170,11 +172,14 @@ func refresh() -> void:
 		if controls.has("@view:"+view):controls["@view:"+view].modulate=Color("f5d79b") if host.view_layer==view else Color.WHITE
 	stats.text="%d닢 · %s" %[host.sim.data.money,host.sim.calendar_text().get_slice(" · ",0).get_slice(" ",1)]
 	top.visible=not ((host.journal!=null and host.journal.opened) or (host.episode_ui!=null and host.episode_ui.opened))
-	owner_button.text=("주인 추적" if not host.overview else "주인 찾기")+" · "+{0:"1층",1:"지하",2:"2층"}.get(int(host.sim.data.player.floor),"")
+	owner_button.text="주인 찾기"
+	inn_button.text="여관 운영 중" if host.inn_view else "여관 보기"
 	var job: String=host.command_status()
-	task_label.text=job;cancel_button.visible=job!=""
+	task_label.text=("진행: "+job) if job!="" else "정문 → 접수 → 객실 / 식당 · 알바 자동 운영"
+	cancel_button.visible=true;cancel_button.disabled=job==""
+	cancel_button.text="취소 · 작업 중지" if job!="" else "취소"
 	if panel.visible and kind in ["person","conversation","actions","other","inmate","questioning"]:
 		if not host.sim.data.people.has(target) or host.sim.data.people[target].state=="gone" or (kind in ["inmate","questioning"] and host.sim.data.people[target].state!="captive"):close()
 
 func blocks(point: Vector2) -> bool:
-	return point.y<158 or (owner_button.visible and owner_button.get_global_rect().has_point(point)) or (cancel_button.visible and cancel_button.get_global_rect().has_point(point)) or (panel.visible and panel.get_global_rect().has_point(point))
+	return point.y<126 or (inn_button.visible and inn_button.get_global_rect().has_point(point)) or (owner_button.visible and owner_button.get_global_rect().has_point(point)) or (cancel_button.visible and cancel_button.get_global_rect().has_point(point)) or (panel.visible and panel.get_global_rect().has_point(point))

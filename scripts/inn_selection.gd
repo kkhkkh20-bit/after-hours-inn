@@ -18,6 +18,7 @@ static func body(host,screen: Vector2,pos: Vector2,floor_: int,kind: String,id: 
 	var distance: float=screen.distance_to(closest)
 	var name_rect=Rect2(head-Vector2(48,10),Vector2(96,24))
 	var on_name=name_rect.has_point(screen)
+	if host.view_layer=="surface" and kind=="person" and not (host.object_context.panel.visible and host.object_context.target==id):on_name=false
 	var touch: bool=host.pointer.fingers.size()>0
 	if distance>maxf(28 if touch else radius,radius) and not on_name:return {}
 	return {"kind":kind,"id":id,"distance":minf(distance,screen.distance_to(head)) if on_name else distance,"body":distance<=radius,"direct":distance<=radius or on_name,"point":head.lerp(foot,0.5),"depth":host.camera.global_position.distance_to(at)}

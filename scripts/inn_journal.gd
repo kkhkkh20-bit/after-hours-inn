@@ -22,8 +22,8 @@ func label_(value: String,size_: int) -> Label:
 func setup(h) -> void:
 	host=h;layer=24
 	root=Control.new();root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(root)
-	goal=label_("",18);root.add_child(goal);goal.position=Vector2(300,166);goal.size=Vector2(398,56);goal.max_lines_visible=2;goal.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,226);notice.size=Vector2(675,54);notice.max_lines_visible=2;notice.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	goal=label_("",18);root.add_child(goal);goal.position=Vector2(22,200);goal.size=Vector2(675,32);goal.max_lines_visible=2;goal.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,236);notice.size=Vector2(675,42);notice.max_lines_visible=2;notice.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	progress=label_("",19);root.add_child(progress);progress.size=Vector2(210,40);progress.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;progress.hide()
 	panel=PanelContainer.new();root.add_child(panel);panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);panel.offset_left=30;panel.offset_right=-30;panel.offset_top=350;panel.offset_bottom=-100
 	var s=StyleBoxFlat.new();s.bg_color=Color("1a272b");s.border_color=Color("a48a5b");s.set_border_width_all(2);s.set_corner_radius_all(12);s.content_margin_left=26;s.content_margin_right=26;s.content_margin_top=28;s.content_margin_bottom=26;panel.add_theme_stylebox_override("panel",s)
@@ -56,11 +56,12 @@ func refresh() -> void:
 	var sim=host.sim
 	if not host.Campaign.active(sim):root.hide();return
 	root.show()
-	goal.position.x=host.object_context.top.position.x+300
+	goal.position.x=host.object_context.top.position.x+22
 	notice.position.x=host.object_context.top.position.x+22
 	var c: Dictionary=sim.data.campaign
 	goal.text=host.Campaign.goal(sim)
 	if host.view_layer=="below" and host.sim.Contracts.current(sim).is_empty():goal.text="지상 영업 · 객실 %d/%d · 문의 %d · 주문 %d" %[sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.rooms.size(),sim.waiting().size(),sim.data.orders.values().filter(func(o):return o.status not in ["served","cancelled"]).size()]
+	if host.inn_view:goal.text="객실 %d/%d · 숙박 문의 %d명 · 식당 %d명" %[sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.rooms.size(),sim.waiting().size(),sim.data.people.values().filter(func(p):return p.state=="dining").size()]
 	if host.dig_mode!="":goal.text="열린 지하 바닥을 눌러 시설 설치" if host.dig_mode.begins_with("build:") else ("구멍을 팔 지상 위치를 누르세요" if host.dig_mode=="shaft" else "통로를 이을 지하 목적지를 누르세요")
 	var message=host.episode_notice()
 	if message!=last_notice:last_notice=message;until=Time.get_ticks_msec()+4200

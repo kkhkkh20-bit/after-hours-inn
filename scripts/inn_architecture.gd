@@ -132,3 +132,9 @@ static func build(h) -> void:
 	h.box(Vector3(48,.15,20),Vector3(0,-.30,18),Color("4b5140"))
 	h.box(Vector3(2,.15,12),Vector3(-23,-.30,0),Color("4b5140"))
 	h.world_root=h.surface
+
+	# A visible public entrance: frame and canopy are decorative, never navigation blockers.
+	for x in [-.85,1.35]:h.box(Vector3(.12,2.2,.16),Vector3(x,1.1,6.1),Color("aa8752"))
+	h.box(Vector3(2.55,.16,.85),Vector3(.25,2.25,6.2),Color("476d60"))
+	h.box(Vector3(2.65,.1,.12),Vector3(.25,2.28,6.65),Color("b89b65"))
+	h.box(Vector3(1.8,.025,1.4),Vector3(.25,.06,6.25),Color("7a4d39"))

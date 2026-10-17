@@ -4,8 +4,10 @@ extends RefCounted
 const Intrigue = preload("res://scripts/intrigue.gd")
 const COUNTER := Vector2(-1.75, -1.75)
 const ENTRY := Vector2(0.25, 3.25)
+const GATE := Vector2(22.25,3.25)
 const HATCH := Vector2(-3.25, 2.75)
 const STAIRS := Vector2(8.0, 5.0)
+const CELLAR_LIMIT := Vector2i(22,12)
 const SAVE_VERSION := 3
 var obstacles: Array[Rect2] = []
 var grid := AStarGrid2D.new()
@@ -25,6 +27,12 @@ func _init() -> void:
 	data.excavation=excavation_defaults()
 	for x in range(-3,2):
 		for y in range(-2,3): data.cells[cell_key(Vector2i(x,y))] = true
+	# A short existing cellar passage and storeroom establish what digging can extend.
+	for x in range(2,9):
+		for y in range(2,4):data.cells[cell_key(Vector2i(x,y))]=true
+	for x in range(7,12):
+		for y in range(0,4):data.cells[cell_key(Vector2i(x,y))]=true
+	data.excavation.storeroom=true
 	spawn_guest()
 	note("손님이 도착했다. 영업 창에서 객실을 배정하자.")
 
@@ -36,18 +44,18 @@ func add_obstacle(rect: Rect2) -> void:
 	obstacles.append(rect.grow(0.18))
 
 func rebuild_grid() -> void:
-	grid.region = Rect2i(0,0,56,32)
+	grid.region = Rect2i(0,0,76,40)
 	grid.cell_size = Vector2(0.5,0.5)
 	grid.offset = Vector2(-13.75,-7.75)
 	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
 	grid.update()
-	for x in range(56):
-		for y in range(32):
+	for x in range(76):
+		for y in range(40):
 			var id := Vector2i(x,y)
 			grid.set_point_solid(id, not surface_walkable(grid.get_point_position(id)))
 
 func surface_walkable(pos: Vector2) -> bool:
-	if not Rect2(-13.8,-7.8,27.6,15.6).has_point(pos): return false
+	if not Rect2(-13.8,-7.8,38.0,20.0).has_point(pos): return false
 	for rect in obstacles:
 		if rect.has_point(pos): return false
 	return true
@@ -55,6 +63,7 @@ func surface_walkable(pos: Vector2) -> bool:
 func walkable(pos: Vector2, floor_: int) -> bool:
 	if floor_ == 0: return surface_walkable(pos)
 	if floor_ == 2: return gallery_walkable(pos)
+	if data.excavation.get("storeroom",false) and data.cells.has("10,0") and Rect2(7.5,-0.5,3.05,1).has_point(pos):return false
 	# Sample the actor footprint, so shoulders cannot cross unopened earth.
 	for shift in [Vector2.ZERO,Vector2(0.19,0),Vector2(-0.19,0),Vector2(0,0.19),Vector2(0,-0.19)]:
 		if not data.cells.has(cell_key(Vector2i(roundi(pos.x+shift.x),roundi(pos.y+shift.y)))): return false
@@ -62,7 +71,11 @@ func walkable(pos: Vector2, floor_: int) -> bool:
 
 # The gallery and its stair share a continuous walking surface, above the hall.
 static func gallery_walkable(pos: Vector2) -> bool:
-	return Rect2(-9.0,-5.5,18.0,2.0).has_point(pos) or Rect2(7.0,-5.5,2.0,11.0).has_point(pos)
+	for x in [-6,0,6]:
+		if Rect2(x-0.85,-8.5,1.7,2.5).has_point(pos):return false
+	for x in [-3,3]:
+		if Rect2(x-0.25,-8.5,0.5,2.2).has_point(pos):return false
+	return Rect2(-9.0,-8.5,18.0,5.0).has_point(pos) or Rect2(7.0,-5.5,2.0,11.0).has_point(pos)
 
 static func floor_height(pos: Vector2, floor_: int) -> float:
 	if floor_ != 2:return 0.0
@@ -70,17 +83,17 @@ static func floor_height(pos: Vector2, floor_: int) -> float:
 
 func gallery_route(from: Vector2, to: Vector2) -> Array:
 	var upstairs:=AStarGrid2D.new()
-	upstairs.region=Rect2i(0,0,40,24)
+	upstairs.region=Rect2i(0,0,40,30)
 	upstairs.cell_size=Vector2(0.5,0.5)
-	upstairs.offset=Vector2(-9.75,-5.75)
+	upstairs.offset=Vector2(-9.75,-8.75)
 	upstairs.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER
 	upstairs.update()
 	for x in range(40):
-		for y in range(24):
+		for y in range(30):
 			var id:=Vector2i(x,y)
 			upstairs.set_point_solid(id,not gallery_walkable(upstairs.get_point_position(id)))
-	var a:=Vector2i(floori((from.x+10)/0.5),floori((from.y+6)/0.5))
-	var b:=Vector2i(floori((to.x+10)/0.5),floori((to.y+6)/0.5))
+	var a:=Vector2i(floori((from.x+10)/0.5),floori((from.y+9)/0.5))
+	var b:=Vector2i(floori((to.x+10)/0.5),floori((to.y+9)/0.5))
 	if not upstairs.is_in_boundsv(a) or not upstairs.is_in_boundsv(b):return []
 	if upstairs.is_point_solid(a) or upstairs.is_point_solid(b):return []
 	return Array(upstairs.get_point_path(a,b))
@@ -470,6 +483,7 @@ func change_floor() -> bool:
 		return true
 	if data.player.floor==1 and data.player.pos.length()<1.1:
 		observe_hatch()
+		data.excavation.hatch_open=true
 		data.player.floor=0
 		data.player.pos=HATCH
 		Intrigue.sync_drag(self)
@@ -487,7 +501,7 @@ static func parse_cell(key: String) -> Vector2i:
 
 func start_dig(cell: Vector2i) -> bool:
 	if data.paused or data.ops.drag!="" or data.player.floor!=1 or not data.work.is_empty() or not data.dig.is_empty(): return false
-	if absi(cell.x)>12 or absi(cell.y)>8 or data.cells.has(cell_key(cell)): return false
+	if absi(cell.x)>CELLAR_LIMIT.x or absi(cell.y)>CELLAR_LIMIT.y or data.cells.has(cell_key(cell)): return false
 	if data.excavation.durability<=0:
 		note("도구가 닳았다. 관리 창에서 2닢에 수리한다.")
 		return false
@@ -571,6 +585,8 @@ func restore(saved: Variant) -> bool:
 	candidate.player.floor=int(candidate.player.floor)
 	for person in candidate.people.values():
 		for key in ["room","rate","meals"]: person[key]=int(person[key])
+	if not candidate.excavation.has("lamp_on"):candidate.excavation.lamp_on=true
+	if not candidate.excavation.has("storeroom"):candidate.excavation.storeroom=false
 	data=candidate
 	Intrigue.migrate(self)
 	return true
@@ -596,7 +612,15 @@ func heard_at(position_: Vector2) -> float:
 	for point in route:
 		travel+=previous.distance_to(point)
 		previous=point
-	return maxf(0,data.noise-data.stealth.source.length()*0.35-travel*0.30)
+	var below_route: Array=Intrigue.basement_route(self,data.stealth.source,Vector2.ZERO)
+	var below_distance:=0.0
+	var last: Vector2=data.stealth.source
+	for point in below_route:
+		below_distance+=last.distance_to(point)
+		last=point
+	if below_route.is_empty():below_distance=data.stealth.source.length()
+	var attenuation:=1.0 if data.excavation.hatch_open else 0.35
+	return maxf(0,data.noise-below_distance*0.35-travel*0.30)*attenuation
 
 func sight_end(origin: Vector2, direction: Vector2) -> Vector2:
 	var end:=origin
@@ -688,7 +712,7 @@ func explain_noise() -> bool:
 	return true
 
 func excavation_defaults() -> Dictionary:
-	return {"durability":24,"path":[],"intent":"","cell":"","hatch_open":false,"target":""}
+	return {"durability":24,"path":[],"intent":"","cell":"","hatch_open":false,"target":"","lamp_on":true,"storeroom":false}
 
 func queue_floor() -> bool:
 	if data.player.floor==2:return queue_gallery()
@@ -706,7 +730,7 @@ func queue_floor() -> bool:
 
 func queue_dig(cell: Vector2i) -> bool:
 	if data.paused or data.player.floor!=1 or data.ops.drag!="" or not data.work.is_empty() or not data.dig.is_empty():return false
-	if absi(cell.x)>12 or absi(cell.y)>8 or data.cells.has(cell_key(cell)):return false
+	if absi(cell.x)>CELLAR_LIMIT.x or absi(cell.y)>CELLAR_LIMIT.y or data.cells.has(cell_key(cell)):return false
 	var current:=Vector2i(roundi(data.player.pos.x),roundi(data.player.pos.y))
 	if absi(current.x-cell.x)+absi(current.y-cell.y)==1:return start_dig(cell)
 	var best: Array=[]
@@ -730,7 +754,7 @@ func dig_nearest() -> bool:
 		var cell:=parse_cell(key)
 		for offset in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
 			var next: Vector2i=cell+offset
-			if data.cells.has(cell_key(next)) or absi(next.x)>12 or absi(next.y)>8:continue
+			if data.cells.has(cell_key(next)) or absi(next.x)>CELLAR_LIMIT.x or absi(next.y)>CELLAR_LIMIT.y:continue
 			var delta: float=data.player.pos.distance_squared_to(Vector2(next))
 			if delta<distance:distance=delta;best=next
 	return queue_dig(best)
@@ -835,3 +859,25 @@ func perform_command(command: String, id: String="") -> void:
 		"drag":Intrigue.drag_or_release(self)
 		"cell","build":Intrigue.build_or_hold(self)
 		"explain":explain_noise()
+
+func toggle_cellar_lamp() -> bool:
+	if data.paused or data.player.floor!=1:note("지하에서 등불을 조작하자.");return false
+	data.excavation.lamp_on=not data.excavation.get("lamp_on",true)
+	note("지하 등불을 켰다. 열린 덮개로 빛이 샌다." if data.excavation.lamp_on else "등불을 껐다. 가까운 곳 외에는 식별하기 어렵다.")
+	return true
+
+func toggle_hatch() -> bool:
+	if data.paused:return false
+	var target: Vector2=Vector2.ZERO if data.player.floor==1 else HATCH
+	if data.player.floor==2 or data.player.pos.distance_to(target)>1.5:note("입구 가까이에서 덮개를 조작하자.");return false
+	data.excavation.hatch_open=not data.excavation.hatch_open
+	note("덮개를 열었다. 빛과 소리가 위층으로 전달된다." if data.excavation.hatch_open else "덮개를 닫았다. 위층으로 새는 빛과 소리가 줄었다.")
+	return true
+
+func basement_lit(point: Vector2) -> bool:
+	if not data.excavation.get("lamp_on",true):return data.excavation.hatch_open and point.length()<1.6
+	if point.distance_to(Vector2(-1,-1))>4.5:return false
+	var delta:=point-Vector2(-1,-1)
+	for i in range(1,ceili(delta.length()*8)):
+		if not walkable(Vector2(-1,-1)+delta.normalized()*float(i)/8,1):return false
+	return true

@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Portrait-first pointer UI. All essential operations are exposed as buttons.
+## Landscape overview UI. All essential operations are exposed as buttons.
 var host
 var root: Control
 var header: PanelContainer
@@ -25,9 +25,9 @@ var speed_button: Button
 var controls: Dictionary={}
 var primary_action: Callable
 var secondary_action: Callable
-var minimum_touch_height:=88.0
+var minimum_touch_height:=48.0
 
-func text_node(text_: String, size_: int=26) -> Label:
+func text_node(text_: String, size_: int=20) -> Label:
 	var label:=Label.new()
 	label.text=text_
 	label.add_theme_font_override("font",host.ui_font)
@@ -40,10 +40,10 @@ func text_node(text_: String, size_: int=26) -> Label:
 func style(color: Color) -> StyleBoxFlat:
 	var value:=StyleBoxFlat.new()
 	value.bg_color=color
-	value.content_margin_left=16
-	value.content_margin_right=16
-	value.content_margin_top=12
-	value.content_margin_bottom=12
+	value.content_margin_left=12
+	value.content_margin_right=12
+	value.content_margin_top=8
+	value.content_margin_bottom=8
 	value.corner_radius_top_left=14
 	value.corner_radius_top_right=14
 	value.corner_radius_bottom_left=14
@@ -62,7 +62,7 @@ func make_button(parent: Node, text_: String, action: Callable, key: String="") 
 	value.custom_minimum_size=Vector2(0,minimum_touch_height)
 	value.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	value.add_theme_font_override("font",host.ui_font)
-	value.add_theme_font_size_override("font_size",26)
+	value.add_theme_font_size_override("font_size",18)
 	value.add_theme_stylebox_override("normal",style(Color("263d43")))
 	value.add_theme_stylebox_override("pressed",style(Color("566b60")))
 	value.add_theme_stylebox_override("disabled",style(Color("1b272c")))
@@ -94,56 +94,62 @@ func setup(owner_) -> void:
 	host=owner_
 	root=Control.new()
 	add_child(root)
-	root.anchor_left=0.5
-	root.anchor_right=0.5
+	root.anchor_left=0
+	root.anchor_right=1
 	root.anchor_bottom=1
-	root.offset_left=-360
-	root.offset_right=360
+	root.offset_left=0
+	root.offset_right=0
 	root.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	header=make_panel(root,Vector4(0,0,1,0),Vector4(12,12,-12,160))
-	var top:=VBoxContainer.new()
+	header=make_panel(root,Vector4(0,0,1,0),Vector4(12,10,-12,74))
+	var top:=HBoxContainer.new()
 	header.add_child(top)
 	var top_row:=row(top)
-	top_row.add_child(text_node("문 닫은 뒤  0.8",28))
+	top_row.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	top_row.add_child(text_node("문 닫은 뒤  0.9",22))
 	pause_button=make_button(top_row,"정지",func():host.sim.data.paused=not host.sim.data.paused,"pause")
 	pause_button.custom_minimum_size.x=100
 	pause_button.size_flags_horizontal=Control.SIZE_SHRINK_END
 	speed_button=make_button(top_row,"1배",func():host.sim.data.speed=1 if host.sim.data.speed==3 else 3,"speed")
 	speed_button.custom_minimum_size.x=90
 	speed_button.size_flags_horizontal=Control.SIZE_SHRINK_END
-	hud=text_node("",24)
+	hud=text_node("",18)
+	hud.custom_minimum_size.x=420
 	top.add_child(hud)
-	alert_panel=make_panel(root,Vector4(0,0,1,0),Vector4(12,172,-12,250))
-	alert=text_node("바닥을 탭해 이동하고 손님을 탭해 선택한다.",24)
-	alert.max_lines_visible=2
+	alert_panel=make_panel(root,Vector4(0,0,1,0),Vector4(12,82,-500,126))
+	alert=text_node("바닥을 탭해 이동하고 손님을 탭해 선택한다.",18)
+	alert.max_lines_visible=1
 	alert_panel.add_child(alert)
-	footer=make_panel(root,Vector4(0,1,1,1),Vector4(12,-430,-12,-12))
+	footer=make_panel(root,Vector4(0,1,1,1),Vector4(12,-128,-12,-10))
 	var bottom:=VBoxContainer.new()
 	bottom.add_theme_constant_override("separation",8)
 	footer.add_child(bottom)
-	target=text_node("",26)
-	target.custom_minimum_size.y=60
-	target.max_lines_visible=2
+	target=text_node("",20)
+	target.custom_minimum_size.y=26
+	target.max_lines_visible=1
 	bottom.add_child(target)
 	progress=ProgressBar.new()
-	progress.custom_minimum_size.y=20
+	progress.show_percentage=false
+	progress.custom_minimum_size.y=8
 	bottom.add_child(progress)
 	var actions:=row(bottom)
 	primary=make_button(actions,"접수대로 이동",func():
 		if primary_action.is_valid():primary_action.call(),"primary")
 	secondary=make_button(actions,"손님 선택",func():
 		if secondary_action.is_valid():secondary_action.call(),"secondary")
-	var utility:=row(bottom)
+	var utility:=actions
 	floor_button=make_button(utility,"지하로 내려가기",func():host.sim.queue_floor(),"floor")
 	stop_button=make_button(utility,"선택 해제",func():
 		host.sim.cancel_work()
 		host.sim.data.ops.selected="","stop")
-	var navigation:=row(bottom)
+	var navigation:=actions
 	for tab in ["영업","관리","의뢰","메뉴"]:
 		make_button(navigation,tab,open_sheet.bind(tab),"tab_"+tab)
 	zoom_box=VBoxContainer.new()
 	zoom_box.add_theme_constant_override("separation",8)
-	place(zoom_box,root,Vector4(1,0.4,1,0.4),Vector4(-96,0,-12,280))
+	place(zoom_box,root,Vector4(1,0,1,0),Vector4(-110,140,-12,520))
+	make_button(zoom_box,"전체",func():host.set_layer("all"),"overview")
+	make_button(zoom_box,"지상",func():host.set_layer("surface"),"surface_view")
+	make_button(zoom_box,"지하",func():host.set_layer("below"),"below_view")
 	make_button(zoom_box,"+",func():host.camera.size=maxf(8,host.camera.size-2),"zoom_in")
 	make_button(zoom_box,"−",func():host.camera.size=minf(36,host.camera.size+2),"zoom_out")
 	make_button(zoom_box,"주인",func():host.camera_offset=Vector2.ZERO;host.frame_owner(),"center")
@@ -153,7 +159,7 @@ func setup(owner_) -> void:
 	dim.color=Color(0,0,0,0.45)
 	place(dim,drawer,Vector4(0,0,1,1),Vector4.ZERO)
 	dim.mouse_filter=Control.MOUSE_FILTER_STOP
-	drawer_panel=make_panel(drawer,Vector4(0,0,1,1),Vector4(20,190,-20,-80))
+	drawer_panel=make_panel(drawer,Vector4(0,0,1,1),Vector4(350,110,-350,-150))
 	var sheet_layout:=VBoxContainer.new()
 	sheet_layout.add_theme_constant_override("separation",12)
 	drawer_panel.add_child(sheet_layout)
@@ -169,7 +175,7 @@ func setup(owner_) -> void:
 	content.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation",16)
 	scroll.add_child(content)
-	sheet_body=text_node("",26)
+	sheet_body=text_node("",20)
 	content.add_child(sheet_body)
 	sheet_buttons=VBoxContainer.new()
 	sheet_buttons.add_theme_constant_override("separation",12)
@@ -200,6 +206,9 @@ func open_sheet(name_: String) -> void:
 			make_button(clean,"1호 청소",command.bind("clean1"),"clean1")
 			make_button(clean,"2호 청소",command.bind("clean2"),"clean2")
 		"관리":
+			var cellar_controls:=row(sheet_buttons)
+			make_button(cellar_controls,"지하 등불 켜기 / 끄기",func():host.sim.toggle_cellar_lamp(),"lamp")
+			make_button(cellar_controls,"지하 덮개 열기 / 닫기",func():host.sim.toggle_hatch(),"hatch")
 			make_button(sheet_buttons,"직원 고용 / 서빙 위임 전환",func():
 				close_sheet()
 				if host.sim.data.staff.hired:host.sim.toggle_staff()
@@ -246,7 +255,7 @@ func refresh() -> void:
 	if d.player.floor==0:
 		secondary.text="2층으로 올라가기"
 		secondary_action=func():host.sim.queue_gallery()
-	target.text="바닥 탭: 이동 / 끌기: 화면 보기"
+	target.text="전체 보기 · 바닥 탭: 이동 / 화면 끌기: 둘러보기"
 	if d.ops.drag!="":
 		target.text="운반 중 · "+str(d.people[d.ops.drag].name)
 		primary.text="내려놓기"

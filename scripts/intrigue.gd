@@ -123,11 +123,11 @@ static func build_or_hold(sim) -> bool:
 
 static func basement_route(sim, from: Vector2, to: Vector2) -> Array:
 	var grid:=AStarGrid2D.new()
-	grid.region=Rect2i(-12,-8,25,17)
+	grid.region=Rect2i(-sim.CELLAR_LIMIT,sim.CELLAR_LIMIT*2+Vector2i.ONE)
 	grid.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER
 	grid.update()
-	for x in range(-12,13):
-		for y in range(-8,9):grid.set_point_solid(Vector2i(x,y),not sim.data.cells.has(sim.cell_key(Vector2i(x,y))))
+	for x in range(-sim.CELLAR_LIMIT.x,sim.CELLAR_LIMIT.x+1):
+		for y in range(-sim.CELLAR_LIMIT.y,sim.CELLAR_LIMIT.y+1):grid.set_point_solid(Vector2i(x,y),not sim.walkable(Vector2(x,y),1))
 	var a:=Vector2i(roundi(from.x),roundi(from.y))
 	var b:=Vector2i(roundi(to.x),roundi(to.y))
 	if not grid.is_in_boundsv(a) or not grid.is_in_boundsv(b):return []
@@ -147,6 +147,7 @@ static func sees(sim, watcher: Dictionary, point: Vector2, floor_: int, cone: bo
 	var delta: Vector2=point-watcher.pos
 	if delta.length()>4.8:return false
 	if cone and delta.length()>0.1 and watcher.facing.dot(delta.normalized())<cos(deg_to_rad(65)):return false
+	if floor_==1 and delta.length()>1.25 and not sim.basement_lit(point):return false
 	if floor_==0:return sim.sight_end(watcher.pos,delta.normalized()).distance_to(watcher.pos)+0.11>=delta.length()
 	for step in range(1,ceili(delta.length()*10)):
 		if not sim.walkable(watcher.pos+delta.normalized()*float(step)*0.1,floor_):return false
@@ -260,7 +261,7 @@ static func end_inspection(sim) -> void:
 		inspector.path=basement_route(sim,inspector.pos,Vector2.ZERO)
 	else:
 		inspector.state="leaving"
-		inspector.path=sim.path_to(inspector.pos,sim.ENTRY)
+		inspector.path=sim.path_to(inspector.pos,sim.GATE)
 
 static func discover(sim) -> bool:
 	var inspector: Dictionary=sim.data.ops.inspector
@@ -283,7 +284,7 @@ static func update_inspector(sim, dt: float) -> void:
 	var inspector: Dictionary=sim.data.ops.inspector
 	if inspector.state=="scheduled" and sim.data.clock>=inspector.at:
 		inspector.state="entering"
-		inspector.pos=sim.ENTRY
+		inspector.pos=sim.GATE
 		inspector.floor=0
 		inspector.path=sim.path_to(inspector.pos,sim.COUNTER)
 		sim.note("신고를 받은 경비가 도착했다. 의뢰 창에서 조사 허용 또는 뇌물을 선택한다.")
@@ -302,7 +303,7 @@ static func update_inspector(sim, dt: float) -> void:
 					inspector.floor=0
 					inspector.pos=sim.HATCH
 					inspector.state="leaving"
-					inspector.path=sim.path_to(inspector.pos,sim.ENTRY)
+					inspector.path=sim.path_to(inspector.pos,sim.GATE)
 				"leaving":inspector.state="idle"
 	if inspector.state=="waiting":
 		inspector.remaining-=dt

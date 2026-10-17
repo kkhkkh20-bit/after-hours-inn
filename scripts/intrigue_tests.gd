@@ -123,7 +123,7 @@ static func run(obstacles: Array, results: Array) -> void:
 	expect(staff.data.ops.reports==1,"Staff physically reaches door before calling guards",results)
 	var bribery=fresh(obstacles)
 	I.report(bribery,"test witness")
-	bribery.tick(25)
+	bribery.tick(55)
 	expect(bribery.data.ops.inspector.state=="waiting","Inspector walks from entrance to reception",results)
 	bribery.data.player.pos=bribery.COUNTER
 	coins=bribery.data.money
@@ -133,7 +133,7 @@ static func run(obstacles: Array, results: Array) -> void:
 	var refusal=fresh(obstacles)
 	I.report(refusal,"one")
 	I.report(refusal,"two")
-	refusal.tick(25)
+	refusal.tick(55)
 	refusal.data.player.pos=refusal.COUNTER
 	coins=refusal.data.money
 	I.inspector_action(refusal,true)
@@ -147,7 +147,7 @@ static func run(obstacles: Array, results: Array) -> void:
 	search.data.people.guest_1.floor=1
 	search.data.people.guest_1.pos=Vector2(2,0)
 	I.report(search,"witness")
-	search.tick(25)
+	search.tick(55)
 	search.data.player.pos=search.COUNTER
 	I.inspector_action(search)
 	coins=search.data.money
@@ -163,7 +163,7 @@ static func run(obstacles: Array, results: Array) -> void:
 	deep.data.people.guest_1.floor=1
 	deep.data.people.guest_1.pos=Vector2(7,0)
 	I.report(deep,"witness")
-	deep.tick(85)
+	deep.tick(130)
 	expect(deep.data.people.guest_1.state=="captive" and deep.data.ops.inspector.state=="idle","Limited search does not know a distant underground cell",results)
 	var old_save=fresh(obstacles).snapshot()
 	old_save.state.erase("ops")

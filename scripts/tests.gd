@@ -139,6 +139,7 @@ static func run(obstacles: Array) -> int:
 	stealth.data.player.pos=Sim.COUNTER
 	stealth.toggle_staff()
 	stealth.data.player.floor=1
+	stealth.data.excavation.hatch_open=true
 	stealth.data.player.pos=Vector2(1,0)
 	stealth.start_dig(Vector2i(2,0))
 	stealth.tick(4.5)
@@ -154,6 +155,7 @@ static func run(obstacles: Array) -> int:
 	loud.data.staff.hired=true
 	loud.data.staff.pos=Sim.HATCH
 	loud.data.player.floor=1
+	loud.data.excavation.hatch_open=true
 	loud.data.player.pos=Vector2(1,0)
 	loud.start_dig(Vector2i(2,0))
 	loud.tick(4.1)
@@ -180,6 +182,7 @@ static func run(obstacles: Array) -> int:
 	var quiet=fresh(obstacles)
 	quiet.data.staff.hired=true
 	quiet.data.player.floor=1
+	quiet.data.excavation.hatch_open=true
 	quiet.data.player.pos=Vector2(1,0)
 	quiet.toggle_dig_mode()
 	quiet.start_dig(Vector2i(2,0))
@@ -223,7 +226,7 @@ static func run(obstacles: Array) -> int:
 	expect(busy.data.served==1 and busy.data.stealth.phase in ["approach","listen","idle"],"Existing meal ownership completes before investigation",results)
 	preload("res://scripts/intrigue_tests.gd").run(obstacles,results)
 	var excavation=fresh(obstacles)
-	expect(excavation.data.cells.size()==25,"Larger 5 by 5 basement starts with room to walk",results)
+	expect(excavation.data.cells.size()==55,"Entry cellar connects to a starting passage and storeroom",results)
 	expect(excavation.surface_walkable(Vector2(-12,5)),"Expanded yard is actually walkable",results)
 	expect(excavation.queue_floor(),"Entrance command queues actual approach",results)
 	excavation.tick(5)
@@ -281,6 +284,36 @@ static func run(obstacles: Array) -> int:
 	expect(upper_path_valid,"Escape path remains on the deck or stairs",results)
 	recovering.tick(30)
 	expect(upper_guest.floor==0 and upper_guest.state=="gone" and recovering.data.ops.reports==1,"Recovered victim descends physical stairs before exiting and reporting",results)
+	var light=fresh(obstacles)
+	light.data.player.pos=Sim.HATCH
+	light.change_floor()
+	light.data.noise=8
+	light.data.stealth.source=Vector2(1,0)
+	var open_heard: float=light.heard_at(Sim.HATCH)
+	expect(light.toggle_hatch() and light.heard_at(Sim.HATCH)<open_heard*0.4,"Closing the actual hatch attenuates sound reaching the surface",results)
+	expect(light.basement_lit(Vector2(1,0)),"Cellar lamp illuminates nearby opened ground",results)
+	expect(light.toggle_cellar_lamp() and not light.basement_lit(Vector2(1,0)),"Extinguished lamp and closed hatch remove distant identification",results)
+	var watcher: Dictionary={"floor":1,"pos":Vector2(-1,0),"facing":Vector2.RIGHT}
+	expect(not Sim.Intrigue.sees(light,watcher,Vector2(1,0),1,false),"NPC cannot identify a distant person in the dark cellar",results)
+	light.toggle_cellar_lamp()
+	expect(Sim.Intrigue.sees(light,watcher,Vector2(1,0),1,false),"Relit lamp restores identification without changing the target",results)
+	var lightsave=JSON.parse_string(JSON.stringify(light.snapshot()))
+	var relit=fresh(obstacles)
+	expect(relit.restore(lightsave) and relit.data.excavation.lamp_on and not relit.data.excavation.hatch_open,"Lamp and hatch state survive JSON save",results)
+	light.data.player.pos=Sim.COUNTER
+	light.data.player.floor=0
+	expect(not light.toggle_hatch() and not light.toggle_cellar_lamp(),"Light and hatch cannot be operated remotely from reception",results)
+	expect(light.surface_walkable(Vector2(20,4)),"Expanded courtyard is available to the actual player",results)
+	expect(not Sim.gallery_walkable(Vector2(-6,-7.25)),"Upstairs bed footprint is not a walking surface",results)
+	expect(not light.walkable(Vector2(9,0),1),"Cellar storage crates block the walking footprint",results)
+	var arrival=fresh(obstacles)
+	Sim.Intrigue.report(arrival,"courtyard arrival")
+	arrival.tick(15.1)
+	expect(arrival.data.ops.inspector.state=="entering" and arrival.data.ops.inspector.pos.distance_to(Sim.GATE)<0.3,"Reported guard enters through the exterior courtyard gate",results)
+	arrival.tick(3)
+	expect(arrival.data.ops.inspector.pos.distance_to(Sim.GATE)>1 and arrival.data.ops.inspector.state=="entering","Guard physically crosses the yard before reaching reception",results)
+	light.data.excavation.storeroom=false
+	expect(light.walkable(Vector2(9,0),1),"Excavating an old save does not conjure new storeroom props",results)
 	var failures:=0
 	for result in results:
 		if not result[0]:failures+=1

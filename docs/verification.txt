@@ -1,6 +1,7 @@
-Godot 4.7.2: Windows x86_64 release export exit 0.
-Simulation: 42 checks, 0 failures.
-Viewport/input: 8 checks, 0 failures.
-Both suites also passed on exported PCK outside source directory.
-Actual surface/basement rendered on Linux OpenGL Compatibility / Mesa software GPU and visually reviewed.
-Native Windows executable 0.3: not directly run here; user verified previous version 0.2 on Windows.
+After Hours 0.9 / Godot 4.7.2 stable / Compatibility
+Simulation verification: 146 checks, 0 failures.
+Landscape/pointer verification: 45 checks, 0 failures.
+Total: 191 checks. Keyboard events are not used by the pointer suite.
+Actual Linux OpenGL Compatibility / Mesa rendered 1600x900 overview, lit cellar and dark cellar screenshots were visually reviewed.
+The CI pipeline repeats both suites and exports Web and Windows.
+Native Windows executable and physical Android/iPhone touch/performance have not been directly tested in this environment.

@@ -32,6 +32,17 @@ var viewed_floor := 0
 var surface_zoom := 24.0
 var basement_zoom := 12.0
 var pointer_position := Vector2.ZERO
+var awareness: Label
+var staff_marker: Label3D
+var vision_mesh: MeshInstance3D
+var show_vision := true
+var muted := false
+var sound_clock := 0.0
+var last_warning := 0
+var knock: AudioStreamPlayer
+var alert_sound: AudioStreamPlayer
+var step_sound: AudioStreamPlayer3D
+var vision_clock := 0.0
 
 func material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -240,7 +251,8 @@ func _ready() -> void:
 	carried_visuals["player"] = make_tray(player)
 	carried_visuals["staff"] = make_tray(staff_visual)
 	world_label("주인",Vector3(0,1.95,0),player)
-	world_label("직원",Vector3(0,1.95,0),staff_visual)
+	staff_marker=world_label("직원",Vector3(0,1.95,0),staff_visual)
+	setup_stealth_effects()
 	world_label("징수원",Vector3(0,1.95,0),collector_visual)
 	world_root = basement
 	light_at(Vector3(0,2.8,0),1.2)
@@ -262,7 +274,7 @@ func _ready() -> void:
 		get_tree().quit(result)
 	elif "--input-verify" in args:
 		await input_verify()
-	elif "--capture" in args or "--capture-basement" in args:
+	elif "--capture" in args or "--capture-basement" in args or "--capture-stealth" in args:
 		capturing = true
 		sim.data.player.pos = Simulation.COUNTER
 		sim.assign_room(1)
@@ -274,11 +286,20 @@ func _ready() -> void:
 			sim.data.player.pos = Vector2(1,0)
 			sim.start_dig(Vector2i(2,0))
 			sim.tick(1.5)
+		if "--capture-stealth" in args:
+			sim.data.player.pos=Simulation.HATCH
+			sim.change_floor()
+			sim.data.player.pos=Vector2(1,0)
+			sim.start_dig(Vector2i(2,0))
+			sim.tick(4.1)
+			sim.data.player.pos=Vector2(2,0)
+			sim.start_dig(Vector2i(3,0))
+			sim.tick(1.5)
 		sync_view(0)
 		await get_tree().process_frame
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
-		var output := "res://docs/v03-basement.png" if "--capture-basement" in args else "res://docs/v03-surface.png"
+		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v04-surface.png")
 		get_viewport().get_texture().get_image().save_png(output)
 		get_tree().quit()
 
@@ -351,6 +372,8 @@ func make_ui() -> void:
 	feed.max_lines_visible=6
 	panel(canvas,Vector2(20,660),Vector2(1240,120))
 	hint=ui_label(canvas,Vector2(34,670),Vector2(1210,100),17)
+	panel(canvas,Vector2(320,138),Vector2(650,82))
+	awareness=ui_label(canvas,Vector2(334,146),Vector2(622,70),17)
 
 func room_text(number: int) -> String:
 	var room_: Dictionary=sim.data.rooms[str(number)]
@@ -366,7 +389,7 @@ func refresh_ui() -> void:
 	var minute:=int(420+d.clock*6)
 	var day:=minute/1440+1
 	var within:=minute%1440
-	hud.text="문 닫은 뒤  /  국경 여관  0.3\n%d일  %02d:%02d    보유 %d닢    미납 %d닢    %s    %s" % [day,within/60,within%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층","일시정지" if d.paused else "%d배속" % d.speed]
+	hud.text="문 닫은 뒤  /  국경 여관  0.4\n%d일  %02d:%02d    보유 %d닢    미납 %d닢    %s    %s" % [day,within/60,within%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층","일시정지" if d.paused else "%d배속" % d.speed]
 	var queue:=sim.waiting()
 	if queue.is_empty(): reception.text="접수 대기  0명\n다음 손님을 기다리는 중"
 	else:
@@ -383,7 +406,7 @@ func refresh_ui() -> void:
 	var staff_status: String="미고용 / 준비금 3닢"
 	if d.staff.hired:
 		staff_status="위임 중" if d.staff.delegated else "위임 해제"
-		var modes: Dictionary={"idle":"대기","counter":"접수대 이동","cooking":"식사 준비","delivery":"서빙","return":"복귀"}
+		var modes: Dictionary={"idle":"대기","counter":"접수대 이동","cooking":"식사 준비","delivery":"서빙","return":"복귀","investigate":"지하 확인","refuse":"업무 거부"}
 		staff_status+=" · "+str(modes.get(d.staff.mode,d.staff.mode))
 	status.text="객실\n%s\n%s\n\n직원  %s\n\n주문 %d건 / 제공 %d회\n%s\n\n예정 납기\n%s 임금 4닢\n%s 임대료 12닢\n%s 세금 8닢" % [room_text(1),room_text(2),staff_status,pending,d.served,"\n".join(order_lines.slice(0,3)),when_text(d.dues.wage),when_text(d.dues.rent),when_text(d.dues.tax)]
 	if d.collector:status.text+="\n징수원 대기: 접수대 E"
@@ -392,10 +415,19 @@ func refresh_ui() -> void:
 		lines.append("· "+str(item.text))
 	feed.text="최근 소식\n"+"\n".join(lines)
 	var action: String="접수대 E: 식사 준비·집기  /  주문 손님 곁 E: 전달  /  퇴실한 객실 E: 청소"
-	if d.player.floor==1:action="입구 Q: 위층 복귀  /  바로 옆 흙벽 클릭: 4초 굴착·1닢  /  위층 영업은 계속 진행"
+	if d.player.floor==1:action="입구 Q: 위층 복귀  /  바로 옆 흙벽 클릭: 굴착·1닢 / R: 빠르게·조용히  /  위층 영업은 계속 진행"
 	if not d.work.is_empty():action="작업 중  %.1f초 남음 · X로 중단" % d.work.remaining
 	if not d.dig.is_empty():action="굴착 중  %.1f초 남음 · 소음 %.1f · X로 중단" % [d.dig.remaining,d.noise]
-	hint.text=action+"\nWASD 이동   1/2 방 배정   G 거절   H 직원   Q 계단   Space 정지   Tab 배속   휠 확대\nF5 저장   F9 불러오기   X 작업 중단   Esc 종료   |   직원 임금·임대료·세금은 시제품 조정값"
+	hint.text=action+"\nWASD 이동   1/2 방 배정   G 거절   H 직원   Q 계단   Space 정지   Tab 배속   휠 확대\nR 굴착 방식   X 작업 중단   V 시야 표시   M 소리   F5 저장   F9 불러오기   Esc 종료"
+	if OS.has_feature("web"):
+		hint.text=hint.text.replace("F5 저장   F9 불러오기","저장·불러오기는 오른쪽 버튼").replace("Esc 종료","Esc 정지")
+	var stealth: Dictionary=d.stealth
+	var phases: Dictionary={"idle":"영업 중","alert":"소리에 주의 / 하던 일 마무리","approach":"지하 입구로 접근 중","listen":"계단에서 확인 중"}
+	var stage: String=str(phases.get(stealth.phase,stealth.phase)) if d.staff.hired else "아직 직원 없음"
+	if d.clock<stealth.refuse_until:stage="업무 거부 %.0f초" % (stealth.refuse_until-d.clock)
+	awareness.text="직원 경계 %d / 100  ·  %s  ·  확인 기억 %d\n굴착 %s  |  소음 %.1f  |  직원에게 들리는 소리 %.1f" % [int(stealth.suspicion),stage,int(stealth.memory),"조용히 10초" if stealth.quiet else "빠르게 4초",d.noise,stealth.heard]
+	awareness.modulate=Color("ffb882") if stealth.phase!="idle" or d.clock<stealth.refuse_until else Color("c3d8d0")
+	if stealth.phase in ["approach","listen"] and d.player.floor==0:hint.text="직원 시야 안 가까이 E: 물자 확인이었다고 설명 / X: 작업 중단\n"+hint.text
 	notice.text=""
 	if d.player.carry!="":notice.text="식사 운반 중 → "+str(d.people[d.orders[d.player.carry].guest].name)
 	if d.player.floor==1 and pending>0:notice.text="위층 주문 %d건 · 직원 %s" % [pending,staff_status]
@@ -425,6 +457,7 @@ func sync_view(dt: float) -> void:
 	collector_visual.visible=upstairs and d.collector
 	sync_actor(player,d.player.pos,dt)
 	sync_actor(staff_visual,d.staff.pos,dt)
+	staff_visual.rotation.y=atan2(-d.staff.facing.x,-d.staff.facing.y)
 	collector_visual.position=Vector3(-0.2,0.08,-1.5)
 	carried_visuals.player.visible=d.player.carry!=""
 	carried_visuals.staff.visible=d.staff.carry!=""
@@ -442,6 +475,13 @@ func sync_view(dt: float) -> void:
 		sync_actor(actors[id],person.pos,dt)
 		labels[id].text=person.name+" · 대기" if person.state=="waiting" else person.name
 	if last_cell_count!=d.cells.size():rebuild_basement()
+	staff_marker.text="직원 · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
+	staff_marker.modulate=Color("ffb882") if d.stealth.suspicion>=10 else Color.WHITE
+	vision_mesh.visible=upstairs and d.staff.hired and show_vision
+	vision_clock+=dt
+	if vision_clock>=0.12 or dt==0:
+		vision_clock=0
+		refresh_vision()
 	refresh_ui()
 
 func rebuild_basement() -> void:
@@ -501,6 +541,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_H:sim.toggle_staff()
 			KEY_Q:sim.change_floor()
 			KEY_X:sim.cancel_work()
+			KEY_R:sim.toggle_dig_mode()
+			KEY_V:show_vision=not show_vision
+			KEY_M:muted=not muted
 			KEY_F5:save_game()
 			KEY_F9:load_game()
 	if event is InputEventMouseButton and event.pressed:
@@ -517,6 +560,7 @@ func _physics_process(delta: float) -> void:
 		var speed_: float=2.2 if sim.data.player.carry!="" else 2.9
 		sim.move_player((right*direction.x+down*direction.y)*delta*speed_*sim.data.speed)
 		sim.tick(delta*sim.data.speed)
+		update_stealth_audio(delta)
 	if sim.data.player.floor==1:
 		var mouse:=pointer_position
 		var hit: Variant=Plane(Vector3.UP,0.9).intersects_ray(camera.project_ray_origin(mouse),camera.project_ray_normal(mouse))
@@ -600,6 +644,16 @@ func input_verify() -> void:
 	get_viewport().push_input(mouse,true)
 	await get_tree().process_frame
 	checks.append(not sim.data.dig.is_empty())
+	await send_key(KEY_R)
+	checks.append(not sim.data.stealth.quiet) # active dig cannot change its terms
+	await send_key(KEY_X)
+	checks.append(sim.data.dig.is_empty())
+	await send_key(KEY_R)
+	checks.append(sim.data.stealth.quiet)
+	await send_key(KEY_V)
+	checks.append(not show_vision)
+	await send_key(KEY_M)
+	checks.append(muted)
 	var failed:=0
 	for i in range(checks.size()):
 		if not checks[i]:
@@ -607,3 +661,86 @@ func input_verify() -> void:
 			print("INPUT FAIL: ",i)
 	print("Viewport/input verification: %d checks, %d failures" % [checks.size(),failed])
 	get_tree().quit(0 if failed==0 else 1)
+
+# Small deterministic procedural sounds: no external service or paid asset.
+func sound_sample(kind: String) -> AudioStreamWAV:
+	var wave:=AudioStreamWAV.new()
+	wave.format=AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate=22050
+	var bytes:=PackedByteArray()
+	var duration:=0.16 if kind!="alert" else 0.42
+	var count:=int(duration*22050)
+	bytes.resize(count*2)
+	var rng:=RandomNumberGenerator.new()
+	rng.seed=742
+	for i in range(count):
+		var t:=float(i)/22050
+		var envelope:=minf(t*400,1)*exp(-t*(32 if kind=="step" else 18))
+		var sample: float
+		if kind=="alert": sample=sin(TAU*660*t)*exp(-t*9)*0.3
+		else: sample=(sin(TAU*(120 if kind=="step" else 210)*t)*0.55+rng.randf_range(-0.3,0.3))*envelope
+		bytes.encode_s16(i*2,int(clampf(sample,-1,1)*25000))
+	wave.data=bytes
+	return wave
+
+func setup_stealth_effects() -> void:
+	vision_mesh=MeshInstance3D.new()
+	surface.add_child(vision_mesh)
+	var mat:=StandardMaterial3D.new()
+	mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.vertex_color_use_as_albedo=true
+	mat.cull_mode=BaseMaterial3D.CULL_DISABLED
+	vision_mesh.material_override=mat
+	knock=AudioStreamPlayer.new()
+	knock.stream=sound_sample("dig")
+	add_child(knock)
+	alert_sound=AudioStreamPlayer.new()
+	alert_sound.stream=sound_sample("alert")
+	alert_sound.volume_db=-12
+	add_child(alert_sound)
+	step_sound=AudioStreamPlayer3D.new()
+	step_sound.stream=sound_sample("step")
+	step_sound.max_distance=32
+	step_sound.unit_size=8
+	step_sound.volume_db=-14
+	add_child(step_sound)
+
+func refresh_vision() -> void:
+	if not vision_mesh.visible: return
+	var worker: Dictionary=sim.data.staff
+	var vertices:=PackedVector3Array()
+	var colors:=PackedColorArray()
+	var color:=Color(0.95,0.48,0.2,0.22) if sim.data.stealth.phase!="idle" else Color(0.35,0.75,0.65,0.16)
+	for i in range(20):
+		var a: Vector2=sim.sight_end(worker.pos,worker.facing.rotated(deg_to_rad(-50+i*5)))
+		var b: Vector2=sim.sight_end(worker.pos,worker.facing.rotated(deg_to_rad(-45+i*5)))
+		for point in [worker.pos,a,b]:
+			vertices.append(Vector3(point.x,0.13,point.y))
+			colors.append(color)
+	var arrays:=[]
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices
+	arrays[Mesh.ARRAY_COLOR]=colors
+	var mesh:=ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	vision_mesh.mesh=mesh
+
+func update_stealth_audio(delta: float) -> void:
+	if sim.data.stealth.warning!=last_warning:
+		last_warning=sim.data.stealth.warning
+		if not muted:alert_sound.play()
+	sound_clock+=delta
+	if sound_clock<0.55: return
+	sound_clock=0
+	if muted:return
+	if not sim.data.dig.is_empty():
+		knock.volume_db=-25 if sim.data.dig.get("quiet",false) else -9
+		knock.pitch_scale=0.85 if sim.data.dig.get("quiet",false) else 1
+		knock.play()
+	elif sim.data.player.floor==0 and sim.heard_at(sim.data.player.pos)>0.7:
+		knock.volume_db=-30+sim.heard_at(sim.data.player.pos)
+		knock.play()
+	if sim.data.player.floor==0 and sim.data.staff.hired and sim.data.staff.mode in ["delivery","counter","return","investigate"]:
+		step_sound.position=staff_visual.position
+		step_sound.play()

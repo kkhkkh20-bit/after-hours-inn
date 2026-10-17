@@ -14,10 +14,11 @@ func _init() -> void:
 		"serial":0, "order_serial":0, "people":{}, "orders":{},
 		"rooms":{"1":{"guest":"", "dirty":false}, "2":{"guest":"", "dirty":false}},
 		"player":{"pos":Vector2(0.25, 1.75), "floor":0, "carry":""},
-		"staff":{"hired":false,"delegated":false,"pos":COUNTER,"carry":"","path":[],"mode":"idle","target":"","distance":0.0},
+		"staff":{"hired":false,"delegated":false,"pos":COUNTER,"carry":"","path":[],"mode":"idle","target":"","distance":0.0,"facing":Vector2.DOWN},
 		"work":{}, "dues":{"wage":1200,"rent":1980,"tax":2160}, "debt":0,
 		"collector":false,"tax_paid":false,"cells":{}, "dig":{}, "noise":0.0,
 		"logs":[], "served":0, "departed":0}
+	data.stealth = stealth_defaults()
 	for x in range(-1,2):
 		for y in range(-1,2): data.cells[cell_key(Vector2i(x,y))] = true
 	spawn_guest()
@@ -182,6 +183,7 @@ func interact() -> void:
 	if not data.work.is_empty() or not data.dig.is_empty():
 		note("작업 중이다. X로 중단할 수 있다.")
 		return
+	if explain_noise(): return
 	if data.player.carry != "":
 		if not deliver(data.player.carry,"player"): note("주문한 손님 가까이로 가야 한다.")
 		return
@@ -277,12 +279,14 @@ func _step(dt: float) -> void:
 					pickup(order_id,"player")
 					note("식사가 준비됐다. 주문한 손님에게 전달하자.")
 	update_work(dt)
+	update_awareness(dt)
 	update_worker(dt)
 	update_money()
 
 func follow(person: Dictionary, amount: float) -> void:
 	while amount>0 and not person.path.is_empty():
 		var target: Vector2=person.path[0]
+		if person.has("facing") and person.pos.distance_to(target)>0.001: person.facing=(target-person.pos).normalized()
 		var distance: float=person.pos.distance_to(target)
 		if distance<=amount:
 			if person.has("distance"): person.distance+=distance
@@ -313,6 +317,9 @@ func checkout(id: String) -> void:
 func update_worker(dt: float) -> void:
 	var worker: Dictionary=data.staff
 	if not worker.hired: return
+	if data.clock<data.stealth.refuse_until:
+		worker.mode="refuse"
+		return
 	if worker.carry!="":
 		var order_: Dictionary=data.orders[worker.carry]
 		if not can_receive(order_.guest): return
@@ -345,6 +352,7 @@ func update_worker(dt: float) -> void:
 			worker.mode="delivery"
 			return
 		else: return
+	if investigate(dt): return
 	if not worker.delegated:
 		return_staff(dt)
 		return
@@ -375,7 +383,8 @@ func update_work(dt: float) -> void:
 			data.work={}
 	if not data.dig.is_empty():
 		data.dig.remaining-=dt
-		data.noise=minf(8,data.noise+dt*1.7)
+		data.noise=minf(8,data.noise+dt*(0.65 if data.dig.get("quiet",false) else 1.7))
+		data.stealth.source=data.player.pos
 		if data.dig.remaining<=0:
 			data.cells[data.dig.cell]=true
 			note("땅굴 한 칸을 넓혔다. 위층의 시간도 계속 흐른다.")
@@ -395,11 +404,13 @@ func cancel_work() -> void:
 func change_floor() -> bool:
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty(): return false
 	if data.player.floor==0 and data.player.pos.distance_to(HATCH)<1.2:
+		observe_hatch()
 		data.player.floor=1
 		data.player.pos=Vector2.ZERO
 		note("지하로 내려왔다. 입구에서 Q로 복귀 / 흙벽을 클릭하면 굴착한다.")
 		return true
 	if data.player.floor==1 and data.player.pos.length()<1.1:
+		observe_hatch()
 		data.player.floor=0
 		data.player.pos=HATCH
 		note("위층으로 돌아왔다.")
@@ -425,8 +436,8 @@ func start_dig(cell: Vector2i) -> bool:
 		note("내 바로 옆 흙벽만 팔 수 있다.")
 		return false
 	data.money-=1
-	data.dig={"cell":cell_key(cell),"remaining":4.0}
-	note("굴착 중. 4초 / 도구 비용 1닢 / X 중단.")
+	data.dig={"cell":cell_key(cell),"remaining":10.0 if data.stealth.quiet else 4.0,"quiet":data.stealth.quiet}
+	note("조용한 굴착 10초. X 중단." if data.stealth.quiet else "빠른 굴착 4초. 소리가 크다. X 중단.")
 	return true
 
 func update_money() -> void:
@@ -479,12 +490,127 @@ func snapshot() -> Dictionary:
 func restore(saved: Variant) -> bool:
 	if not saved is Dictionary or saved.get("version",0)!=SAVE_VERSION or not saved.get("state") is Dictionary: return false
 	var candidate: Dictionary=decode(saved.state)
+	# Existing 0.3 saves acquire awareness defaults; in-flight jobs remain valid.
+	if not candidate.has("stealth"): candidate.stealth=stealth_defaults()
 	for key in data:
 		if not candidate.has(key): return false
+	if not candidate.staff.has("facing"): candidate.staff.facing=Vector2.DOWN
 	if not candidate.player.pos is Vector2 or not candidate.rooms is Dictionary: return false
 	for key in ["serial","order_serial","speed","money","debt","served","departed"]: candidate[key]=int(candidate[key])
 	candidate.player.floor=int(candidate.player.floor)
 	for person in candidate.people.values():
 		for key in ["room","rate","meals"]: person[key]=int(person[key])
 	data=candidate
+	return true
+
+# Awareness PoC: sound travels through the single basement hatch, never by
+# comparing coincident coordinates on different floors. No telepathic NPCs.
+func stealth_defaults() -> Dictionary:
+	return {"suspicion":0.0,"memory":0,"phase":"idle","listen":0.0,
+		"cooldown":0.0,"refuse_until":0.0,"heard":0.0,"source":Vector2.ZERO,
+		"quiet":false,"explain_until":0.0,"warning":0,"confirmed":false}
+
+func toggle_dig_mode() -> void:
+	if data.paused or not data.dig.is_empty(): return
+	data.stealth.quiet=not data.stealth.quiet
+	note("조용한 굴착: 10초 / 작은 소리" if data.stealth.quiet else "빠른 굴착: 4초 / 큰 소리")
+
+func heard_at(position_: Vector2) -> float:
+	# Deep work is attenuated by the tunnel distance, then the surface route.
+	var route:=path_to(position_,HATCH)
+	if route.is_empty(): return 0.0
+	var travel:=0.0
+	var previous:=position_
+	for point in route:
+		travel+=previous.distance_to(point)
+		previous=point
+	return maxf(0,data.noise-data.stealth.source.length()*0.35-travel*0.30)
+
+func sight_end(origin: Vector2, direction: Vector2) -> Vector2:
+	var end:=origin
+	for i in range(1,49):
+		var point:=origin+direction*float(i)*0.1
+		if not surface_walkable(point): break
+		end=point
+	return end
+
+func staff_sees(point: Vector2) -> bool:
+	if not data.staff.hired: return false
+	var offset: Vector2=point-data.staff.pos
+	if offset.length()>4.8: return false
+	if offset.length()>0.1 and data.staff.facing.dot(offset.normalized())<cos(deg_to_rad(50)): return false
+	return sight_end(data.staff.pos,offset.normalized()).distance_to(data.staff.pos)+0.11>=offset.length()
+
+func observe_hatch() -> void:
+	if not staff_sees(HATCH): return
+	data.stealth.suspicion=minf(100,data.stealth.suspicion+12)
+	note("직원이 계단을 쓰는 모습을 봤다. 소리와 연결할 수 있다.")
+
+func update_awareness(dt: float) -> void:
+	var s: Dictionary=data.stealth
+	s.heard=heard_at(data.staff.pos) if data.staff.hired else 0.0
+	if not data.staff.hired: return
+	if s.heard>0.7:
+		s.suspicion=minf(100,s.suspicion+dt*(s.heard-0.7)*6)
+	elif s.phase=="idle": s.suspicion=maxf(minf(60,float(s.memory)*15),s.suspicion-dt*1.4)
+	if s.phase=="idle" and s.suspicion>=10 and data.clock>=s.cooldown and data.clock>=s.refuse_until:
+		s.phase="alert"
+		s.warning+=1
+		s.confirmed=false
+		note("직원이 소리에 주의를 기울인다. 하던 일을 마치면 확인하러 온다.")
+
+func investigate(dt: float) -> bool:
+	var s: Dictionary=data.stealth
+	var worker: Dictionary=data.staff
+	if s.phase=="idle": return false
+	if s.phase=="alert":
+		worker.path=path_to(worker.pos,HATCH)
+		if worker.path.is_empty():
+			s.phase="idle"
+			s.cooldown=data.clock+5
+			return false
+		s.phase="approach"
+		worker.mode="investigate"
+		worker.target=""
+		note("직원이 지하 입구로 걸어온다. X로 작업을 멈출 수 있다.")
+	if s.phase=="approach":
+		follow(worker,dt*1.1)
+		if worker.path.is_empty():
+			s.phase="listen"
+			s.listen=0.0
+			worker.facing=Vector2.DOWN
+			note("직원이 계단 앞에서 귀를 기울인다.")
+	elif s.phase=="listen":
+		s.listen+=dt
+		if s.listen>1.2 and s.heard>1.8 and not data.dig.is_empty() and not s.confirmed:
+			s.confirmed=true
+			s.memory+=1
+			s.suspicion=maxf(s.suspicion,75)
+			s.refuse_until=data.clock+20
+			s.phase="idle"
+			s.cooldown=data.clock+35
+			worker.path=[]
+			note("직원이 계단 아래의 작업 소리를 확인했다. 20초간 일을 거부한다. 기억은 남는다.")
+		elif s.listen>=6:
+			finish_investigation()
+	return true
+
+func finish_investigation() -> void:
+	data.stealth.phase="idle"
+	data.stealth.suspicion=maxf(minf(60,float(data.stealth.memory)*15),data.stealth.suspicion-20)
+	data.stealth.cooldown=data.clock+18
+	data.staff.path=[]
+	data.staff.mode="return"
+	note("직원이 확인을 마치고 업무로 돌아간다.")
+
+func explain_noise() -> bool:
+	var s: Dictionary=data.stealth
+	if s.phase not in ["approach","listen"] or data.player.floor!=0: return false
+	if data.player.pos.distance_to(data.staff.pos)>1.6 or not staff_sees(data.player.pos): return false
+	if data.clock<s.explain_until:
+		note("같은 설명은 곧바로 다시 통하지 않는다.")
+		return true
+	s.explain_until=data.clock+45
+	finish_investigation()
+	note("물자를 확인했다고 짧게 설명했다. 이전에 확인한 사실은 지워지지 않는다.")
 	return true

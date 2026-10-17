@@ -134,6 +134,93 @@ static func run(obstacles: Array) -> int:
 	mover.data.player.pos=Vector2.ZERO
 	mover.move_player(Vector2(6,0))
 	expect(mover.data.player.pos.x<1.5,"Basement movement stops at unopened earth",results)
+	# Noise, investigation, opportunity to stop, and retained knowledge.
+	var stealth=fresh(obstacles)
+	stealth.data.player.pos=Sim.COUNTER
+	stealth.toggle_staff()
+	stealth.data.player.floor=1
+	stealth.data.player.pos=Vector2(1,0)
+	stealth.start_dig(Vector2i(2,0))
+	stealth.tick(4.5)
+	expect(stealth.data.stealth.warning==1 and stealth.data.stealth.phase=="approach","Loud excavation attracts a real investigation",results)
+	expect(stealth.data.staff.pos.distance_to(Sim.COUNTER)>0.1,"Investigator physically walks rather than teleporting",results)
+	var warning_save=JSON.parse_string(JSON.stringify(stealth.snapshot()))
+	var warning_clone=fresh(obstacles)
+	expect(warning_clone.restore(warning_save) and warning_clone.data.stealth.phase=="approach","Investigation and its path survive save",results)
+	stealth.cancel_work()
+	stealth.tick(24)
+	expect(stealth.data.stealth.memory==0 and stealth.data.stealth.phase=="idle","Stopping work before confirmation avoids discovery",results)
+	var loud=fresh(obstacles)
+	loud.data.staff.hired=true
+	loud.data.staff.pos=Sim.HATCH
+	loud.data.player.floor=1
+	loud.data.player.pos=Vector2(1,0)
+	loud.start_dig(Vector2i(2,0))
+	loud.tick(4.1)
+	loud.data.player.pos=Vector2(2,0)
+	loud.start_dig(Vector2i(3,0))
+	# Keep working through the full approach/listen cycle, using adjacent cells.
+	loud.tick(4.1)
+	loud.data.player.pos=Vector2(3,0)
+	loud.start_dig(Vector2i(4,0))
+	loud.tick(4.1)
+	loud.data.player.pos=Vector2(4,0)
+	loud.start_dig(Vector2i(5,0))
+	loud.tick(4.1)
+	expect(loud.data.stealth.memory==1 and loud.data.stealth.refuse_until>loud.data.clock,"Continued noise at hatch leaves memory and work refusal",results)
+	var remembered: int=loud.data.stealth.memory
+	loud.data.stealth.phase="listen"
+	loud.data.player.floor=0
+	loud.data.player.pos=Sim.HATCH+Vector2(0,0.5)
+	loud.data.staff.pos=Sim.HATCH
+	loud.data.staff.facing=Vector2.DOWN
+	expect(loud.explain_noise() and loud.data.stealth.memory==remembered,"Explanation does not erase witnessed facts",results)
+	loud.data.stealth.phase="listen"
+	expect(loud.explain_noise() and loud.data.stealth.phase=="listen","Explanation cannot be spammed",results)
+	var quiet=fresh(obstacles)
+	quiet.data.staff.hired=true
+	quiet.data.player.floor=1
+	quiet.data.player.pos=Vector2(1,0)
+	quiet.toggle_dig_mode()
+	quiet.start_dig(Vector2i(2,0))
+	quiet.tick(4)
+	expect(not quiet.data.cells.has("2,0") and quiet.data.dig.remaining>5,"Quiet digging trades more time for less noise",results)
+	expect(quiet.data.noise<1,"Quiet digging emits less residual noise",results)
+	quiet.tick(6.1)
+	expect(quiet.data.cells.has("2,0"),"Quiet digging eventually completes",results)
+	expect(quiet.data.stealth.warning==0,"One quiet job stays below the distant employee hearing threshold",results)
+	quiet.data.noise=8
+	quiet.data.stealth.source=Vector2.ZERO
+	var nearby: float=quiet.heard_at(Sim.HATCH)
+	var faraway: float=quiet.heard_at(Sim.COUNTER)
+	expect(nearby>faraway and faraway>0,"Sound loses strength along the surface route",results)
+	quiet.data.stealth.source=Vector2(10,0)
+	expect(quiet.heard_at(Sim.HATCH)<nearby,"Deep excavation attenuates before the hatch",results)
+	var sight=fresh(obstacles)
+	sight.data.staff.hired=true
+	sight.data.staff.pos=Vector2(0.25,-1.75)
+	sight.data.staff.facing=Vector2.DOWN
+	expect(sight.staff_sees(Vector2(0.25,0.25)),"Forward cone sees an unobstructed surface point",results)
+	expect(not sight.staff_sees(Vector2(0.25,-3)),"Facing away conceals hatch activity",results)
+	sight.data.staff.facing=Vector2.RIGHT
+	expect(not sight.staff_sees(Vector2(3.25,-1.75)),"Room wall blocks sight",results)
+	sight.data.staff.pos=Sim.HATCH
+	sight.data.staff.facing=Vector2.DOWN
+	sight.data.player.pos=Sim.HATCH
+	sight.change_floor()
+	expect(sight.data.stealth.suspicion==12,"Visible hatch use is noticed once per transition",results)
+	var legacy=fresh(obstacles).snapshot()
+	legacy.state.erase("stealth")
+	legacy.state.staff.erase("facing")
+	expect(sight.restore(legacy) and sight.data.stealth.memory==0,"Existing 0.3 saves migrate without losing inn state",results)
+	var busy=fresh(obstacles)
+	busy.data.player.pos=Sim.COUNTER
+	busy.assign_room(1)
+	busy.toggle_staff()
+	busy.tick(17)
+	busy.data.stealth.phase="alert"
+	busy.tick(20)
+	expect(busy.data.served==1 and busy.data.stealth.phase in ["approach","listen","idle"],"Existing meal ownership completes before investigation",results)
 	var failures:=0
 	for result in results:
 		if not result[0]:failures+=1

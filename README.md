@@ -1,8 +1,8 @@
-## 2D 직접 조작 비교 시제품 0.2 · 2026-10-17
+## 2D 모바일 클릭 이동 0.3 · 2026-10-17
 
-[2D 세로 시제품 실행](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/) · [새 실제 화면·조작·구현 한계](docs/direct-control-poc.md)
+[2D 세로 시제품 실행](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/) · [스타듀밸리 조작 조사·새 화면·검증과 한계](docs/tap-controls-v03.md)
 
-클릭 자동 이동에서 직접 걷기·점프·채굴·블록/발판/횃불 설치로 바꿨습니다. 테라리아 원본 에셋이나 코드가 아니라 공개 Brackeys CC0 팩과 새 규칙을 사용합니다. 이전 2D 0.1 기록은 docs/sideview-poc.md에 보존합니다.
+모바일 기본 조작을 다시 클릭 이동으로 바꿨습니다. 점프와 사다리는 자동 이용하며, 카운터 접근/사용과 묻힌 흙·돌의 곡괭이 자동 선택을 연결했습니다. PC 직접 조작·블록/발판/횃불 설치는 유지합니다. 테라리아 원본 에셋이나 코드가 아니라 공개 Brackeys CC0 팩과 새 규칙을 사용합니다. 이전 2D 0.1 기록은 docs/sideview-poc.md에 보존합니다.
 
 기존 아래 3D 0.9와 별개인 비교 실험입니다. 2D 시제품은 `prototypes/sideview/project.godot`로 열며 저장도 분리합니다. 최종 미술·시점 확정판이 아닙니다.
 

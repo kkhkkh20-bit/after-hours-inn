@@ -35,7 +35,7 @@ func _physics_process(delta: float) -> void:
 	var top_speed=RUN_SPEED*(0.43 if crouch else 1.0)*(0.55 if carrying else 1.0)
 	velocity.x=move_toward(velocity.x,axis*top_speed,ACCELERATION*delta)
 	if absf(axis)>0.05: facing=1 if axis>0 else -1
-	if climbing and absf(climb_axis)>0.05:
+	if climbing:
 		velocity.y=climb_axis*130
 	else:
 		velocity.y=minf(750,velocity.y+GRAVITY*delta)

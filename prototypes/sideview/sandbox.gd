@@ -2,6 +2,7 @@ extends Node2D
 const Terrain = preload("res://terrain.gd")
 const Player = preload("res://player.gd")
 const Business = preload("res://simulation.gd")
+const Navigation = preload("res://navigation.gd")
 var terrain = Terrain.new()
 var inn = Business.new()
 var player: CharacterBody2D
@@ -13,7 +14,7 @@ var font = preload("res://assets/InnKorean.otf")
 var ui: Control
 var labels: Dictionary = {}
 var modes: Dictionary = {}
-var mode = "mine"
+var mode = "move"
 var build_material = "wood"
 var target = Vector2i(-999,-999)
 var pointer_down = false
@@ -39,6 +40,20 @@ var save_path = "user://sandbox-v1.json"
 var message = "직접 걷고 점프해서 가까운 땅을 파보세요."
 var rebuild_pending = false
 var test_mode = false
+var navigation=Navigation.new()
+var walking_route: Array=[]
+var navigation_testing=false
+var navigation_pending_use=false
+var navigation_jump_time=0.0
+var navigation_step_started=false
+var navigation_step_time=0.0
+var destination=Vector2.ZERO
+var destination_valid=false
+var marker_time=0.0
+var navigation_carrying=false
+var automatic_mining=false
+var navigation_job: Dictionary={}
+var use_button: Button
 
 func _ready() -> void:
 	_setup_input()
@@ -67,15 +82,17 @@ func _ready() -> void:
 		test_mode=true; inn.hired=true
 		if "--capture-dark" in args:
 			hatch_open=true; _rebuild_geometry()
-			player.position=Vector2(19*32,29*32-28)
+			player.position=Vector2(22*32,29*32-28)
 			camera.position=player.position+Vector2(-32,65)
-			mode="mine"; target=Vector2i(23,28); terrain.mining_cell=target; terrain.mining_progress=0.28
+			mode="move"; target=Vector2i(24,28); terrain.mining_cell=target; terrain.mining_progress=0.28
 			message="지하에서도 직접 이동·채굴·발판과 횃불 설치"
-		else: message="공개 타일을 지형에 적용한 실제 플레이 화면"
+		else:
+			_navigate_to(Vector2(24*32+16,14*32))
+			message="2층 바닥을 누르면 필요한 점프·사다리를 자동으로 이용"
 		paused=true; player.active=false; _update_ui(); queue_redraw()
 		await get_tree().create_timer(0.6).timeout
 		var suffix="cellar" if "--capture-dark" in args else "surface"
-		get_viewport().get_texture().get_image().save_png("res://../../docs/direct-"+suffix+".png")
+		get_viewport().get_texture().get_image().save_png("res://../../docs/tap-"+suffix+".png")
 		get_tree().quit()
 
 func _setup_input() -> void:
@@ -155,24 +172,22 @@ func _touch_button(text: String,rect: Rect2,action: String) -> TouchScreenButton
 func _setup_ui() -> void:
 	var layer=CanvasLayer.new(); add_child(layer); ui=Control.new(); ui.mouse_filter=Control.MOUSE_FILTER_IGNORE; layer.add_child(ui)
 	_panel(Rect2(0,0,720,153)); _panel(Rect2(0,1000,720,360))
-	_label("title","문 닫은 뒤 · 직접 조작",Rect2(22,15,570,40),28)
+	_label("title","문 닫은 뒤 · 클릭 이동 0.3",Rect2(22,15,570,40),27)
 	_button("멈춤",Rect2(593,16,105,52),_pause)
 	_label("stats","",Rect2(22,63,675,34),25)
-	_label("hint","A/D 이동 · Space 점프 · W/S 사다리 · E 사용",Rect2(22,108,676,34),20)
+	_label("hint","바닥 클릭으로 이동 · 점프와 사다리는 자동",Rect2(22,108,676,34),22)
 	_label("context","",Rect2(20,1009,680,36),23)
-	var mode_list=[["mine","곡괭이"],["block","블록"],["platform","발판"],["torch","횃불"],["hand","손님"]]
+	var mode_list=[["move","이동"],["mine","곡괭이"],["block","블록"],["platform","발판"],["torch","횃불"],["hand","손님"]]
 	for i in range(mode_list.size()):
 		var entry=mode_list[i]
-		modes[entry[0]]=_button(entry[1],Rect2(20+i*139,1057,124,70),_select_mode.bind(entry[0]))
+		modes[entry[0]]=_button(entry[1],Rect2(20+i*116,1057,104,70),_select_mode.bind(entry[0]))
 	_button("재료 변경",Rect2(20,1142,200,58),_material_next)
-	_button("사용 / E",Rect2(240,1142,220,58),_interact)
+	use_button=_button("사용 / E",Rect2(240,1142,220,58),_request_use)
 	_button("저장",Rect2(480,1142,100,58),_save)
 	_button("읽기",Rect2(598,1142,100,58),_load_save)
-	_touch_button("왼쪽",Rect2(20,1217,105,89),"walk_left")
-	_touch_button("오른쪽",Rect2(140,1217,105,89),"walk_right")
-	_touch_button("아래",Rect2(260,1217,105,89),"climb_down")
-	_touch_button("위",Rect2(380,1217,105,89),"climb_up")
-	_touch_button("점프",Rect2(510,1217,188,89),"leap")
+	_button("이동 취소",Rect2(20,1217,210,89),_stop_navigation)
+	_button("카운터 가기",Rect2(254,1217,210,89),_go_counter)
+	_button("덮개 가기",Rect2(488,1217,210,89),_go_hatch)
 	_label("log",message,Rect2(20,1315,678,38),21)
 	_update_ui()
 
@@ -182,9 +197,135 @@ func _pause() -> void:
 	for action in ["walk_left","walk_right","leap","climb_up","climb_down"]: Input.action_release(action)
 	_update_ui()
 func _select_mode(value: String) -> void:
+	_stop_navigation()
 	mode=value; pointer_down=false; terrain.mining_progress=0
 	if value!="hand": selected_person=-1
 	_update_ui()
+
+func _stop_navigation() -> void:
+	walking_route.clear(); navigation_pending_use=false; navigation_step_started=false
+	navigation_job.clear(); automatic_mining=false; pointer_down=false; terrain.mining_progress=0
+	navigation_jump_time=0; navigation_step_time=0
+	player.axis=0; player.climb_axis=0; player.jump_held=false
+
+func _ensure_navigation() -> void:
+	if navigation.revision!=terrain.revision or navigation.hatch_open!=hatch_open or navigation_carrying!=(dragging>=0):
+		navigation.rebuild(terrain,hatch_open,dragging>=0); navigation_carrying=dragging>=0
+
+func _navigate_to(point: Vector2) -> bool:
+	_stop_navigation(); pointer_down=false
+	if paused: message="계속하기를 누른 뒤 이동하자."; return false
+	_ensure_navigation()
+	walking_route=navigation.route(player.position,point)
+	marker_time=4; destination=point; destination_valid=not walking_route.is_empty()
+	if walking_route.is_empty():
+		message="지금은 갈 수 없다. 덮개·막힌 길·발판을 확인하자."; return false
+	destination=walking_route.back().point+Vector2(0,27)
+	message="목적지로 이동 중. 다시 누르면 목적지를 바꾼다."
+	return true
+
+func _approach(point: Vector2,reach: float) -> bool:
+	_stop_navigation(); _ensure_navigation()
+	walking_route=navigation.route_near(player.position,point,reach)
+	destination_valid=not walking_route.is_empty(); marker_time=4; destination=point
+	if not destination_valid: message="작업할 수 있는 가까운 발판으로 갈 길이 없다."; return false
+	destination=walking_route.back().point+Vector2(0,27); return true
+
+func _tap_world() -> void:
+	if paused: return
+	if mode!="move":
+		if mode=="hand": _select_person()
+		return
+	_stop_navigation(); selected_person=-1
+	_ensure_navigation()
+	for i in range(2):
+		if cursor_world.distance_to(people[i].pos-Vector2(0,25))<35:
+			selected_person=i
+			_approach(people[i].pos-Vector2(0,19),55)
+			message=people[i].name+"에게 접근. 기절은 별도 버튼으로 선택한다."; return
+	if cursor_world.distance_to(Vector2(29*32,20*32))<70:
+		if _navigate_to(Vector2(28*32+16,21*32)): navigation_pending_use=true
+		return
+	if cursor_world.distance_to(Vector2(15*32,21*32))<43:
+		if _navigate_to(Vector2(16*32+16,21*32)): navigation_pending_use=true
+		return
+	for c in terrain.torches:
+		if cursor_world.distance_to(terrain.center(c))<22:
+			if _approach(terrain.center(c),70): navigation_pending_use=true
+			return
+	var c=terrain.cell_at(cursor_world)
+	# Tapping a floor should walk there. Buried earth/stone selects the pickaxe.
+	if terrain.cells.get(c,"") in ["dirt","stone"] and not navigation.clear_at(navigation.world(c)):
+		if player.position.distance_to(terrain.center(c))<=128:
+			_begin_automatic_mining(c)
+		elif _approach(terrain.center(c),118):
+			navigation_job={"action":"mine","cell":c}; message="가까이 가서 곡괭이로 한 칸 채굴한다."
+		return
+	_navigate_to(cursor_world)
+
+func _begin_automatic_mining(c: Vector2i) -> void:
+	target=c; terrain.mining_progress=0; automatic_mining=true; pointer_down=true
+	message="곡괭이 자동 선택 · 한 칸 채굴 중. 새 목적지를 누르면 취소."
+
+func _drive_navigation(delta: float) -> void:
+	if walking_route.is_empty(): return
+	var step: Dictionary=walking_route[0]
+	var diff: Vector2=step.point-player.position
+	# A jump can land on a higher one-way platform than predicted.
+	# Replan from the real landing rather than trying to descend through it.
+	if step.kind=="jump" and navigation_step_started and player.is_on_floor() and diff.y>18:
+		var goal=destination; var pending=navigation_pending_use; var job=navigation_job.duplicate()
+		if _navigate_to(goal): navigation_pending_use=pending; navigation_job=job
+		return
+	if absf(diff.x)<9 and absf(diff.y)<10 and (step.kind!="jump" or player.is_on_floor()):
+		walking_route.pop_front(); navigation_step_started=false; navigation_step_time=0
+		if walking_route.is_empty():
+			player.axis=0; player.climb_axis=0; player.jump_held=false
+			message="도착했다."
+			if not navigation_job.is_empty():
+				var job=navigation_job.duplicate(); navigation_job.clear()
+				if job.action=="mine": _begin_automatic_mining(job.cell)
+			if navigation_pending_use:
+				navigation_pending_use=false; _interact()
+			return
+		step=walking_route[0]; diff=step.point-player.position
+	navigation_step_time+=delta
+	if navigation_step_time>4.5:
+		if test_mode: print("NAV STALL ",step," at ",player.position," floor=",player.is_on_floor())
+		_stop_navigation(); destination_valid=false; marker_time=3; message="길이 막혔다. 다른 바닥을 눌러 경로를 바꾸자."; return
+	player.axis=clampf(diff.x/30.0,-1,1) if absf(diff.x)>5 else 0.0
+	player.climbing=absf(player.position.x-15*32)<30 and player.position.y>13*32 and player.position.y<30*32
+	player.climb_axis=0; player.crouch=false
+	if player.climbing and step.kind!="jump":
+		player.axis=clampf(diff.x/20.0,-1,1); player.climb_axis=clampf(diff.y/12.0,-1,1)
+		if step.kind=="walk" and absf(diff.x)>5:
+			# Lift the feet slightly above the lip before leaving the ladder.
+			player.climb_axis=clampf((step.point.y-2-player.position.y)/8.0,-0.35,0.35)
+	if not navigation_step_started:
+		if step.kind=="jump" and (player.is_on_floor() or player.climbing):
+			if player.climbing: player.coyote=0.10
+			player.jump_requested=true; navigation_jump_time=0.5; navigation_step_started=true
+		elif step.kind=="drop":
+			player.drop_down(); navigation_step_started=true
+		elif step.kind!="jump": navigation_step_started=true
+	navigation_jump_time=maxf(0,navigation_jump_time-delta)
+	player.jump_held=navigation_jump_time>0
+	if navigation_jump_time>0: player.climbing=false
+
+func _go_counter() -> void:
+	selected_person=-1; _select_mode("move")
+	_navigate_to(Vector2(28*32+16,21*32))
+
+func _go_hatch() -> void:
+	selected_person=-1; _select_mode("move")
+	_navigate_to(Vector2(16*32+16,21*32))
+
+func _request_use() -> void:
+	if dragging>=0: _interact(); return
+	if selected_person>=0 and player.position.distance_to(people[selected_person].pos-Vector2(0,19))>65:
+		var person: Dictionary=people[selected_person]
+		if _navigate_to(person.pos-Vector2(person.face*32,0)): navigation_pending_use=true
+	else: _interact()
 func _material_next() -> void:
 	var options=["wood","dirt","stone"]; build_material=options[(options.find(build_material)+1)%3]; _update_ui()
 
@@ -192,28 +333,30 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch and event.pressed and event.position.y>153 and event.position.y<1000:
 		active_touch=event.index; pointer_down=true
 		cursor_world=get_canvas_transform().affine_inverse()*event.position; target=terrain.cell_at(cursor_world)
-		if mode=="hand": _select_person()
+		_tap_world()
 	if event is InputEventScreenDrag and event.index==active_touch:
 		cursor_world=get_canvas_transform().affine_inverse()*event.position; target=terrain.cell_at(cursor_world)
 	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
 		if active_touch>=0: return
-		pointer_down=event.pressed
+		if event.pressed: pointer_down=true
+		elif not automatic_mining: pointer_down=false
 		if event.pressed:
 			cursor_world=get_canvas_transform().affine_inverse()*event.position
 			target=terrain.cell_at(cursor_world)
-			if mode=="hand": _select_person()
+			_tap_world()
 	if event is InputEventMouseMotion and pointer_down:
 		cursor_world=get_canvas_transform().affine_inverse()*event.position; target=terrain.cell_at(cursor_world)
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode==KEY_E: _interact()
-		if event.physical_keycode>=KEY_1 and event.physical_keycode<=KEY_5:
-			_select_mode(["mine","block","platform","torch","hand"][event.physical_keycode-KEY_1])
+		if event.physical_keycode==KEY_E: _request_use()
+		if event.physical_keycode>=KEY_1 and event.physical_keycode<=KEY_6:
+			_select_mode(["move","mine","block","platform","torch","hand"][event.physical_keycode-KEY_1])
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed and active_touch<0:
+	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed and active_touch<0 and not automatic_mining:
 		pointer_down=false; terrain.mining_progress=0
 	if event is InputEventScreenTouch and not event.pressed and event.index==active_touch:
-		pointer_down=false; terrain.mining_progress=0; active_touch=-1
+		if not automatic_mining: pointer_down=false; terrain.mining_progress=0
+		active_touch=-1
 
 func _notification(what: int) -> void:
 	if what==NOTIFICATION_APPLICATION_FOCUS_OUT:
@@ -222,12 +365,17 @@ func _notification(what: int) -> void:
 			if InputMap.has_action(action): Input.action_release(action)
 
 func _physics_process(_delta: float) -> void:
-	if not is_instance_valid(player) or test_mode or paused: return
+	if not is_instance_valid(player) or (test_mode and not navigation_testing) or paused: return
+	var manual=absf(Input.get_axis("walk_left","walk_right"))>0 or Input.is_action_pressed("leap") or absf(Input.get_axis("climb_up","climb_down"))>0
+	if not walking_route.is_empty() and not manual:
+		_drive_navigation(_delta)
+		return
+	if manual and not walking_route.is_empty(): _stop_navigation()
 	player.axis=Input.get_axis("walk_left","walk_right")
 	player.jump_held=Input.is_action_pressed("leap")
 	if Input.is_action_just_pressed("leap"): player.jump_requested=true
 	player.climb_axis=Input.get_axis("climb_up","climb_down")
-	player.climbing=absf(player.position.x-15*32)<30 and player.position.y>13*32 and player.position.y<30*32
+	player.climbing=absf(player.position.x-15*32)<30 and player.position.y>13*32 and player.position.y<30*32 and not player.jump_held
 	player.crouch=Input.is_action_pressed("climb_down") and not player.climbing
 	if Input.is_action_just_pressed("climb_down") and not player.climbing: player.drop_down()
 	player.carrying=dragging>=0
@@ -235,6 +383,7 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	if not is_instance_valid(player): return
 	if not paused and not test_mode:
+		marker_time=maxf(0,marker_time-delta)
 		clock+=delta; order_clock+=delta; wage_clock+=delta; guard_clock+=delta; noise_age+=delta
 		employee_alert=maxf(0,employee_alert-delta)
 		if pointer_down: _work_target(delta)
@@ -252,10 +401,12 @@ func _process(delta: float) -> void:
 	_update_ui(); queue_redraw()
 
 func _work_target(delta: float) -> void:
-	if mode=="mine":
+	if mode=="mine" or automatic_mining:
 		var old=terrain.mining_progress
 		if terrain.mine(target,player.position,delta):
-			message="채굴 완료. 자원이 가방에 들어왔다."; _changed(); _noise(0.9)
+			message="채굴 완료. 자원이 가방에 들어왔다."
+			if automatic_mining: pointer_down=false; automatic_mining=false
+			_changed(); _noise(0.9)
 		elif terrain.mining_progress>old:
 			noise_clock+=delta
 			if noise_clock>0.22: _noise(0.7); noise_clock=0
@@ -274,6 +425,8 @@ func _work_target(delta: float) -> void:
 		pointer_down=false
 
 func _changed() -> void:
+	if not walking_route.is_empty():
+		_stop_navigation(); message="지형이 바뀌었다. 목적지를 다시 눌러 경로를 확인하자."
 	if not rebuild_pending:
 		rebuild_pending=true; call_deferred("_rebuild_geometry")
 	_rebuild_lights()
@@ -381,10 +534,13 @@ func _update_ui() -> void:
 	var names={"wood":"목재","dirt":"흙","stone":"돌","platform":"발판","torch":"횃불"}
 	labels.context.text="%s %d · 흙 %d · 돌 %d · 발판 %d · 횃불 %d" %[names[build_material],terrain.inventory[build_material],terrain.inventory.dirt,terrain.inventory.stone,terrain.inventory.platform,terrain.inventory.torch]
 	labels.log.text=message
+	if dragging>=0: use_button.text="내려놓기"
+	elif selected_person>=0: use_button.text="운반 시작" if people[selected_person].down else "기절 시도"
+	else: use_button.text="사용 / E"
 	for key in modes: modes[key].modulate=Color("e1bd7e") if mode==key else Color.WHITE
 
 func _save() -> void:
-	if pointer_down or dragging>=0 or not player.is_on_floor(): message="땅에 서서 작업·운반을 멈추고 저장하자."; return
+	if pointer_down or dragging>=0 or not walking_route.is_empty() or not player.is_on_floor(): message="땅에 서서 이동·작업·운반을 멈추고 저장하자."; return
 	var data=terrain.encode(); data.player=[player.position.x,player.position.y]
 	data.coins=inn.coins; data.hired=inn.hired; data.orders=inn.orders; data.suspicion=suspicion; data.hatch=hatch_open
 	data.clock=clock; data.order_clock=order_clock; data.wage_clock=wage_clock; data.guard_clock=guard_clock
@@ -413,6 +569,7 @@ func _load_save() -> void:
 			people[i].pos=Vector2(clampf(float(v.get("x",800)),32,83*32),clampf(float(v.get("y",672)),0,53*32))
 			people[i].target=people[i].pos.x; people[i].face=1 if int(v.get("face",1))>=0 else -1; people[i].down=bool(v.get("down",false))
 	dragging=-1; selected_person=-1; pointer_down=false; employee_alert=0
+	_stop_navigation()
 	_changed(); message="직접 조작 실험을 불러왔다."
 
 func _tile(c: Vector2i,kind: String) -> void:
@@ -493,21 +650,20 @@ func _draw() -> void:
 			draw_rect(Rect2(Vector2(target*32),Vector2(32*minf(1,terrain.mining_progress/0.48),4)),Color("ffe4a5"))
 	if noise_age<1:
 		draw_arc(noise_pos,20+noise_age*90,0,TAU,36,Color(1,0.8,0.4,1-noise_age),2)
+	if not walking_route.is_empty():
+		var last=player.position+Vector2(0,27)
+		for step in walking_route:
+			var next: Vector2=step.point+Vector2(0,27)
+			draw_line(last,next,Color(0.67,0.82,0.68,0.55),2); draw_circle(next,3,Color("cee1b2")); last=next
+	if marker_time>0 or not walking_route.is_empty():
+		var color=Color("d6e8aa") if destination_valid else Color("dd7770")
+		draw_arc(destination-Vector2(0,4),13,0,TAU,24,color,2)
+		draw_line(destination-Vector2(0,12),destination-Vector2(0,35),color,2)
 
 func _verify_inputs() -> void:
 	# Native physics frames are used for motion and collision, not hand-set positions.
 	await get_tree().physics_frame
 	var failures=0
-	await _test_touch(0,Vector2(192,1255),true)
-	await _test_touch(1,Vector2(600,1255),true)
-	if not Input.is_action_pressed("walk_right") or not Input.is_action_pressed("leap"):
-		failures+=1; push_error("Two-finger move/jump input failed")
-	await _test_touch(1,Vector2(600,1255),false)
-	if not Input.is_action_pressed("walk_right") or Input.is_action_pressed("leap"):
-		failures+=1; push_error("Releasing jump cancelled movement")
-	await _test_touch(0,Vector2(192,1255),false)
-	if Input.is_action_pressed("walk_right"):
-		failures+=1; push_error("Touch movement stuck after release")
 	for i in range(15): await get_tree().physics_frame
 	var start=player.position
 	player.axis=1
@@ -527,7 +683,8 @@ func _verify_inputs() -> void:
 	var after=terrain.inventory.dirt+terrain.inventory.wood+terrain.inventory.stone+terrain.inventory.platform
 	if after<=before: failures+=1; push_error("Mined build_material not collected")
 	if not _save_test_roundtrip(): failures+=1; push_error("Terrain save roundtrip failed")
-	print("DIRECT PHYSICS CHECKS: ",failures," failures")
+	failures+=await _verify_navigation()
+	print("PHYSICS + TAP NAVIGATION CHECKS: ",failures," failures")
 	get_tree().quit(0 if failures==0 else 1)
 
 func _save_test_roundtrip() -> bool:
@@ -537,3 +694,61 @@ func _save_test_roundtrip() -> bool:
 func _test_touch(index: int,p: Vector2,pressed: bool) -> void:
 	var event=InputEventScreenTouch.new(); event.index=index; event.position=p; event.pressed=pressed
 	get_viewport().push_input(event,true); await get_tree().process_frame
+
+func _verify_navigation() -> int:
+	var failures=0
+	terrain=Terrain.new(); hatch_open=false; _rebuild_geometry()
+	player.position=Vector2(27*32,21*32-28); player.velocity=Vector2.ZERO
+	player.axis=0; navigation_testing=true
+	for i in range(15): await get_tree().physics_frame
+	# One mouse tap travels through the real viewport event pipeline.
+	mode="move"
+	var ground=Vector2(23*32+16,21*32)
+	await _test_click(get_canvas_transform()*ground)
+	if walking_route.is_empty(): failures+=1; push_error("Tap did not create route")
+	await _wait_navigation(360)
+	if player.position.distance_to(ground-Vector2(0,27))>15: failures+=1; push_error("Ground click did not arrive: "+str(player.position))
+	var upstairs=Vector2(24*32+16,14*32)
+	if not _navigate_to(upstairs): failures+=1; push_error("No upstairs route")
+	await _wait_navigation(840)
+	if player.position.distance_to(upstairs-Vector2(0,27))>18: failures+=1; push_error("Automatic upstairs traversal failed: "+str(player.position)+" "+message)
+	var cellar=Vector2(19*32+16,30*32)
+	if _navigate_to(cellar): failures+=1; push_error("Closed hatch route should fail")
+	hatch_open=true; _rebuild_geometry()
+	if not _navigate_to(cellar): failures+=1; push_error("Open hatch has no cellar route")
+	await _wait_navigation(1000)
+	if player.position.distance_to(cellar-Vector2(0,27))>18: failures+=1; push_error("Automatic cellar traversal failed: "+str(player.position)+" "+message)
+	# A buried wall tap approaches, selects the pickaxe and completes one tile.
+	var wall=Vector2i(24,28)
+	await _test_click(get_canvas_transform()*terrain.center(wall))
+	await _wait_navigation(480)
+	for i in range(22):
+		if automatic_mining: _work_target(0.05)
+	if terrain.cells.has(wall): failures+=1; push_error("Context wall tap did not mine")
+	if automatic_mining: failures+=1; push_error("Context mining did not stop after one tile")
+	# Counter tap must walk into range before the hire transaction.
+	await _test_click(get_canvas_transform()*Vector2(29*32,20*32))
+	await _wait_navigation(1000)
+	if not inn.hired: failures+=1; push_error("Counter tap did not approach and hire")
+	# Native one-finger touch is tested separately from mouse events.
+	var touch_goal=Vector2(26*32+16,21*32)
+	await _test_touch(3,get_canvas_transform()*touch_goal,true)
+	await _test_touch(3,get_canvas_transform()*touch_goal,false)
+	await _wait_navigation(360)
+	if player.position.distance_to(touch_goal-Vector2(0,27))>18: failures+=1; push_error("Native touch destination did not arrive")
+	_navigate_to(Vector2(22*32+16,21*32))
+	await _test_click(Vector2(125,1260))
+	if not walking_route.is_empty() or player.axis!=0: failures+=1; push_error("Cancel did not stop route")
+	_stop_navigation()
+	navigation_testing=false
+	return failures
+
+func _wait_navigation(frames: int) -> void:
+	for i in range(frames):
+		await get_tree().physics_frame
+		if walking_route.is_empty(): break
+
+func _test_click(p: Vector2) -> void:
+	for pressed in [true,false]:
+		var event=InputEventMouseButton.new(); event.button_index=MOUSE_BUTTON_LEFT; event.position=p; event.pressed=pressed
+		get_viewport().push_input(event,true); await get_tree().process_frame

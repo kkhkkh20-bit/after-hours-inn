@@ -1,12 +1,14 @@
 extends RefCounted
 ## UI selections do not cancel commands. Explicit replacement does.
 static func reset_view(host) -> void:
+	host.floor_journey=-1;host.journey_entry=""
 	host.pending_context_action.clear();host.pending_chat="";host.auto_floor_goal.clear()
 	if host.pointer!=null:host.pointer.reset()
 	if host.object_context!=null:host.object_context.close()
 
 static func cancel(host,quiet: bool=false) -> void:
 	var s=host.sim
+	host.floor_journey=-1;host.journey_entry=""
 	var paused: bool=s.data.paused;s.data.paused=false
 	if s.Sandbox.active(s):s.Prison.cancel(s)
 	if s.Tycoon.active(s):s.Tycoon.cancel_booking(s)
@@ -36,5 +38,6 @@ static func status(host) -> String:
 	if not s.data.get("booking_request",{}).is_empty():return "%s호 안내 중" %str(s.data.booking_request.room)
 	if s.data.get("service_target","")!="":return "식사 준비·서빙 중"
 	if not s.data.work.is_empty():return {"cook":"식사 조리 중","clean":"객실 청소 중","construction":"공사 중","dispose":"시설 가동 중","quick":"행동 중"}.get(s.data.work.get("type",""),"작업 중")
+	if host.floor_journey>=0:return "계단·사다리로 "+{0:"1층",1:"지하",2:"2층"}.get(host.floor_journey,"")+" 이동 중"
 	if s.data.excavation.intent!="":return "이동 중"
 	return ""

@@ -72,6 +72,8 @@ var hover_cell := Vector2i(99,99)
 var capturing := false
 var camera_focus := Vector3.ZERO
 var owner_beacon: Label3D
+var floor_journey: int=-1
+var journey_entry: String=""
 var earth_edges: Dictionary = {}
 var earth_faces: Array = []
 var viewed_floor := 0
@@ -896,6 +898,9 @@ func world_tap(point: Vector2,captured: Variant=null) -> void:
 	if object_context.panel.visible:
 		object_context.close()
 	if dig_mode!="":apply_dig_point(point);return
+	var transit=transit_at(point)
+	if not transit.is_empty() and not choices.any(func(c):return c.get("body",false) and c.kind!="owner"):
+		request_floor(int(transit.floor),str(transit.get("entry","")));return
 	if not choices.is_empty():
 		request_anchor=point
 		selection_options=choices
@@ -906,8 +911,8 @@ func world_tap(point: Vector2,captured: Variant=null) -> void:
 	if view_layer!="below":
 		if Selection.visible_floor(self,0) and point.distance_to(camera.unproject_position(world_point(Simulation.COUNTER,0,0.8)))<44:
 			object_context.open("counter");return
-		if Selection.visible_floor(self,0) and point.distance_to(camera.unproject_position(world_point(Simulation.STAIRS,0,0.4)))<44:
-			object_context.open("stairs");return
+		if Selection.visible_floor(self,0) and point.distance_to(camera.unproject_position(world_point(Simulation.STAIRS,0,0.4)))<30:
+			request_floor(0 if sim.data.player.floor==2 else 2);return
 		for number in ([1,2,3,4,5] if Sandbox.active(sim) else [1,2]):
 			var floor_=Sandbox.floor_of(number)
 			if not Selection.visible_floor(self,floor_):continue
@@ -956,6 +961,7 @@ func _physics_process(delta: float) -> void:
 		if not overview:frame_owner()
 		elif view_layer!="all":set_layer("below" if displayed_floor==1 else ("rooms" if displayed_floor==2 else "surface"))
 		object_context.close()
+	advance_floor_journey()
 	if not pending_context_action.is_empty() and sim.data.excavation.intent=="" and sim.data.work.is_empty():
 		var job=pending_context_action
 		if sim.data.player.floor==int(job.floor):
@@ -1489,9 +1495,53 @@ func context_items(kind_: String,id_: String) -> Array:
 		"system": return [["zones","넓은 지도 · 구역 보기"],["easy_toggle","쉬운 운영 끄기 · 고용 유지" if sim.data.get("tycoon",{}).get("easy",false) else "쉬운 운영 켜기 · 무료 직원 지원"],["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
 	return []
 
+func floor_route_step(target: int,entry: String="") -> bool:
+	if int(sim.data.player.floor)==target:return true
+	follow_owner(false)
+	if sim.data.player.floor==2 or (sim.data.player.floor==0 and target==2):return sim.queue_gallery()
+	if entry!="":return Sandbox.use_entrance(sim,entry)
+	return sim.queue_floor()
+
 func travel_to_floor(target: int) -> void:
-	if sim.data.player.floor==2 or (sim.data.player.floor==0 and target==2):sim.queue_gallery()
-	else:sim.queue_floor()
+	floor_route_step(target)
+
+func request_floor(target: int,entry: String="") -> void:
+	if object_context!=null:object_context.close()
+	if sim.data.paused:sim.note("일시정지 중입니다. 상단 재개를 눌러주세요.");return
+	if int(sim.data.player.floor)==target:frame_owner();return
+	Commands.cancel(self,true)
+	floor_journey=target;journey_entry=entry
+	follow_owner(true)
+	advance_floor_journey()
+
+func advance_floor_journey() -> void:
+	if floor_journey<0 or sim.data.paused:return
+	if sim.data.player.floor==floor_journey:
+		floor_journey=-1;journey_entry="";follow_owner(false);return
+	if sim.data.excavation.intent!="" or not sim.data.work.is_empty():return
+	if not floor_route_step(floor_journey,journey_entry):
+		floor_journey=-1;journey_entry="";sim.note("층 이동 경로가 막혀 있습니다. 다른 입구를 선택해주세요.")
+
+func transit_at(point: Vector2) -> Dictionary:
+	var best={};var distance=INF
+	if Sandbox.active(sim):
+		for e in sim.data.sandbox.entrances:
+			for floor_ in [0,1]:
+				if not Selection.visible_floor(self,floor_):continue
+				var pos: Vector2=e.top if floor_==0 else Vector2(e.bottom)
+				var foot=camera.unproject_position(world_point(pos,floor_,.1))
+				var head=camera.unproject_position(world_point(pos,floor_,1.65 if floor_==1 else .35))
+				var d=point.distance_to(Geometry2D.get_closest_point_to_segment(point,foot,head))
+				var label=camera.unproject_position(world_point(pos+Vector2(0,.9),floor_,.35))
+				if Rect2(label-Vector2(75,12),Vector2(150,24)).has_point(point):d=minf(d,12)
+				if d<30 and d<distance:best={"floor":0 if floor_==1 else 1,"entry":e.id};distance=d
+	for floor_ in [0,2]:
+		if not Selection.visible_floor(self,floor_):continue
+		var bottom=camera.unproject_position(world_point(Simulation.STAIRS,floor_,.2))
+		var upper=camera.unproject_position(world_point(Vector2(8,1),2,.2))
+		var d=point.distance_to(Geometry2D.get_closest_point_to_segment(point,bottom,upper))
+		if d<30 and d<distance:best={"floor":0 if sim.data.player.floor==2 else 2};distance=d
+	return best
 
 func context_action(kind_: String,id_: String,action: String) -> void:
 	if kind_ in ["person","conversation","actions","other"] and (not sim.data.people.has(id_) or sim.data.people[id_].state=="gone"):
@@ -1622,8 +1672,8 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		"stop":
 			if Sandbox.active(sim):stop_digging()
 			pending_context_action.clear(); sim.data.booking_request={}; sim.cancel_work(); sim.data.service_target=""; auto_floor_goal.clear(); return
-		"floor": auto_floor_goal.clear(); sim.queue_floor(); return
-		"gallery": auto_floor_goal.clear(); sim.queue_gallery(); return
+		"floor": request_floor(0 if sim.data.player.floor==1 else 1); return
+		"gallery": request_floor(0 if sim.data.player.floor==2 else 2); return
 		"hatch": sim.queue_command("hatch"); return
 		"lamp": sim.queue_command("lamp"); return
 		"dig","quiet": sim.data.stealth.quiet=action=="quiet"; sim.queue_dig(context_soil); return
@@ -1938,7 +1988,7 @@ func sandbox_tap(point: Vector2) -> bool:
 			var at: Vector2=e.top if floor_==0 else Vector2(e.bottom)
 			if point.distance_to(camera.unproject_position(world_point(at,floor_,0.2)))<22:
 				if floor_!=sim.data.player.floor:continue
-				object_context.open("portal",e.id);return true
+				request_floor(0 if floor_==1 else 1,e.id);return true
 	if sim.data.player.floor==1 and Selection.visible_floor(self,1):
 		for f in sim.data.sandbox.facilities:
 			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.5)))<26:object_context.open("prison",f.id,sim.Prison.summary(sim,f.id)) if f.type=="prison" else object_context.open("facility",f.id);return true
@@ -1982,7 +2032,7 @@ func sandbox_action(kind_: String,id_: String,action: String) -> bool:
 		"make_entrance":Excavation.shaft(sim,build_point);return true
 		"walk_here":sim.queue_move(build_point);return true
 		"walk_below":sim.queue_move(Vector2(build_cell));return true
-		"portal_use":Sandbox.use_entrance(sim,id_);return true
+		"portal_use":request_floor(0 if sim.data.player.floor==1 else 1,id_);return true
 		"portal_cover":
 			var e=Sandbox.entrance(sim,id_);e.open=not e.open;sim.data.sandbox.revision+=1;sim.note("입구를 열었다." if e.open else "덮개로 비밀 입구를 숨겼다.");return true
 		"surface_exit":
@@ -2038,7 +2088,7 @@ func sandbox_objects(point: Vector2) -> bool:
 		var p: Vector2=e.top if floor_==0 else Vector2(e.bottom)
 		if not Selection.visible_floor(self,floor_):continue
 		if point.distance_to(camera.unproject_position(world_point(p,floor_,0.1)))<44:
-			object_context.open("portal",e.id);return true
+			request_floor(0 if floor_==1 else 1,e.id);return true
 	if sim.data.player.floor==1 and Selection.visible_floor(self,1):
 		for f in sim.data.sandbox.facilities:
 			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.15)))<44:

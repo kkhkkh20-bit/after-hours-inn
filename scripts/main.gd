@@ -38,7 +38,7 @@ var surface_zoom := 26.0
 var basement_zoom := 14.0
 var overview := true
 var view_layer := "all"
-const CAMERA_ARM := Vector3(5,12,32)
+const CAMERA_ARM := Vector3(5,20,28)
 const CELLAR_OFFSET := Vector3(-3.25,-4.2,2.75)
 var cellar_lamp: OmniLight3D
 var light_spill: OmniLight3D
@@ -53,7 +53,7 @@ var holding_visual: Node3D
 var holding_position:=Vector2(99,99)
 var staff_marker: Label3D
 var vision_mesh: MeshInstance3D
-var show_vision := true
+var show_vision := false
 var muted := false
 var sound_clock := 0.0
 var last_warning := 0
@@ -64,6 +64,15 @@ var vision_clock := 0.0
 
 var episode=preload("res://scripts/episode.gd").new()
 var episode_ui
+var object_context
+var context_soil=Vector2i.ZERO
+var auto_floor_goal: Dictionary={}
+var pending_chat=""
+var touch_points: Dictionary={}
+var pinch_span=0.0
+var displayed_floor=-1
+var apron: Node3D
+var travel_marker: MeshInstance3D
 
 func material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -209,6 +218,7 @@ func build_surface() -> void:
 	preload("res://scripts/inn_architecture.gd").build(self)
 
 func _ready() -> void:
+	sim.travel_multiplier=1.7
 	ui_font = load("res://assets/fonts/InnKorean.otf")
 	surface = Node3D.new()
 	add_child(surface)
@@ -236,6 +246,7 @@ func _ready() -> void:
 	sun.light_energy = 0.35
 	sun.shadow_enabled = true
 	build_surface()
+	build_backdrop()
 	build_gallery()
 	box(Vector3(1,0.03,1),Vector3(-3.25,0.09,2.75),Color("243632"))
 	world_label("지하 입구 · 탭",Vector3(-3.25,0.4,2.75),surface)
@@ -281,12 +292,17 @@ func _ready() -> void:
 	camera.position = CAMERA_ARM
 	camera.look_at(Vector3.ZERO)
 	camera.current = true
+	travel_marker=MeshInstance3D.new(); var marker_mesh=CylinderMesh.new(); marker_mesh.top_radius=0.34; marker_mesh.bottom_radius=0.34; marker_mesh.height=0.025; marker_mesh.radial_segments=24
+	travel_marker.mesh=marker_mesh; travel_marker.material_override=material(Color("c4bf7a")); add_child(travel_marker); travel_marker.hide()
 	make_ui()
-	set_layer("all")
+	set_layer("surface")
 	episode_ui=preload("res://scripts/episode_ui.gd").new()
 	add_child(episode_ui); episode_ui.setup(self,episode)
 	var args := OS.get_cmdline_user_args()
-	if args.is_empty(): episode_ui.open()
+	if args.is_empty():
+		sim.start_gentle_opening(); episode.data.briefed=true; episode_ui.refresh()
+	if "--capture-context" in args or "--capture-context-clean" in args:
+		await capture_context("--capture-context" in args); return
 	if "--capture-episode" in args or "--capture-episode-cellar" in args:
 		await capture_episode("--capture-episode-cellar" in args)
 		return
@@ -434,6 +450,7 @@ func make_ui() -> void:
 	mobile_ui=preload("res://scripts/mobile_ui.gd").new()
 	add_child(mobile_ui)
 	mobile_ui.setup(self)
+	object_context=preload("res://scripts/object_context.gd").new(); add_child(object_context); object_context.setup(self)
 
 func room_text(number: int) -> String:
 	var room_: Dictionary=sim.data.rooms[str(number)]
@@ -446,6 +463,7 @@ func when_text(value: float) -> String:
 
 func refresh_ui() -> void:
 	mobile_ui.refresh()
+	if object_context!=null: object_context.refresh()
 
 func sync_actor(visual: Node3D, pos: Vector2, dt: float, floor_: int=0) -> void:
 	var before:=Vector2(visual.position.x,visual.position.z)
@@ -461,6 +479,10 @@ func sync_actor(visual: Node3D, pos: Vector2, dt: float, floor_: int=0) -> void:
 func sync_view(dt: float) -> void:
 	var d: Dictionary=sim.data
 	var surface_shown: bool=view_layer!="below"
+	if apron!=null: apron.visible=view_layer=="surface"
+	if travel_marker!=null:
+		travel_marker.visible=not d.excavation.path.is_empty()
+		if travel_marker.visible: travel_marker.position=world_point(d.excavation.path.back(),d.player.floor,0.05)
 	var cellar_shown: bool=view_layer!="surface"
 	viewed_floor=d.player.floor
 	surface.visible=surface_shown
@@ -525,15 +547,15 @@ func world_point(pos: Vector2, floor_: int, height: float=0.0) -> Vector3:
 	return Vector3(pos.x,height+Simulation.floor_height(pos,floor_),pos.y)+(CELLAR_OFFSET if floor_==1 else Vector3.ZERO)
 
 func focus_position() -> Vector3:
-	if overview:return CELLAR_OFFSET+Vector3(4,0.7,1) if view_layer=="below" else Vector3(5.5,1.4,1.4)
+	if overview:return CELLAR_OFFSET+Vector3(4,0.7,1) if view_layer=="below" else Vector3(0,1.3,-0.4)
 	return world_point(sim.data.player.pos,sim.data.player.floor)
 
 func set_layer(value: String) -> void:
 	view_layer=value
 	overview=true
 	camera_offset=Vector2.ZERO
-	camera.size=34.0 if value!="below" else 16.0
-	camera_focus=Vector3(5.5,1.4,1.4) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
+	camera.size=25.0 if value!="below" else 13.5
+	camera_focus=Vector3(0,1.3,-0.4) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
 	camera.position=camera_focus+CAMERA_ARM
 	camera.look_at(camera_focus)
 	sync_view(0)
@@ -665,7 +687,7 @@ func load_game() -> void:
 	sync_view(0)
 
 func pan_camera(relative: Vector2) -> void:
-	var scale_: float=camera.size/get_viewport().get_visible_rect().size.y
+	var scale_: float=camera.size/get_viewport().get_visible_rect().size.x
 	var right:=Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
 	var down:=Vector2(camera.global_basis.z.x,camera.global_basis.z.z).normalized()
 	camera_offset-=(right*relative.x+down*relative.y)*scale_
@@ -673,6 +695,24 @@ func pan_camera(relative: Vector2) -> void:
 
 func _input(event: InputEvent) -> void:
 	if episode_ui!=null and episode_ui.opened: return
+	if event is InputEventMagnifyGesture:
+		camera.size=clampf(camera.size/event.factor,9,40); get_viewport().set_input_as_handled(); return
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			touch_points[event.index]=event.position
+			if touch_points.size()>=2:
+				var points=touch_points.values(); pinch_span=points[0].distance_to(points[1]); touch_dragged=true; touch_blocked=true; get_viewport().set_input_as_handled(); return
+		else:
+			var was_pinch=pinch_span>0; touch_points.erase(event.index)
+			if was_pinch:
+				if touch_points.is_empty(): pinch_span=0
+				get_viewport().set_input_as_handled(); return
+	if event is InputEventScreenDrag and touch_points.has(event.index):
+		touch_points[event.index]=event.position
+		if touch_points.size()>=2:
+			var points=touch_points.values(); var span: float=points[0].distance_to(points[1])
+			if span>20 and pinch_span>20: camera.size=clampf(camera.size*pinch_span/span,9,40)
+			pinch_span=span; get_viewport().set_input_as_handled(); return
 	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
 		mouse_origin=event.position
 		mouse_dragged=false
@@ -729,27 +769,49 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func world_tap(point: Vector2) -> void:
 	if mobile_ui.blocks_point(point):return
+	if object_context.panel.visible:
+		object_context.close(); return
 	if (view_layer=="surface" and sim.data.player.floor==1) or (view_layer=="below" and sim.data.player.floor!=1):return
 	pointer_position=point
+	if sim.data.player.floor==0:
+		for number in [1,2]:
+			if point.distance_to(camera.unproject_position(world_point(sim.room_target(number)+Vector2(1,0),0,0.55)))<30:
+				object_context.open("room",str(number)); return
+		if sim.data.staff.hired and point.distance_to(camera.unproject_position(world_point(sim.data.staff.pos,0,0.9)))<28:
+			object_context.open("staff"); return
 	var target_id:=pick_person(point)
 	if target_id!="":
 		sim.data.excavation.path=[]
 		sim.data.excavation.intent=""
 		sim.data.ops.selected=target_id
+		object_context.open("person",target_id)
 		return
+	if sim.data.player.floor==0 and point.distance_to(camera.unproject_position(world_point(Simulation.COUNTER,0,0.8)))<34:
+		object_context.open("counter"); return
 	if point.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<32 and sim.data.player.floor==0:
-		sim.queue_floor()
-		return
+		object_context.open("hatch"); return
 	if sim.data.player.floor==1:
+		if point.distance_to(camera.unproject_position(world_point(Vector2(-0.35,-1),1,1.6)))<24:
+			object_context.open("lamp"); return
+		if point.distance_to(camera.unproject_position(world_point(Vector2.ZERO,1,1.9)))<30:
+			object_context.open("hatch"); return
 		var soil:=soil_at(point)
 		if soil!=Vector2i(99,99):
-			sim.queue_dig(soil)
-			return
+			context_soil=soil; object_context.open("soil"); return
 	if sim.data.player.floor==0 and point.distance_to(camera.unproject_position(Vector3(8,0.3,4.5)))<50:
-		sim.queue_gallery()
-		return
+		object_context.open("stairs"); return
+	if point.distance_to(camera.unproject_position(world_point(sim.data.player.pos,sim.data.player.floor,0.85)))<22:
+		object_context.open("owner"); return
+	# Upstairs walking can be requested directly, without an external floor button.
+	if sim.data.player.floor==0 and view_layer!="below":
+		var origin=camera.project_ray_origin(point); var ray=camera.project_ray_normal(point)
+		var upper: Variant=Plane(Vector3.UP,3.28).intersects_ray(origin,ray)
+		if upper!=null and upper.z<-3.5 and Simulation.gallery_walkable(Vector2(upper.x,upper.z)):
+			auto_floor_goal={"floor":2,"point":Vector2(upper.x,upper.z)}; sim.queue_gallery(); return
 	var hit: Variant=walking_hit(point)
 	if hit!=null:
+		sim.data.service_target=""
+		auto_floor_goal.clear()
 		sim.data.ops.selected=""
 		sim.queue_move(Vector2(hit.x,hit.z))
 
@@ -760,10 +822,19 @@ func _physics_process(delta: float) -> void:
 		var right:=Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
 		var down:=Vector2(camera.global_basis.z.x,camera.global_basis.z.z).normalized()
 		var speed_: float=1.15 if sim.data.ops.drag!="" else (2.2 if sim.data.player.carry!="" else 2.9)
-		sim.move_player((right*direction.x+down*direction.y)*delta*speed_*sim.data.speed)
+		sim.move_player((right*direction.x+down*direction.y)*delta*speed_*sim.data.speed*sim.travel_multiplier)
 		sim.tick(delta*sim.data.speed)
-		episode.tick(delta*sim.data.speed,episode_facts())
+		if not sim.gentle_opening(): episode.tick(delta*sim.data.speed,episode_facts())
+		if pending_chat!="" and sim.data.excavation.intent=="" and sim.data.work.is_empty():
+			var id=pending_chat; pending_chat=""
+			if sim.data.people.has(id) and Simulation.Intrigue.close(sim,id): object_context.open("person",id,str(sim.data.people[id].trait))
 		update_stealth_audio(delta)
+	if sim.data.player.floor!=displayed_floor:
+		displayed_floor=sim.data.player.floor
+		set_layer("below" if displayed_floor==1 else "surface")
+		object_context.close()
+	if not auto_floor_goal.is_empty() and sim.data.player.floor==int(auto_floor_goal.floor) and sim.data.excavation.intent=="":
+		sim.queue_move(auto_floor_goal.point); auto_floor_goal.clear()
 	if sim.data.player.floor==1:
 		hover_cell=soil_at(pointer_position)
 		if dig_cursor!=null:
@@ -867,215 +938,6 @@ func frame_owner() -> void:
 	camera.position=camera_focus+CAMERA_ARM
 	camera.look_at(camera_focus)
 	sync_view(0)
-
-func input_verify() -> void:
-	# No keyboard events: actual GUI buttons, ground clicks and touch events.
-	get_window().size=Vector2i(540,1020)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	assert(get_viewport().get_visible_rect().size.y>get_viewport().get_visible_rect().size.x)
-	assert(not mobile_ui.target.visible and not mobile_ui.alert_panel.visible)
-	assert(mobile_ui.footer.get_global_rect().end.x<=get_viewport().get_visible_rect().size.x)
-	get_window().size=Vector2i(1600,900)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	set_physics_process(false)
-	var checks: Array=[]
-	var geometry: Array=sim.obstacles.duplicate()
-	checks.append(get_viewport().get_visible_rect().size.x>get_viewport().get_visible_rect().size.y)
-	frame_owner()
-	var destination:=Vector2(0.25,0.25)
-	await pointer_click(camera.unproject_position(Vector3(destination.x,0.08,destination.y)))
-	checks.append(sim.data.excavation.intent=="move")
-	sim.tick(3)
-	checks.append(sim.data.player.pos.distance_to(destination)<0.1)
-	frame_owner()
-	destination=Vector2(-1.25,1.75)
-	await pointer_click(camera.unproject_position(Vector3(destination.x,0.08,destination.y)),true)
-	checks.append(sim.data.excavation.intent=="move")
-	sim.tick(4)
-	checks.append(sim.data.player.pos.distance_to(destination)<0.1)
-	var before_drag: Vector2=sim.data.player.pos
-	var touch_down:=InputEventScreenTouch.new()
-	touch_down.position=Vector2(300,500)
-	touch_down.pressed=true
-	get_viewport().push_input(touch_down,true)
-	var swipe:=InputEventScreenDrag.new()
-	swipe.position=Vector2(360,550)
-	swipe.relative=Vector2(60,50)
-	get_viewport().push_input(swipe,true)
-	var touch_up:=InputEventScreenTouch.new()
-	touch_up.position=swipe.position
-	touch_up.pressed=false
-	get_viewport().push_input(touch_up,true)
-	await get_tree().process_frame
-	checks.append(camera_offset.length()>0 and sim.data.player.pos==before_drag and sim.data.excavation.intent=="")
-	await click_control("center")
-	checks.append(camera_offset==Vector2.ZERO)
-	var emulated:=InputEventMouseButton.new()
-	emulated.device=-1
-	emulated.button_index=MOUSE_BUTTON_LEFT
-	emulated.position=Vector2(300,500)
-	emulated.pressed=true
-	get_viewport().push_input(emulated,true)
-	emulated=InputEventMouseButton.new()
-	emulated.device=-1
-	emulated.button_index=MOUSE_BUTTON_LEFT
-	emulated.position=Vector2(300,500)
-	emulated.pressed=false
-	get_viewport().push_input(emulated,true)
-	await get_tree().process_frame
-	checks.append(sim.data.excavation.intent=="")
-	await click_control("tab_메뉴")
-	checks.append(mobile_ui.drawer.visible)
-	sim.data.excavation.intent=""
-	await pointer_click(Vector2(350,500),true)
-	checks.append(sim.data.excavation.intent=="")
-	await click_control("save")
-	var money: int=sim.data.money
-	sim.data.money=999
-	await click_control("load")
-	checks.append(sim.data.money==money)
-	await click_control("close")
-	await click_control("pause")
-	checks.append(sim.data.paused)
-	await click_control("pause")
-	await click_control("speed")
-	checks.append(sim.data.speed==3 and not sim.data.paused)
-	await click_control("speed")
-	# Full normal service via pointer buttons and target selection.
-	sim=Simulation.new()
-	sim.obstacles.assign(geometry)
-	sim.rebuild_grid()
-	frame_owner()
-	await click_control("tab_영업")
-	await touch_control("room1")
-	checks.append(sim.data.excavation.intent=="command:room1")
-	sim.tick(6)
-	checks.append(sim.data.rooms["1"].guest=="guest_1" and sim.near_counter())
-	sim.tick(17)
-	await click_control("tab_영업")
-	await click_control("prepare")
-	sim.tick(4)
-	checks.append(sim.data.player.carry!="")
-	sync_view(0)
-	checks.append(mobile_ui.primary.text.contains("전달"))
-	await click_control("primary")
-	sim.tick(10)
-	checks.append(sim.data.served==1 and sim.data.player.carry=="")
-	await click_control("tab_관리")
-	await click_control("staff")
-	sim.tick(8)
-	checks.append(sim.data.staff.hired and sim.data.staff.delegated)
-	# One covert contract through the same pointer-only UI.
-	sim=Simulation.new()
-	sim.obstacles.assign(geometry)
-	sim.rebuild_grid()
-	frame_owner()
-	await click_control("tab_의뢰")
-	await click_control("contract")
-	sim.tick(6)
-	checks.append(sim.data.ops.contract.state=="active")
-	frame_owner()
-	var guest: Vector2=sim.data.people.guest_1.pos
-	await pointer_click(camera.unproject_position(Vector3(guest.x,0.65,guest.y)),true)
-	await click_control("secondary")
-	sim.tick(8)
-	checks.append(sim.data.people.guest_1.state=="down")
-	await click_control("primary")
-	sim.tick(1)
-	checks.append(sim.data.ops.drag=="guest_1")
-	await click_control("floor")
-	sim.tick(10)
-	checks.append(sim.data.player.floor==1 and sim.data.people.guest_1.floor==1)
-	frame_owner()
-	await pointer_click(camera.unproject_position(world_point(Vector2(-2,0),1,0.08)))
-	sim.tick(5)
-	await click_control("secondary")
-	checks.append(sim.data.ops.built)
-	await click_control("secondary")
-	checks.append(sim.data.people.guest_1.state=="captive" and sim.data.ops.drag=="")
-	await click_control("secondary")
-	checks.append(sim.data.stealth.quiet)
-	await click_control("primary")
-	sim.tick(12)
-	checks.append(sim.data.cells.size()==56 and sim.data.excavation.durability==23)
-	sim.tick(20)
-	checks.append(sim.data.ops.contract.state=="ready")
-	await click_control("floor")
-	sim.tick(5)
-	await click_control("tab_의뢰")
-	await click_control("contract")
-	sim.tick(5)
-	checks.append(sim.data.ops.contract.state=="paid")
-	await click_control("tab_메뉴")
-	await click_control("save")
-	sim.data.ops.contract.state="offered"
-	await click_control("load")
-	checks.append(sim.data.ops.contract.state=="paid" and sim.data.ops.built)
-	await click_control("close")
-	sim=Simulation.new()
-	sim.obstacles.assign(geometry)
-	sim.rebuild_grid()
-	sim.queue_floor()
-	sim.tick(5)
-	frame_owner()
-	await pointer_click(camera.unproject_position(world_point(Vector2(-3.5,0),1,0.9)),true)
-	checks.append(sim.data.excavation.intent=="dig" and sim.data.excavation.cell=="-4,0")
-	sim.tick(8)
-	checks.append(sim.data.cells.has("-4,0"))
-	sim=Simulation.new()
-	sim.obstacles.assign(geometry)
-	sim.rebuild_grid()
-	frame_owner()
-	await click_control("secondary")
-	sim.tick(15)
-	frame_owner()
-	checks.append(sim.data.player.floor==2 and Simulation.floor_height(sim.data.player.pos,2)==3.2)
-	checks.append(surface.visible and actors.guest_1.visible and gallery_deck.visible)
-	var upstairs_target:=Vector2(3.25,-4.25)
-	await pointer_click(camera.unproject_position(Vector3(upstairs_target.x,3.28,upstairs_target.y)),true)
-	sim.tick(4)
-	checks.append(sim.data.player.pos.distance_to(upstairs_target)<0.1)
-	checks.append(pick_person(camera.unproject_position(Vector3(sim.data.people.guest_1.pos.x,0.65,sim.data.people.guest_1.pos.y)))=="")
-	await click_control("floor")
-	sim.tick(12)
-	sync_view(0)
-	checks.append(sim.data.player.floor==0 and player.position.y<0.1)
-	# Overview and floor filters operate the camera, never teleport the owner.
-	sim=Simulation.new()
-	sim.obstacles.assign(geometry)
-	sim.rebuild_grid()
-	await click_control("overview")
-	checks.append(overview and surface.visible and basement.visible and gallery.visible)
-	var fixed_focus:=focus_position()
-	var yard:=Vector2(16.25,5.25)
-	await pointer_click(camera.unproject_position(world_point(yard,0,0.08)),true)
-	sim.tick(18)
-	checks.append(sim.data.player.pos.distance_to(yard)<0.1 and focus_position()==fixed_focus)
-	var before_filter: Vector2=sim.data.player.pos
-	await click_control("below_view")
-	checks.append(not surface.visible and basement.visible and sim.data.player.pos==before_filter and sim.data.player.floor==0)
-	await click_control("overview")
-	await click_control("floor")
-	sim.tick(18)
-	sync_view(0)
-	checks.append(sim.data.player.floor==1 and surface.visible and basement.visible)
-	checks.append(player.position.distance_to(world_point(sim.data.player.pos,1,0.08))<0.01)
-	await click_control("tab_관리")
-	await click_control("lamp")
-	checks.append(not sim.data.excavation.lamp_on and not cellar_lamp.visible and not light_spill.visible)
-	await click_control("hatch")
-	checks.append(not sim.data.excavation.hatch_open)
-	await click_control("close")
-	await click_control("floor")
-	sim.tick(5)
-	checks.append(sim.data.player.floor==0 and sim.data.excavation.hatch_open)
-	var failed:=0
-	for i in range(checks.size()):
-		if not checks[i]:failed+=1;print("POINTER FAIL: ",i)
-	print("Landscape/pointer verification: %d checks, %d failures" % [checks.size(),failed])
-	get_tree().quit(0 if failed==0 else 1)
 
 # Small deterministic procedural sounds: no external service or paid asset.
 func sound_sample(kind: String) -> AudioStreamWAV:
@@ -1254,7 +1116,12 @@ func episode_facts() -> Dictionary:
 	var bodies=0
 	for p in sim.data.people.values():
 		if p.state in ["down","captive"]: bodies+=1
-	return {"money":sim.data.money,"served":sim.data.served,"near_counter":sim.near_counter(),"risk":int(sim.data.stealth.suspicion)+int(sim.data.ops.reports)*12,"bodies":bodies,"hatch":sim.data.excavation.hatch_open,"dug":maxi(0,sim.data.cells.size()-55)}
+	return {"opening":sim.gentle_opening(),"booked":2-sim.data.rooms.values().filter(func(room_): return room_.guest=="").size(),"money":sim.data.money,"served":sim.data.served,"near_counter":sim.near_counter(),"risk":int(sim.data.stealth.suspicion)+int(sim.data.ops.reports)*12,"bodies":bodies,"hatch":sim.data.excavation.hatch_open,"dug":maxi(0,sim.data.cells.size()-55)}
+
+func start_challenge() -> void:
+	sim.data.opening.active=false
+	episode.data.elapsed=0; episode.data.briefed=true
+	sim.note("운영에 익숙해졌다. 이제 첫날 밤의 사건이 시작된다.")
 
 func episode_coins(amount: int) -> void:
 	sim.data.money+=amount
@@ -1307,3 +1174,210 @@ func verify_episode_playthrough(capture: bool=false) -> int:
 	assert(not episode_ui.panel.visible and not sim.data.paused and episode.data.freeplay)
 	print("3D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed")
 	return 0
+
+func context_stats() -> String:
+	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
+
+func context_title(kind_: String,id_: String) -> String:
+	if kind_=="person": return str(sim.data.people[id_].name)
+	if kind_=="room": return room_text(int(id_))
+	return {"counter":"접수대 · 장부","hatch":"지하 입구","stairs":"계단","soil":"흙벽","lamp":"지하 등불","staff":"직원","owner":"여관 주인","system":"여관 설정","actions":"손님에게 할 행동"}.get(kind_,"여관")
+
+func context_anchor(kind_: String,id_: String) -> Vector2:
+	var pos: Vector2=Simulation.COUNTER; var floor_: int=sim.data.player.floor
+	match kind_:
+		"person","actions":
+			if sim.data.people.has(id_): pos=sim.data.people[id_].pos; floor_=sim.data.people[id_].floor
+		"room": pos=sim.room_target(int(id_)); floor_=0
+		"hatch": pos=Vector2.ZERO if floor_==1 else Simulation.HATCH
+		"stairs": pos=Simulation.STAIRS
+		"soil": pos=Vector2(context_soil)
+		"lamp": pos=Vector2(-0.35,-1)
+		"staff": pos=sim.data.staff.pos; floor_=0
+		"owner": pos=sim.data.player.pos
+	return camera.unproject_position(world_point(pos,floor_,0.9))
+
+func context_items(kind_: String,id_: String) -> Array:
+	if sim.data.paused: return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
+	match kind_:
+		"person":
+			var p: Dictionary=sim.data.people[id_]
+			if p.state in ["down","captive"]: return [["drag","끌기 / 석방"],["greet","상태 확인"]]
+			if p.state in ["waiting","arriving"]:
+				var items=[["admit1","1호로 안내",sim.data.rooms["1"].guest=="" and not sim.data.rooms["1"].dirty],["admit2","2호로 안내",sim.data.rooms["2"].guest=="" and not sim.data.rooms["2"].dirty],["greet","말 걸기"]]
+				if not sim.gentle_opening() or sim.data.served>=3: items.append(["actions","다른 행동"])
+				return items
+			var items=[["service","식사 내어주기"],["greet","말 걸기"]]
+			if not sim.gentle_opening() or sim.data.served>=3: items.append(["actions","다른 행동"])
+			return items
+		"actions": return [["dismiss","내보내기"],["subdue","제압 시도"],["contract","의뢰 확인"],["protect","의뢰 거절 · 보호"]]
+		"counter":
+			if sim.gentle_opening() and sim.data.served<1: return [["journal","운영 안내"],["system","저장 · 화면 설정"]]
+			return [["journal","오늘의 장부 · 사건/결산"],["staff","직원 고용 / 업무 맡기기"],["repair","도구 수리 · 2닢"],["system","저장 · 화면 설정"]]
+		"hatch": return [["floor","올라가기" if sim.data.player.floor==1 else "내려가기"],["hatch","덮개 열기 / 닫기"],["lamp","지하 등불 켜기 / 끄기"]]
+		"lamp": return [["lamp","켜기 / 끄기"]]
+		"stairs": return [["gallery","1층으로 내려가기" if sim.data.player.floor==2 else "2층으로 올라가기"]]
+		"room": return [["assign","선택 손님에게 배정"],["clean","청소하기"]]
+		"soil":
+			if sim.gentle_opening() and sim.data.served<3: return [["dig","여기 파기 · 4초"]]
+			return [["dig","빠르게 파기 · 4초"],["quiet","조용히 파기 · 10초"]]
+		"staff": return [["staff","서빙 위임 전환"],["explain","말 걸기 · 소음 설명"]]
+		"owner":
+			return [["stop","현재 행동 취소"],["journal","운영 안내 · 장부"],["drop","운반 내려놓기"],["system","저장 · 화면 설정"]]
+		"system": return [["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
+	return []
+
+func context_action(kind_: String,id_: String,action: String) -> void:
+	match action:
+		"resume": sim.data.paused=false; return
+		"pause": sim.data.paused=true; return
+		"journal": episode_ui.open(); return
+		"system": object_context.open("system"); return
+		"actions": object_context.open("actions",id_); return
+		"overview": set_layer("surface" if sim.data.player.floor!=1 else "below"); return
+		"follow": frame_owner(); camera.size=18; return
+		"save": save_game(); return
+		"load": load_game(); return
+		"fullscreen": DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if DisplayServer.window_get_mode()!=DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_WINDOWED); return
+		"stop": sim.cancel_work(); sim.data.service_target=""; auto_floor_goal.clear(); return
+		"floor": auto_floor_goal.clear(); sim.queue_floor(); return
+		"gallery": auto_floor_goal.clear(); sim.queue_gallery(); return
+		"hatch": sim.queue_command("hatch"); return
+		"lamp": sim.queue_command("lamp"); return
+		"dig","quiet": sim.data.stealth.quiet=action=="quiet"; sim.queue_dig(context_soil); return
+		"service": sim.request_direct_service(id_); return
+		"drop": Simulation.Intrigue.drag_or_release(sim); return
+		"clean": sim.queue_command("clean"+id_); return
+		"assign":
+			var selected: String=sim.data.ops.selected
+			if selected=="" or not sim.data.people.has(selected): sim.note("먼저 배정할 손님을 선택하자."); return
+			sim.queue_command("admit"+id_,selected); return
+	if action=="greet": pending_chat=id_
+	if kind_ in ["person","actions"]: sim.data.ops.selected=id_
+	sim.queue_command(action,id_)
+
+func build_backdrop() -> void:
+	# Surround the inn with a readable courtyard/road instead of a void.
+	apron=Node3D.new(); surface.add_child(apron); world_root=apron
+	box(Vector3(38,0.18,20),Vector3(3,-0.31,16),Color("4f5142"))
+	for x in range(-12,20,4):
+		box(Vector3(1.5,0.025,1.0),Vector3(x,-0.2,8),Color("686858"))
+	world_root=surface
+	box(Vector3(80,0.2,45),Vector3(0,-0.5,-32),Color("35433e"))
+	box(Vector3(10,0.23,45),Vector3(1,-0.48,-32),Color("6d6654"))
+	for x in [-22,-17,-12,12,17,22]:
+		for z in [-15,-25,-35]:
+			box(Vector3(0.3,3.2,0.3),Vector3(x,1.2,z),Color("493b2d"))
+			var crown=MeshInstance3D.new(); var mesh_=CylinderMesh.new()
+			mesh_.top_radius=0; mesh_.bottom_radius=1.7; mesh_.height=4.0; mesh_.radial_segments=5
+			crown.mesh=mesh_; crown.material_override=material(Color("304d43")); surface.add_child(crown); crown.position=Vector3(x,3.4,z)
+	for x in range(-22,23,3):
+		box(Vector3(0.18,1.6,0.18),Vector3(x,0.4,-13),Color("64553e"))
+		if abs(x)>3: box(Vector3(3,0.14,0.14),Vector3(x+1.4,0.75,-13),Color("776547"))
+	world_root=surface
+
+func click_context(key: String) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await pointer_click(object_context.controls[key].get_global_rect().get_center())
+	await get_tree().process_frame
+
+func input_verify() -> void:
+	get_window().size=Vector2i(540,1020)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	set_physics_process(false)
+	var checks: Array=[]
+	var geometry_: Array=sim.obstacles.duplicate()
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.travel_multiplier=1.7
+	sim.data.player.pos=Vector2(-7,3.25)
+	sim.spawn_guest(); sim.data.people.guest_2.pos=Vector2(-3.75,3.25)
+	set_layer("surface"); sync_view(0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	checks.append(get_viewport().get_visible_rect().size.y>get_viewport().get_visible_rect().size.x)
+	checks.append(not mobile_ui.root.visible and not episode_ui.journal.visible)
+	var p: Vector2=sim.data.people.guest_2.pos
+	await pointer_click(camera.unproject_position(world_point(p,0,0.65)),true)
+	checks.append(object_context.panel.visible and object_context.target=="guest_2")
+	checks.append(object_context.controls.has("admit2"))
+	var before: int=sim.data.money
+	await click_context("admit2")
+	checks.append(sim.data.money==before and sim.data.rooms["2"].guest=="")
+	sim.tick(0.1)
+	checks.append(sim.data.money==before)
+	sim.tick(4)
+	checks.append(sim.data.rooms["2"].guest=="guest_2" and sim.data.money==before+sim.data.people.guest_2.rate)
+	checks.append(sim.data.people.guest_1.state=="waiting" and not sim.near_counter())
+	sim.tick(12)
+	checks.append(sim.data.people.guest_2.state=="staying" and sim.data.people.guest_2.pos.distance_to(sim.room_target(2))<0.1)
+	checks.append(sim.request_direct_service("guest_2"))
+	sim.tick(15)
+	checks.append(sim.data.served==1 and sim.data.player.carry=="")
+	# Native touch still gives one destination and uses the faster owner speed.
+	set_layer("surface"); sync_view(0)
+	var dest=Vector2(-5.25,4.25)
+	await pointer_click(camera.unproject_position(world_point(dest,0,0.08)),true)
+	checks.append(sim.data.excavation.intent=="move")
+	sim.tick(3)
+	checks.append(sim.data.player.pos.distance_to(dest)<0.1)
+	object_context.open("owner"); await click_context("stop")
+	checks.append(sim.data.excavation.intent=="")
+	var upper_goal=Vector2(-5.25,-4.25)
+	await pointer_click(camera.unproject_position(world_point(upper_goal,2,0.08)))
+	checks.append(not auto_floor_goal.is_empty())
+	sim.tick(12); _physics_process(0); sim.tick(4)
+	checks.append(sim.data.player.floor==2 and sim.data.player.pos.distance_to(upper_goal)<0.1)
+	object_context.open("stairs"); await click_context("gallery"); sim.tick(12)
+	checks.append(sim.data.player.floor==0)
+	set_layer("surface"); sync_view(0)
+	await pointer_click(camera.unproject_position(world_point(Simulation.HATCH,0,0.15)))
+	checks.append(object_context.kind=="hatch")
+	await click_context("floor"); sim.tick(4)
+	checks.append(sim.data.player.floor==1)
+	set_layer("below"); sync_view(0)
+	var count: int=sim.data.cells.size()
+	await pointer_click(camera.unproject_position(world_point(Vector2(-3.5,0),1,0.9)))
+	checks.append(object_context.kind=="soil")
+	await click_context("quiet"); sim.tick(15)
+	checks.append(sim.data.cells.size()==count+1 and sim.data.stealth.quiet)
+	object_context.open("system"); await click_context("save")
+	before=sim.data.money; sim.data.money=999
+	object_context.open("system"); await click_context("load")
+	checks.append(sim.data.money==before and sim.data.cells.size()==count+1)
+	object_context.open("system"); await click_context("pause")
+	checks.append(sim.data.paused)
+	object_context.open("owner"); await click_context("resume")
+	checks.append(not sim.data.paused)
+	# Opening uses physical arrivals, no queue at the counter, and no countdown.
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid()
+	sim.start_gentle_opening()
+	checks.append(sim.data.people.guest_1.state=="arriving" and sim.data.people.guest_1.pos.x>10)
+	sim.tick(25)
+	checks.append(sim.data.people.guest_1.state=="waiting" and sim.data.people.guest_1.pos.distance_to(Simulation.ENTRY)>2)
+	sim.tick(60)
+	checks.append(sim.data.serial==1 and sim.waiting().size()==1)
+	var elapsed=episode.data.elapsed
+	_physics_process(0.1)
+	checks.append(episode.data.elapsed==elapsed and episode_facts().opening)
+	checks.append(context_items("person","guest_1").size()==3 and context_items("soil","").size()==1)
+	var failed=0
+	for i in range(checks.size()):
+		if not checks[i]: failed+=1; print("CONTEXT POINTER FAIL ",i)
+	print("3D CONTEXT POINTER CHECKS: %d checks, %d failures" %[checks.size(),failed])
+	get_tree().quit(1 if failed else 0)
+
+func capture_context(show_menu: bool) -> void:
+	capturing=true; episode.data.briefed=true
+	sim.data.player.pos=Simulation.COUNTER; sim.assign_room(1); sim.toggle_staff(); sim.tick(18)
+	sim.spawn_guest(); sim.data.people.guest_2.pos=Vector2(-3.75,2.25)
+	sim.data.opening={"active":true,"natural":true}
+	set_layer("surface"); sync_view(0); episode_ui.refresh()
+	if show_menu:
+		sim.data.ops.selected="guest_2"; object_context.open("person","guest_2")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	object_context.refresh()
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/context-3d-"+("guest" if show_menu else "inn")+".png")
+	get_tree().quit()

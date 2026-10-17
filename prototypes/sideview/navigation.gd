@@ -22,7 +22,7 @@ func clear_at(p: Vector2) -> bool:
 func _surface(c: Vector2i) -> bool:
 	return terrain.cells.has(c) or (not hatch_open and c.y==21 and c.x in [14,15])
 func _ladder(c: Vector2i) -> bool:
-	return c.x==15 and c.y>=14 and c.y<=30
+	return c.x==15 and c.y>=0 and c.y<=26
 func _segment_clear(a: Vector2,b: Vector2,jump: bool=false) -> bool:
 	for i in range(1,13):
 		var t=i/12.0
@@ -34,7 +34,7 @@ func rebuild(map,open_hatch: bool,carrying: bool=false) -> void:
 	terrain=map; hatch_open=open_hatch; revision=map.revision
 	graph.clear(); nodes.clear(); cells_by_id.clear(); edge_kinds.clear()
 	for x in range(1,terrain.WIDTH-1):
-		for y in range(2,terrain.HEIGHT-1):
+		for y in range(-8,terrain.HEIGHT-1):
 			var c=Vector2i(x,y)
 			if (_surface(c) or _ladder(c)) and clear_at(world(c)):
 				var id=nodes.size(); nodes[c]=id; cells_by_id[id]=c; graph.add_point(id,world(c))

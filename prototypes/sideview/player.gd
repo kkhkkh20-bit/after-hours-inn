@@ -1,8 +1,9 @@
 extends CharacterBody2D
-const RUN_SPEED = 210.0
+const RUN_SPEED = 300.0
 const ACCELERATION = 1400.0
 const GRAVITY = 1100.0
 const JUMP_SPEED = -455.0
+var speed_factor=1.0
 var axis = 0.0
 var jump_requested = false
 var jump_held = false
@@ -32,7 +33,7 @@ func _physics_process(delta: float) -> void:
 	jump_requested=false
 	ignore_platforms=maxf(0,ignore_platforms-delta)
 	set_collision_mask_value(3,ignore_platforms<=0 and not (climbing and climb_axis>0))
-	var top_speed=RUN_SPEED*(0.43 if crouch else 1.0)*(0.55 if carrying else 1.0)
+	var top_speed=RUN_SPEED*speed_factor*(0.43 if crouch else 1.0)*(0.55 if carrying else 1.0)
 	velocity.x=move_toward(velocity.x,axis*top_speed,ACCELERATION*delta)
 	if absf(axis)>0.05: facing=1 if axis>0 else -1
 	if climbing:

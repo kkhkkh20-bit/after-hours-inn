@@ -1,9 +1,12 @@
-First Night / Godot 4.7.2 stable / Compatibility
-3D: 146 simulation checks + 45 pointer checks + 23 episode checks, zero failures.
-2D: 31 business checks + 17 terrain checks + 23 episode checks, zero failures.
-2D actual physics/tap navigation suite: zero failures.
-Both real-business episode playthroughs: booking, hired staff service, event decisions, rent payment, ending, save/load and freeplay passed.
-Shared episode and UI sources compared with cmp in CI.
-Actual Linux OpenGL Compatibility / Mesa portrait screenshots: inn, cellar and completed ending in both versions visually reviewed.
-Web and Windows exported. Physical Windows/Android/iPhone QA remains unverified.
-Not a finished commercial game; see docs/episode-v1.md for exact scope and limitations.
+1.1 direct context + gentle opening — Linux Godot 4.7.2
+3D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed
+EPISODE CHECKS: 23 checks, 0 failures
+Simulation verification: 146 checks, 0 failures
+3D CONTEXT POINTER CHECKS: 29 checks, 0 failures
+2D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed
+EPISODE CHECKS: 23 checks, 0 failures
+SIDEVIEW RULE CHECKS: 31 checks; 0 failures
+SANDBOX TERRAIN CHECKS: 17 checks; 0 failures
+2D LOCAL RECEPTION CHECKS: 0 failures
+PHYSICS + TAP NAVIGATION CHECKS: 0 failures
+Web + Windows exports: exit 0. Native engine screenshots rendered. Physical mobile / Windows runtime: not tested.

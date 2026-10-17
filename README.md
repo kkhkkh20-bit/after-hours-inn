@@ -1,3 +1,11 @@
+# 최신 실행 — 1.1 직접 접객과 쉬운 첫 영업
+
+[3D 우선 플레이](https://kkhkkh20-bit.github.io/after-hours-inn/?v=easy11) · [2D 비교](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/?v=easy11) · [조작·실제 화면·검증](docs/direct-context-v11.md)
+
+손님 클릭 → 방 선택, 묵는 손님 → 식사 제공, 바닥 클릭 → 빠른 자동 이동. 고정 행동판을 없애고 해당 인물·사물 옆에서 고른다. 새 시작은 시간제한 없이 기본 운영부터 익힌다. 손님은 입구에 줄을 세우지 않고 간격을 두고 걸어 들어온다. 식사 3회 후 장부에서 첫날 밤 사건을 선택해 시작한다. 로우폴리 3D를 우선하고 2D는 비교판으로 유지한다. 아래 기록은 이전 버전이다.
+
+---
+
 # 첫 번째 밤 — 3D·2D 세로 비교판
 
 [3D 플레이](https://kkhkkh20-bit.github.io/after-hours-inn/?v=episode1) · [2D 플레이](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/?v=episode1) · [화면·조작·검증·구현 범위](docs/episode-v1.md)

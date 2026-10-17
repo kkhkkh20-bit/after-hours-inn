@@ -34,7 +34,7 @@ func setup(owner_, campaign) -> void:
 	host=owner_; rules=campaign; layer=20
 	root=Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.mouse_filter=Control.MOUSE_FILTER_IGNORE; add_child(root)
 	status=label_("",20); root.add_child(status); status.position=Vector2(20,119); status.size=Vector2(560,32)
-	notice=label_("",19); root.add_child(notice); notice.position=Vector2(20,163); notice.size=Vector2(440,80)
+	notice=label_("",19); root.add_child(notice); notice.position=Vector2(20,163); notice.size=Vector2(680,80)
 	journal=button_("장부",open); root.add_child(journal); journal.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	journal.position=Vector2(600,160); journal.size=Vector2(100,64)
 	fullscreen=button_("전체화면",func():
@@ -42,7 +42,7 @@ func setup(owner_, campaign) -> void:
 	root.add_child(fullscreen); fullscreen.position=Vector2(488,160); fullscreen.size=Vector2(104,64)
 	scrim=ColorRect.new(); root.add_child(scrim); scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); scrim.color=Color(0,0,0,0.38); scrim.mouse_filter=Control.MOUSE_FILTER_STOP; scrim.hide()
 	panel=PanelContainer.new(); root.add_child(panel); panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.offset_left=22; panel.offset_right=-22; panel.offset_top=205; panel.offset_bottom=-170
+	panel.offset_left=22; panel.offset_right=-22; panel.offset_top=205; panel.offset_bottom=-40
 	var s=StyleBoxFlat.new(); s.bg_color=Color("101e25"); s.set_corner_radius_all(18)
 	s.content_margin_left=24; s.content_margin_right=24; s.content_margin_top=24; s.content_margin_bottom=24; panel.add_theme_stylebox_override("panel",s)
 	var column=VBoxContainer.new(); column.add_theme_constant_override("separation",20); panel.add_child(column)
@@ -51,6 +51,7 @@ func setup(owner_, campaign) -> void:
 	body_label=label_("",23); scroll.add_child(body_label)
 	options=VBoxContainer.new(); options.add_theme_constant_override("separation",10); column.add_child(options)
 	close_button=button_("닫기 · 영업 계속",close); column.add_child(close_button)
+	journal.hide(); fullscreen.hide()
 	panel.hide(); refresh()
 
 func open() -> void:
@@ -62,6 +63,7 @@ func close() -> void:
 
 func perform(action: String) -> void:
 	if action=="retry": host.get_tree().reload_current_scene(); return
+	if action=="challenge": host.start_challenge(); close(); refresh(); return
 	var result: Dictionary=rules.choose(action,host.episode_facts())
 	feedback=result.get("message","")
 	if result.ok:
@@ -76,6 +78,8 @@ func refresh() -> void:
 		last_notice=current; notice_until=Time.get_ticks_msec()+3200
 	notice.text=current if Time.get_ticks_msec()<notice_until else ""
 	status.text="%s · 식사 %d/3 · 위험 %d%%" %[("자유 영업" if rules.data.freeplay else ("영업 결산" if rules.data.ending!="" else "남은 %d초" %maxi(0,int(240-rules.data.elapsed)))),facts.served,mini(100,int(facts.risk)+int(rules.data.risk))]
+	if facts.get("opening",false):
+		status.text="손님을 눌러 방을 안내해주세요" if facts.get("booked",0)==0 else ("손님 클릭 → 식사 내어주기" if facts.served<1 else "기본 운영 완료 · 지하와 직원도 살펴보세요")
 	close_button.visible=rules.data.briefed and (rules.data.ending=="" or rules.data.freeplay)
 	journal.text="장부 !" if rules.pending() else "장부"
 	journal.modulate=Color("f1bc76") if rules.pending() else Color.WHITE
@@ -89,8 +93,13 @@ func refresh() -> void:
 	body_label.text=rules.body(facts)+("
 
 "+feedback if feedback!="" else "")
-	var choices=rules.choices(); var key=JSON.stringify(choices)
+	var choices=rules.choices()
+	if facts.get("opening",false):
+		heading.text="작은 여관의 첫 영업"
+		body_label.text="바닥을 누르면 이동합니다. 손님을 누르면 그 사람 옆에 할 수 있는 일이 표시됩니다.\n\n1. 손님 클릭 → 1호 또는 2호 안내\n2. 묵는 손님 클릭 → 식사 내어주기\n주인이 다가가 준비하고 전달합니다.\n\n지하 덮개를 누르면 내려갈 수 있습니다. 흙벽 → 파기로 공간을 넓힙니다. 직원 고용과 비밀 행동은 운영에 익숙해지면 표시됩니다.\n\n지금은 제한시간 없이 익힐 수 있습니다. 식사 3번을 제공하면 이 장부에서 첫날 밤 사건을 선택해 시작할 수 있습니다."
+		choices=[["challenge","첫날 밤 사건 시작 · 선택"]] if facts.served>=3 else []
+	var key=JSON.stringify(choices)
 	if key!=last_key:
 		last_key=key
-		for c in options.get_children(): c.free()
+		for c in options.get_children(): options.remove_child(c); c.queue_free()
 		for c in choices: options.add_child(button_(c[1],perform.bind(c[0])))

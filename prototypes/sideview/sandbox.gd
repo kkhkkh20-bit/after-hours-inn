@@ -36,8 +36,9 @@ var paused = false
 var dragging = -1
 var people: Array = []
 var noise_player: AudioStreamPlayer
-var save_path = "user://sandbox-v1.json"
-var message = "접수대에서 손님을 받고 직원을 고용할 수 있다."
+var gentle_opening=false
+var save_path = "user://inn-object-v2.json"
+var message = "바닥을 눌러 이동 · 손님을 눌러 행동 선택"
 var rebuild_pending = false
 var test_mode = false
 var navigation=Navigation.new()
@@ -63,24 +64,44 @@ var room_button: Button
 var room_picker: Control
 var tools_visible=false
 
+var object_context
+var pending_person_action: Dictionary={}
+var camera_overview=false
+var camera_dragging=false
+var drag_origin=Vector2.ZERO
+var camera_pan=Vector2.ZERO
+var context_cell=Vector2i.ZERO
+var npc_bodies: Array=[]
+var gesture_active=false
+var gesture_started=0
+
 func _ready() -> void:
 	_setup_input()
 	var canvas = CanvasModulate.new(); canvas.color=Color("8d91a2"); add_child(canvas)
 	player=Player.new(); player.position=Vector2(27*32,21*32-28); add_child(player)
-	camera=Camera2D.new(); camera.position=player.position+Vector2(-32,65)
-	camera.limit_left=0; camera.limit_top=-96; camera.limit_right=84*32; camera.limit_bottom=54*32
-	camera.zoom=Vector2(0.82,0.82)
+	camera=Camera2D.new(); camera.position=Vector2(23*32,300)
+	camera.limit_left=0; camera.limit_top=-640; camera.limit_right=84*32; camera.limit_bottom=54*32
+	camera.zoom=Vector2.ONE
 	camera.position_smoothing_enabled=false; add_child(camera)
 	people=[
 		{"name":"상인","pos":Vector2(25*32,21*32),"face":1,"down":false,"room":0,"target":25*32,"idle":0.0},
 		{"name":"수상한 손님","pos":Vector2(31*32,21*32),"face":-1,"down":false,"room":1,"target":31*32,"idle":0.0},
 		{"name":"직원","pos":Vector2(29*32,21*32),"face":-1,"down":false,"room":0,"target":29*32,"idle":0.0}
 	]
+	for i in range(people.size()):
+		var body=Player.new(); body.position=people[i].pos-Vector2(0,27); body.speed_factor=0.52; add_child(body)
+		body.modulate=[Color("c9ba8b"),Color("ac7e83"),Color("80aba0")][i]; npc_bodies.append(body)
+		people[i].route=[]; people[i].nav_started=false; people[i].nav_time=0.0; people[i].nav_jump=0.0
 	noise_player=AudioStreamPlayer.new(); noise_player.stream=preload("res://assets/tap.wav"); noise_player.volume_db=-17; add_child(noise_player)
 	_rebuild_geometry(); _rebuild_lights(); _setup_ui()
 	episode_ui=preload("res://episode_ui.gd").new(); add_child(episode_ui); episode_ui.setup(self,episode)
 	var args=OS.get_cmdline_user_args()
-	if args.is_empty(): episode_ui.open()
+	if args.is_empty():
+		gentle_opening=true; episode.data.briefed=true
+		message="손님을 누르고 방을 골라주세요. 주인이 알아서 다가갑니다."
+		for i in range(2):
+			people[i].hidden=true; people[i].return_at=4.0 if i==0 else 52.0
+		episode_ui.refresh()
 	if "--episode-playthrough" in args or "--capture-ending" in args:
 		test_mode=true
 		var failed=await verify_episode_playthrough("--capture-ending" in args)
@@ -89,6 +110,8 @@ func _ready() -> void:
 		test_mode=true; get_tree().quit(preload("res://episode_tests.gd").new().run()); return
 	if "--capture-episode" in args or "--capture-episode-cellar" in args:
 		await capture_episode("--capture-episode-cellar" in args); return
+	if "--capture-context" in args or "--capture-context-clean" in args:
+		await capture_context("--capture-context" in args); return
 	if "--verify" in args:
 		test_mode=true
 		var failures: int=load("res://tests.gd").new().run()
@@ -96,22 +119,6 @@ func _ready() -> void:
 		get_tree().quit(0 if failures==0 else 1); return
 	if "--input-verify" in args:
 		test_mode=true; await _verify_inputs(); return
-	if "--capture" in args or "--capture-dark" in args:
-		test_mode=true; inn.hired=true
-		if "--capture-dark" in args:
-			hatch_open=true; _rebuild_geometry()
-			player.position=Vector2(22*32,29*32-28)
-			camera.position=player.position+Vector2(-32,65)
-			mode="move"; target=Vector2i(24,28); terrain.mining_cell=target; terrain.mining_progress=0.28
-			message="지하에서도 직접 이동·채굴·발판과 횃불 설치"
-		else:
-			_navigate_to(Vector2(24*32+16,14*32))
-			message="2층 바닥을 누르면 필요한 점프·사다리를 자동으로 이용"
-		paused=true; player.active=false; _update_ui(); queue_redraw()
-		await get_tree().create_timer(0.6).timeout
-		var suffix="cellar" if "--capture-dark" in args else "surface"
-		get_viewport().get_texture().get_image().save_png("res://../../docs/tap-"+suffix+".png")
-		get_tree().quit()
 
 func _setup_input() -> void:
 	var bindings={"walk_left":[KEY_A,KEY_LEFT],"walk_right":[KEY_D,KEY_RIGHT],"leap":[KEY_SPACE],"climb_up":[KEY_W,KEY_UP],"climb_down":[KEY_S,KEY_DOWN],"use":[KEY_E]}
@@ -132,7 +139,7 @@ func _rebuild_geometry() -> void:
 	var solids=StaticBody2D.new(); solids.collision_layer=1; solids.collision_mask=0; geometry.add_child(solids)
 	var platforms=StaticBody2D.new(); platforms.collision_layer=4; platforms.collision_mask=0; geometry.add_child(platforms)
 	# Merge adjacent cells into row runs to keep collider count small.
-	for y in range(Terrain.HEIGHT):
+	for y in range(-9,Terrain.HEIGHT):
 		var start=-1
 		for x in range(Terrain.WIDTH+1):
 			var solid=x<Terrain.WIDTH and terrain.solid(Vector2i(x,y))
@@ -188,44 +195,13 @@ func _touch_button(text: String,rect: Rect2,action: String) -> TouchScreenButton
 	return b
 
 func _setup_ui() -> void:
-	var layer=CanvasLayer.new(); add_child(layer); ui=Control.new(); ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); ui.mouse_filter=Control.MOUSE_FILTER_IGNORE; layer.add_child(ui)
-	_panel(Rect2(12,10,696,102))
-	_label("title","문 닫은 뒤 · 2D",Rect2(24,17,520,36),27)
-	_button("멈춤",Rect2(592,18,104,58),_pause)
-	_label("stats","",Rect2(24,65,670,34),22)
-	# Toolbox is explicitly opened; no permanently displayed dialogue or instruction strip.
-	tools=Panel.new(); tools.position=Vector2(20,250); tools.size=Vector2(680,390); ui.add_child(tools); tools.hide()
-	var original=ui; ui=tools
-	_label("context","",Rect2(16,12,646,55),20)
-	var mode_list=[["move","이동"],["mine","굴착"],["block","벽 쌓기"],["platform","발판"],["torch","횃불"],["hand","손님"]]
-	for i in range(mode_list.size()):
-		var entry=mode_list[i]
-		modes[entry[0]]=_button(entry[1],Rect2(16+(i%3)*218,78+(i/3)*76,208,66),_choose_tool.bind(entry[0]))
-	_button("재료 변경",Rect2(16,242,208,62),_material_next)
-	_button("저장",Rect2(234,242,208,62),_save)
-	_button("불러오기",Rect2(452,242,208,62),_load_save)
-	_button("덮개로 이동",Rect2(16,314,426,60),_go_hatch)
-	_button("닫기",Rect2(452,314,208,60),_toggle_tools)
-	ui=original
-	_button("도구",Rect2(600,238,100,64),_toggle_tools)
-	var bottom=Control.new(); bottom.mouse_filter=Control.MOUSE_FILTER_IGNORE; ui.add_child(bottom)
-	bottom.anchor_top=1; bottom.anchor_bottom=1; bottom.offset_top=-152; bottom.offset_bottom=-16; bottom.offset_right=720
-	ui=bottom
-	use_button=_button("사용",Rect2(254,0,210,62),_request_use)
-	stop_button=_button("중단",Rect2(20,74,210,62),_stop_navigation)
-	_button("접수대",Rect2(20,0,210,62),_go_counter)
-	room_button=_button("객실 배정",Rect2(488,0,210,62),_show_room_picker)
-	_button("지하 입구",Rect2(254,74,210,62),_go_hatch)
-	_button("전체 보기",Rect2(488,74,210,62),_overview_camera)
-	ui=original
-	room_picker=Panel.new(); ui.add_child(room_picker); room_picker.anchor_top=1; room_picker.anchor_bottom=1
-	room_picker.offset_top=-316; room_picker.offset_bottom=-164; room_picker.offset_left=20; room_picker.offset_right=700
-	ui=room_picker
-	_button("1호 배정",Rect2(12,12,320,60),_assign_guest_room.bind(1))
-	_button("2호 배정",Rect2(344,12,320,60),_assign_guest_room.bind(2))
-	_button("닫기",Rect2(12,82,652,58),func():room_picker.hide())
-	ui=original; room_picker.hide()
-	_update_ui()
+	var layer=CanvasLayer.new(); add_child(layer); ui=Control.new(); ui.mouse_filter=Control.MOUSE_FILTER_IGNORE; layer.add_child(ui)
+	# Legacy references have no visible controls. All actions belong to clicked objects.
+	use_button=Button.new(); ui.add_child(use_button); use_button.hide()
+	stop_button=Button.new(); ui.add_child(stop_button); stop_button.hide()
+	room_picker=Control.new(); ui.add_child(room_picker); room_picker.hide()
+	tools=Control.new(); ui.add_child(tools); tools.hide()
+	object_context=preload("res://object_context.gd").new(); add_child(object_context); object_context.setup(self)
 
 func _toggle_tools() -> void:
 	tools_visible=not tools_visible; tools.visible=tools_visible
@@ -234,7 +210,8 @@ func _choose_tool(value: String) -> void:
 	_select_mode(value); tools_visible=false; tools.hide()
 
 func _overview_camera() -> void:
-	camera.zoom=Vector2(0.64,0.64) if camera.zoom.x>0.7 else Vector2(0.82,0.82)
+	camera_overview=not camera_overview; camera_pan=Vector2.ZERO
+	camera.zoom=Vector2(0.68,0.68) if camera_overview else Vector2.ONE
 
 func _show_room_picker() -> void:
 	room_picker.visible=not room_picker.visible
@@ -242,11 +219,10 @@ func _show_room_picker() -> void:
 func _assign_guest_room(chosen: int) -> void:
 	room_picker.hide()
 	if paused: return
-	if player.position.distance_to(Vector2(29*32,21*32-19))>130:
-		message="접수대에서 방을 배정하자."; _go_counter(); return
 	var index=selected_person if selected_person in [0,1] else 0
 	var p: Dictionary=people[index]
 	if p.down: message="기절한 손님은 접수할 수 없다."; return
+	if player.position.distance_to(p.pos-Vector2(0,19))>95: message="손님에게 먼저 다가가야 한다."; return
 	# Guest reservations expire; a reused room must be cleaned before sale.
 	if p.get("checkout",0.0)>clock: message="이미 투숙 중인 손님이다."; return
 	if p.get("dirty",false): p.dirty=false; message="객실을 청소했다. 다시 눌러 새 손님을 받자."; return
@@ -254,6 +230,7 @@ func _assign_guest_room(chosen: int) -> void:
 		if guest!=p and guest.room==chosen and guest.get("checkout",0.0)>clock:
 			message="그 방은 이미 사용 중이다. 다른 손님을 선택하자."; return
 	p.room=chosen; p.checkout=clock+70; p.dirty=true; inn.coins+=8
+	_npc_route(index,Vector2((24 if chosen==1 else 33)*32+16,14*32))
 	message="%s → %d호. 숙박비 8닢" %[p.name,chosen]
 
 func _pause() -> void:
@@ -268,6 +245,7 @@ func _select_mode(value: String) -> void:
 	_update_ui()
 
 func _stop_navigation() -> void:
+	pending_person_action.clear()
 	walking_route.clear(); navigation_pending_use=false; navigation_step_started=false
 	navigation_job.clear(); automatic_mining=false; pointer_down=false; terrain.mining_progress=0
 	navigation_jump_time=0; navigation_step_time=0
@@ -297,23 +275,24 @@ func _approach(point: Vector2,reach: float) -> bool:
 	destination=walking_route.back().point+Vector2(0,27); return true
 
 func _tap_world() -> void:
-	if paused: return
+	if object_context.panel.visible: object_context.close(); pointer_down=false; return
 	if mode!="move":
 		if mode=="hand": _select_person()
 		return
 	_stop_navigation(); selected_person=-1
 	_ensure_navigation()
-	for i in range(2):
-		if cursor_world.distance_to(people[i].pos-Vector2(0,25))<35:
-			selected_person=i
-			_approach(people[i].pos-Vector2(0,19),55)
-			message=people[i].name+"에게 접근. 기절은 별도 버튼으로 선택한다."; return
-	if cursor_world.distance_to(Vector2(29*32,20*32))<70:
-		if _navigate_to(Vector2(28*32+16,21*32)): navigation_pending_use=true
-		return
+	for i in range(people.size()):
+		if people[i].get("hidden",false): continue
+		if cursor_world.distance_to(people[i].pos-Vector2(0,25))<38:
+			selected_person=i; pointer_down=false; object_context.open("person",str(i)); return
+	if cursor_world.distance_to(Vector2(29*32,20*32))<58:
+		pointer_down=false; object_context.open("counter"); return
 	if cursor_world.distance_to(Vector2(15*32,21*32))<43:
-		if _navigate_to(Vector2(16*32+16,21*32)): navigation_pending_use=true
-		return
+		pointer_down=false; object_context.open("hatch"); return
+	if cursor_world.distance_to(player.position)<24:
+		pointer_down=false; object_context.open("owner"); return
+	object_context.close()
+	if paused: return
 	for c in terrain.torches:
 		if cursor_world.distance_to(terrain.center(c))<22:
 			if _approach(terrain.center(c),70): navigation_pending_use=true
@@ -338,9 +317,9 @@ func _drive_navigation(delta: float) -> void:
 	var diff: Vector2=step.point-player.position
 	# A jump can land on a higher one-way platform than predicted.
 	# Replan from the real landing rather than trying to descend through it.
-	if step.kind=="jump" and navigation_step_started and player.is_on_floor() and diff.y>18:
-		var goal=destination; var pending=navigation_pending_use; var job=navigation_job.duplicate()
-		if _navigate_to(goal): navigation_pending_use=pending; navigation_job=job
+	if navigation_step_started and player.is_on_floor() and ((step.kind=="jump" and diff.y>18) or (step.kind=="drop" and diff.y < -18 and navigation_step_time>0.3)):
+		var goal=destination; var pending=navigation_pending_use; var job=navigation_job.duplicate(); var person_job=pending_person_action.duplicate()
+		if _navigate_to(goal): navigation_pending_use=pending; navigation_job=job; pending_person_action=person_job
 		return
 	if absf(diff.x)<9 and absf(diff.y)<10 and (step.kind!="jump" or player.is_on_floor()):
 		walking_route.pop_front(); navigation_step_started=false; navigation_step_time=0
@@ -350,6 +329,8 @@ func _drive_navigation(delta: float) -> void:
 			if not navigation_job.is_empty():
 				var job=navigation_job.duplicate(); navigation_job.clear()
 				if job.action=="mine": _begin_automatic_mining(job.cell)
+			if not pending_person_action.is_empty():
+				var action_=pending_person_action.duplicate(); pending_person_action.clear(); _perform_person_action(int(action_.id),action_.action)
 			if navigation_pending_use:
 				navigation_pending_use=false; _interact()
 			return
@@ -359,7 +340,7 @@ func _drive_navigation(delta: float) -> void:
 		if test_mode: print("NAV STALL ",step," at ",player.position," floor=",player.is_on_floor())
 		_stop_navigation(); destination_valid=false; marker_time=3; message="길이 막혔다. 다른 바닥을 눌러 경로를 바꾸자."; return
 	player.axis=clampf(diff.x/30.0,-1,1) if absf(diff.x)>5 else 0.0
-	player.climbing=absf(player.position.x-15*32)<30 and player.position.y>13*32 and player.position.y<30*32
+	player.climbing=absf(player.position.x-15*32)<30 and player.position.y>-1*32 and player.position.y<26*32
 	player.climb_axis=0; player.crouch=false
 	if player.climbing and step.kind!="jump":
 		player.axis=clampf(diff.x/20.0,-1,1); player.climb_axis=clampf(diff.y/12.0,-1,1)
@@ -395,8 +376,9 @@ func _material_next() -> void:
 	var options=["wood","dirt","stone"]; build_material=options[(options.find(build_material)+1)%3]; _update_ui()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if camera_dragging: return
 	if episode_ui!=null and episode_ui.opened: return
-	if event is InputEventScreenTouch and event.pressed and event.position.y>153 and event.position.y<get_viewport().get_visible_rect().size.y-152:
+	if event is InputEventScreenTouch and event.pressed and event.position.y>153 and event.position.y<get_viewport().get_visible_rect().size.y:
 		active_touch=event.index; pointer_down=true
 		cursor_world=get_canvas_transform().affine_inverse()*event.position; target=terrain.cell_at(cursor_world)
 		_tap_world()
@@ -412,12 +394,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			_tap_world()
 	if event is InputEventMouseMotion and pointer_down:
 		cursor_world=get_canvas_transform().affine_inverse()*event.position; target=terrain.cell_at(cursor_world)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index==MOUSE_BUTTON_RIGHT:
+			context_cell=terrain.cell_at(get_canvas_transform().affine_inverse()*event.position); object_context.open("ground")
+		elif event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
+			var z=clampf(camera.zoom.x+(0.1 if event.button_index==MOUSE_BUTTON_WHEEL_UP else -0.1),0.55,1.5); camera.zoom=Vector2(z,z)
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode==KEY_E: _request_use()
 		if event.physical_keycode>=KEY_1 and event.physical_keycode<=KEY_6:
 			_select_mode(["move","mine","block","platform","torch","hand"][event.physical_keycode-KEY_1])
 
 func _input(event: InputEvent) -> void:
+	if episode_ui!=null and episode_ui.opened: return
+	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			gesture_active=not object_context.blocks(event.position); gesture_started=Time.get_ticks_msec(); drag_origin=event.position; camera_dragging=false
+		else: gesture_active=false
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			gesture_active=not object_context.blocks(event.position); gesture_started=Time.get_ticks_msec(); drag_origin=event.position; camera_dragging=false
+		else: gesture_active=false
+	var dragged=event is InputEventScreenDrag or (event is InputEventMouseMotion and gesture_active and event.button_mask&MOUSE_BUTTON_MASK_LEFT)
+	if dragged and gesture_active and mode=="move" and event.position.distance_to(drag_origin)>20:
+		camera_dragging=true; _stop_navigation(); camera_pan-=event.relative/camera.zoom.x
 	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed and active_touch<0 and not automatic_mining:
 		pointer_down=false; terrain.mining_progress=0
 	if event is InputEventScreenTouch and not event.pressed and event.index==active_touch:
@@ -431,6 +430,7 @@ func _notification(what: int) -> void:
 			if InputMap.has_action(action): Input.action_release(action)
 
 func _physics_process(_delta: float) -> void:
+	_drive_npcs(_delta)
 	if not is_instance_valid(player) or (test_mode and not navigation_testing) or paused: return
 	var manual=absf(Input.get_axis("walk_left","walk_right"))>0 or Input.is_action_pressed("leap") or absf(Input.get_axis("climb_up","climb_down"))>0
 	if not walking_route.is_empty() and not manual:
@@ -441,13 +441,15 @@ func _physics_process(_delta: float) -> void:
 	player.jump_held=Input.is_action_pressed("leap")
 	if Input.is_action_just_pressed("leap"): player.jump_requested=true
 	player.climb_axis=Input.get_axis("climb_up","climb_down")
-	player.climbing=absf(player.position.x-15*32)<30 and player.position.y>13*32 and player.position.y<30*32 and not player.jump_held
+	player.climbing=absf(player.position.x-15*32)<30 and player.position.y>-1*32 and player.position.y<26*32 and not player.jump_held
 	player.crouch=Input.is_action_pressed("climb_down") and not player.climbing
 	if Input.is_action_just_pressed("climb_down") and not player.climbing: player.drop_down()
 	player.carrying=dragging>=0
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(player): return
+	if gesture_active and not camera_dragging and mode=="move" and not object_context.panel.visible and Time.get_ticks_msec()-gesture_started>550:
+		gesture_active=false; _stop_navigation(); context_cell=terrain.cell_at(cursor_world); object_context.open("ground")
 	if not paused and not test_mode:
 		marker_time=maxf(0,marker_time-delta)
 		clock+=delta; order_clock+=delta; wage_clock+=delta; guard_clock+=delta; noise_age+=delta
@@ -458,15 +460,16 @@ func _process(delta: float) -> void:
 			if noise_clock>0.45:
 				_noise(0.30 if dragging>=0 else (0.06 if player.crouch else 0.12)); noise_clock=0
 		_business_tick(delta)
-		episode.tick(delta,episode_facts())
+		if not gentle_opening: episode.tick(delta,episode_facts())
 		if dragging>=0:
 			people[dragging].pos=player.position+Vector2(-22*player.facing,18)
 			if _witnessed(player.position): suspicion=minf(100,suspicion+delta*8)
 		if player.position.y>52*32:
 			player.position=Vector2(27*32,21*32-28); player.velocity=Vector2.ZERO; message="지하 경계에서 여관으로 복귀했다."
-		camera.position=player.position+Vector2(-32,65)
+		var focus=Vector2(23*32,240) if camera_overview else Vector2(clampf(player.position.x,19*32,28*32),player.position.y if player.position.y>22*32 else 300)
+		camera.position=camera.position.lerp(focus+camera_pan,minf(1,delta*5))
 	_update_ui(); queue_redraw()
-	episode_ui.refresh()
+	episode_ui.refresh(); object_context.refresh()
 
 func _work_target(delta: float) -> void:
 	if mode=="mine" or automatic_mining:
@@ -578,18 +581,15 @@ func _business_tick(delta: float) -> void:
 		else: inn.hired=false; message="급여가 부족해 직원이 떠났다."
 	for i in range(people.size()):
 		var p: Dictionary=people[i]
+		if p.get("hidden",false):
+			if clock>=p.get("return_at",INF) and (not gentle_opening or i==2 or not people.any(func(other): return other!=p and not other.get("hidden",false) and other.get("checkout",0.0)<=clock and other!=people[2])):
+				p.hidden=false; p.down=false; p.room=0; p.checkout=0; p.pos=Vector2(38*32,21*32); npc_bodies[i].position=p.pos-Vector2(0,27)
+				_npc_route(i,Vector2((25+i*4)*32,21*32))
+			continue
 		if p.down or (i==2 and not inn.hired): continue
-		p.idle+=delta
-		if i<2 and p.idle>6+i*3:
-			p.idle=0; p.target=(24+i*6)*32 if absf(p.pos.x-(28-i*2)*32)<5 else (28-i*2)*32
-		if i==2 and employee_alert<=0: p.target=29*32
-		var dx: float=p.target-p.pos.x
-		if absf(dx)>1:
-			p.face=signf(dx)
-			var next: Vector2=p.pos+Vector2(signf(dx)*delta*45,0)
-			# Guests do not walk across holes made by the owner.
-			var floor_cell=terrain.cell_at(next+Vector2(0,2))
-			if terrain.cells.has(floor_cell) or (not hatch_open and floor_cell.x in [14,15]): p.pos=next
+		if p.get("checkout",0.0)>0 and clock>=p.checkout:
+			p.checkout=0; _npc_route(i,Vector2((25+i*4)*32,21*32))
+		if i==2 and employee_alert>0 and p.get("route",[]).is_empty(): _npc_route(i,Vector2(16*32+16,21*32))
 	if guard_clock>=75:
 		guard_clock-=75
 		if suspicion>=35:
@@ -597,24 +597,16 @@ func _business_tick(delta: float) -> void:
 		else: message="경비가 영업장을 확인하고 떠났다."
 
 func _update_ui() -> void:
-	if labels.is_empty(): return
-	labels.stats.text="%d닢 · 주문 %d · 의심 %d%% · 직원 %s" %[inn.coins,inn.orders,suspicion,"고용" if inn.hired else "없음"]
-	var names={"wood":"목재","dirt":"흙","stone":"돌","platform":"발판","torch":"횃불"}
-	labels.context.text="%s %d · 흙 %d · 돌 %d · 발판 %d · 횃불 %d" %[names[build_material],terrain.inventory[build_material],terrain.inventory.dirt,terrain.inventory.stone,terrain.inventory.platform,terrain.inventory.torch]
-
-	if dragging>=0: use_button.text="내려놓기"
-	elif selected_person>=0: use_button.text="운반 시작" if people[selected_person].down else "기절 시도"
-	else: use_button.text="사용"
-	for key in modes: modes[key].modulate=Color("e1bd7e") if mode==key else Color.WHITE
+	if object_context!=null: object_context.refresh()
 
 func _save() -> void:
 	if pointer_down or dragging>=0 or not walking_route.is_empty() or not player.is_on_floor(): message="땅에 서서 이동·작업·운반을 멈추고 저장하자."; return
 	var data=terrain.encode(); data.player=[player.position.x,player.position.y]
 	data.coins=inn.coins; data.hired=inn.hired; data.orders=inn.orders; data.suspicion=suspicion; data.hatch=hatch_open
-	data.episode=episode.data.duplicate(true)
+	data.opening=gentle_opening; data.episode=episode.data.duplicate(true)
 	data.clock=clock; data.order_clock=order_clock; data.wage_clock=wage_clock; data.guard_clock=guard_clock
 	data.people=[]
-	for p in people: data.people.append({"x":p.pos.x,"y":p.pos.y,"face":p.face,"down":p.down,"room":p.room,"checkout":p.get("checkout",0.0),"dirty":p.get("dirty",false)})
+	for p in people: data.people.append({"x":p.pos.x,"y":p.pos.y,"face":p.face,"down":p.down,"room":p.room,"checkout":p.get("checkout",0.0),"dirty":p.get("dirty",false),"hidden":p.get("hidden",false),"return_at":p.get("return_at",0.0)})
 	var file=FileAccess.open(save_path,FileAccess.WRITE)
 	if file==null: message="저장 실패"; return
 	file.store_string(JSON.stringify(data)); message="지형·인벤토리·여관 상태 저장 완료."
@@ -626,7 +618,8 @@ func _load_save() -> void:
 	if not next.decode(data): message="지형 저장이 올바르지 않다."; return
 	var p=data.get("player",[])
 	if not p is Array or p.size()!=2: message="위치 저장이 올바르지 않다."; return
-	terrain=next; player.position=Vector2(clampf(float(p[0]),34,83*32-32),clampf(float(p[1]),-32,52*32)); player.velocity=Vector2.ZERO
+	gentle_opening=bool(data.get("opening",false))
+	terrain=next; player.position=Vector2(clampf(float(p[0]),34,83*32-32),clampf(float(p[1]),-9*32,52*32)); player.velocity=Vector2.ZERO
 	inn.coins=maxi(0,int(data.get("coins",24))); inn.orders=clampi(int(data.get("orders",1)),0,4); inn.hired=bool(data.get("hired",false))
 	suspicion=clampf(float(data.get("suspicion",0)),0,100); hatch_open=bool(data.get("hatch",false))
 	clock=maxf(0,float(data.get("clock",0))); order_clock=clampf(float(data.get("order_clock",0)),0,11.99)
@@ -636,13 +629,17 @@ func _load_save() -> void:
 			var v=data.people[i]
 			if not v is Dictionary: continue
 			people[i].pos=Vector2(clampf(float(v.get("x",800)),32,83*32),clampf(float(v.get("y",672)),0,53*32))
-			people[i].room=int(v.get("room",0)); people[i].checkout=float(v.get("checkout",0)); people[i].dirty=bool(v.get("dirty",false))
+			people[i].hidden=bool(v.get("hidden",false)); people[i].return_at=float(v.get("return_at",0)); people[i].room=int(v.get("room",0)); people[i].checkout=float(v.get("checkout",0)); people[i].dirty=bool(v.get("dirty",false))
 			people[i].target=people[i].pos.x; people[i].face=1 if int(v.get("face",1))>=0 else -1; people[i].down=bool(v.get("down",false))
 	if data.get("episode",{}) is Dictionary and not data.get("episode",{}).is_empty():
 		episode.data=data.episode.duplicate(true); episode_ui.ending_shown=false
 	dragging=-1; selected_person=-1; pointer_down=false; employee_alert=0
 	_stop_navigation()
-	_changed(); message="직접 조작 실험을 불러왔다."
+	for i in range(people.size()):
+		npc_bodies[i].position=people[i].pos-Vector2(0,27)
+		people[i].route=[]
+		if people[i].get("checkout",0.0)>clock: _npc_route(i,Vector2((24 if people[i].room==1 else 33)*32+16,14*32))
+	_changed(); message="여관 상태를 불러왔다."
 
 func _tile(c: Vector2i,kind: String) -> void:
 	var dest=Rect2(Vector2(c*32),Vector2(32,32))
@@ -663,7 +660,7 @@ func _tile(c: Vector2i,kind: String) -> void:
 func _draw() -> void:
 	if not is_instance_valid(camera): return
 	var view=Rect2(camera.position-Vector2(480,860),Vector2(960,1720))
-	draw_rect(Rect2(0,-200,84*32,22*32+200),Color("455a67"))
+	draw_rect(Rect2(0,-1000,84*32,22*32+1000),Color("455a67"))
 	# Mountain silhouettes and forest parallax remain behind the playable grid.
 	for i in range(13):
 		var x=i*240
@@ -672,32 +669,32 @@ func _draw() -> void:
 		var x=i*91; draw_rect(Rect2(x,400+(i%4)*30,11,272),Color("2c4346"))
 		draw_colored_polygon(PackedVector2Array([Vector2(x-45,520),Vector2(x+5,315+(i%4)*30),Vector2(x+60,520)]),Color("304d48"))
 	draw_rect(Rect2(0,21*32,84*32,33*32),Color("2b2524"))
-	# Plastered back walls, wood frames, furniture and tiled roof of the inn.
-	draw_rect(Rect2(12*32,9*32,22*32,12*32),Color("826b50"))
-	for x in range(12,34,4):
-		for y in range(10,21): draw_texture_rect_region(atlas,Rect2(x*32,y*32,12,32),Rect2(112,64,6,16),Color("bba581"))
-	for y in [14,21]: draw_rect(Rect2(12*32,y*32,22*32,12),Color("61432f"))
-	for x in [19,25,31]:
-		for y in [11,18]:
-			draw_rect(Rect2(x*32,y*32,41,54),Color("b49762")); draw_rect(Rect2(x*32+5,y*32+5,31,44),Color("435b66"))
-			draw_line(Vector2(x*32+20,y*32),Vector2(x*32+20,y*32+54),Color("b49762"),4)
-	for x in range(11,35):
-		draw_texture_rect_region(atlas,Rect2(x*32,8*32,32,32),Rect2(64,0,16,16),Color("997e73"))
-	for x in [24,30]:
-		draw_texture_rect_region(atlas,Rect2(x*32,13*32+10,64,22),Rect2(112,64,16,8))
-		draw_rect(Rect2(x*32+5,13*32,54,22),Color("82938e")); draw_rect(Rect2(x*32+7,13*32,17,15),Color("e2cf9b"))
+	# Four readable storeys: dining hall, guest rooms, staff quarters and attic.
+	draw_rect(Rect2(8*32,-6*32,31*32,27*32),Color("786347"))
+	for floor_ in [0,7,14,21]:
+		draw_rect(Rect2(8*32,floor_*32,31*32,12),Color("493528"))
+		for x in [8,17,27,38]: draw_rect(Rect2(x*32,(floor_-7)*32,10,7*32),Color("493b2c"))
+	for y in [-4,3,10,17]:
+		for x in [10,20,30,36]:
+			draw_rect(Rect2(x*32,y*32,38,54),Color("af8d53")); draw_rect(Rect2(x*32+5,y*32+5,28,44),Color("394e54"))
+	for x in range(7,40): draw_texture_rect_region(atlas,Rect2(x*32,-7*32,32,32),Rect2(64,0,16,16),Color("827164"))
+	for row_ in [0,7,14]:
+		for x in [24,33]:
+			draw_rect(Rect2(x*32-12,(row_-1)*32,92,26),Color("503c2a")); draw_rect(Rect2(x*32-7,(row_-1)*32-5,82,22),Color("819187")); draw_rect(Rect2(x*32-5,(row_-1)*32-5,22,18),Color("e4d5aa"))
+	for x in [20,25,34]:
+		draw_rect(Rect2(x*32,19*32,68,14),Color("654832")); draw_rect(Rect2(x*32+7,19*32+14,7,48),Color("493627")); draw_rect(Rect2(x*32+52,19*32+14,7,48),Color("493627"))
+		for shift in [-20,80]: draw_rect(Rect2(x*32+shift,20*32,20,26),Color("a48654"))
+	draw_rect(Rect2(9*32,18*32,64,3*32),Color("51493d")); draw_circle(Vector2(10*32,19*32),17,Color("c47b43"))
 	draw_texture_rect_region(atlas,Rect2(28*32,20*32-15,96,47),Rect2(112,64,16,16))
-	draw_string(font,Vector2(28*32-5,19*32-10),"접수대",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("f1d49d"))
-	# Cellar background wall texture differentiates excavated air from solid earth.
-	for x in range(14,24):
-		for y in range(24,30):
-			draw_texture_rect_region(atlas,Rect2(x*32,y*32,32,32),Rect2(48,16,16,16),Color("4e4e4d"))
+	draw_string(font,Vector2(28*32,19*32-10),"접수 · 장부",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("ead4ac"))
+	for y in range(23,26):
+		for x in range(14,22): draw_texture_rect_region(atlas,Rect2(x*32,y*32,32,32),Rect2(48,16,16,16),Color("4e4e4d"))
 	for c in terrain.cells:
 		if view.intersects(Rect2(Vector2(c*32),Vector2(32,32))): _tile(c,terrain.cells[c])
-	for y in range(13*32,30*32,19):
+	for y in range(-1*32,26*32,19):
 		draw_line(Vector2(15*32-20,y),Vector2(15*32+20,y),Color("b7935f"),5)
-	draw_line(Vector2(15*32-20,13*32),Vector2(15*32-20,30*32),Color("806343"),5)
-	draw_line(Vector2(15*32+20,13*32),Vector2(15*32+20,30*32),Color("806343"),5)
+	draw_line(Vector2(15*32-20,-1*32),Vector2(15*32-20,26*32),Color("806343"),5)
+	draw_line(Vector2(15*32+20,-1*32),Vector2(15*32+20,26*32),Color("806343"),5)
 	if not hatch_open: draw_rect(Rect2(14*32,21*32,64,10),Color("a7895c"))
 	else: draw_rect(Rect2(16*32,21*32-45,9,45),Color("a7895c"))
 	for c in terrain.torches:
@@ -705,14 +702,10 @@ func _draw() -> void:
 		draw_rect(Rect2(p-Vector2(3,0),Vector2(6,18)),Color("775537"))
 		draw_rect(Rect2(p-Vector2(5,7),Vector2(10,12)),Color("ffd374"))
 	for i in range(people.size()):
-		if i==2 and not inn.hired: continue
 		var p: Dictionary=people[i]
+		if p.get("hidden",false): continue
 		if p.down:
 			draw_rect(Rect2(p.pos-Vector2(25,13),Vector2(43,13)),Color("927c68"))
-		else:
-			var dest=Rect2(p.pos-Vector2(48,84),Vector2(96,96))
-			if p.face<0: dest.position.x+=96; dest.size.x=-96
-			draw_texture_rect_region(preload("res://assets/knight.png"),dest,Rect2((int(clock*4)%4)*32,0,32,32),[Color("b7bd93"),Color("b48790"),Color("8ab8bf")][i])
 		draw_string(font,p.pos-Vector2(40,62),p.name+(" · %d호" %p.room if p.get("checkout",0.0)>clock else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,17,Color("ead4af"))
 		if selected_person==i: draw_arc(p.pos-Vector2(0,24),32,0,TAU,24,Color("eccb85"),2)
 	if terrain.valid(target):
@@ -784,24 +777,28 @@ func _verify_navigation() -> int:
 	if not _navigate_to(upstairs): failures+=1; push_error("No upstairs route")
 	await _wait_navigation(840)
 	if player.position.distance_to(upstairs-Vector2(0,27))>18: failures+=1; push_error("Automatic upstairs traversal failed: "+str(player.position)+" "+message)
-	var cellar=Vector2(19*32+16,30*32)
+	var cellar=Vector2(19*32+16,26*32)
 	if _navigate_to(cellar): failures+=1; push_error("Closed hatch route should fail")
 	hatch_open=true; _rebuild_geometry()
 	if not _navigate_to(cellar): failures+=1; push_error("Open hatch has no cellar route")
 	await _wait_navigation(1000)
 	if player.position.distance_to(cellar-Vector2(0,27))>18: failures+=1; push_error("Automatic cellar traversal failed: "+str(player.position)+" "+message)
 	# A buried wall tap approaches, selects the pickaxe and completes one tile.
-	var wall=Vector2i(24,28)
+	var wall=Vector2i(22,24)
 	await _test_click(get_canvas_transform()*terrain.center(wall))
 	await _wait_navigation(480)
 	for i in range(22):
 		if automatic_mining: _work_target(0.05)
 	if terrain.cells.has(wall): failures+=1; push_error("Context wall tap did not mine")
 	if automatic_mining: failures+=1; push_error("Context mining did not stop after one tile")
-	# Counter tap must walk into range before the hire transaction.
-	await _test_click(get_canvas_transform()*Vector2(29*32,20*32))
+	# Counter is a local menu; hiring is an explicit person action, never an implicit click.
+	object_context.close()
+	await _test_click(get_canvas_transform()*Vector2(29*32,19*32))
+	if not object_context.panel.visible: failures+=1; push_error("Counter context did not open")
+	object_context.open("counter"); await _click_context("staff"); await _click_context("hire")
 	await _wait_navigation(1000)
-	if not inn.hired: failures+=1; push_error("Counter tap did not approach and hire")
+	if not inn.hired: failures+=1; push_error("Local staff action did not approach and hire")
+	object_context.close()
 	# Native one-finger touch is tested separately from mouse events.
 	var touch_goal=Vector2(26*32+16,21*32)
 	await _test_touch(3,get_canvas_transform()*touch_goal,true)
@@ -809,9 +806,10 @@ func _verify_navigation() -> int:
 	await _wait_navigation(360)
 	if player.position.distance_to(touch_goal-Vector2(0,27))>18: failures+=1; push_error("Native touch destination did not arrive")
 	_navigate_to(Vector2(22*32+16,21*32))
-	await _test_click(stop_button.get_global_rect().get_center())
+	object_context.open("owner"); await _click_context("stop")
 	if not walking_route.is_empty() or player.axis!=0: failures+=1; push_error("Cancel did not stop route")
 	_stop_navigation()
+	failures+=await _verify_context_reception()
 	navigation_testing=false
 	return failures
 
@@ -832,7 +830,10 @@ func episode_facts() -> Dictionary:
 	var bodies=0
 	for p in people:
 		if p.down: bodies+=1
-	return {"money":inn.coins,"served":inn.served,"near_counter":player.position.distance_to(Vector2(29*32,21*32-19))<130,"risk":int(suspicion),"bodies":bodies,"hatch":hatch_open,"dug":int(terrain.inventory.dirt)+int(terrain.inventory.stone)}
+	return {"opening":gentle_opening,"booked":people.filter(func(p): return p.get("checkout",0.0)>clock).size(),"money":inn.coins,"served":inn.served,"near_counter":player.position.distance_to(Vector2(29*32,21*32-19))<130,"risk":int(suspicion),"bodies":bodies,"hatch":hatch_open,"dug":int(terrain.inventory.dirt)+int(terrain.inventory.stone)}
+
+func start_challenge() -> void:
+	gentle_opening=false; episode.data.elapsed=0; episode.data.briefed=true
 
 func episode_coins(amount: int) -> void:
 	inn.coins+=amount
@@ -843,9 +844,9 @@ func episode_pause(value: bool) -> void:
 func capture_episode(cellar: bool) -> void:
 	test_mode=true; episode.data.briefed=true; episode.data.elapsed=68; inn.hired=true
 	if cellar:
-		hatch_open=true; _rebuild_geometry(); player.position=Vector2(22*32,30*32-28)
+		hatch_open=true; _rebuild_geometry(); player.position=Vector2(20*32,26*32-28)
 	else: player.position=Vector2(24*32,21*32-28)
-	camera.zoom=Vector2(0.72,0.72); camera.position=player.position+Vector2(-32,20)
+	camera.zoom=Vector2.ONE; camera.position=Vector2(23*32,player.position.y if cellar else 300)
 	paused=true; player.active=false; _update_ui(); episode_ui.refresh(); queue_redraw()
 	await get_tree().create_timer(0.5).timeout
 	get_viewport().get_texture().get_image().save_png("res://../../docs/episode-2d-"+("cellar" if cellar else "inn")+".png")
@@ -874,7 +875,7 @@ func verify_episode_playthrough(capture: bool=false) -> int:
 	_save(); episode.data.ending=""; _load_save()
 	assert(episode.data.ending=="여관을 지킨 밤")
 	if capture:
-		camera.zoom=Vector2(0.72,0.72); camera.position=player.position+Vector2(-32,20)
+		camera.zoom=Vector2.ONE; camera.position=Vector2(23*32,300)
 		_update_ui(); episode_ui.refresh(); queue_redraw()
 		await get_tree().create_timer(0.5).timeout
 		get_viewport().get_texture().get_image().save_png("res://../../docs/episode-2d-ending.png")
@@ -882,3 +883,178 @@ func verify_episode_playthrough(capture: bool=false) -> int:
 	assert(not episode_ui.panel.visible and not paused and episode.data.freeplay)
 	print("2D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed")
 	return 0
+
+func context_stats() -> String:
+	return "%d닢 · 주문 %d · 직원 %s%s" %[inn.coins,inn.orders,"고용" if inn.hired else "없음"," · 멈춤" if paused else ""]
+
+func context_title(kind_: String,id_: String) -> String:
+	return str(people[int(id_)].name) if kind_=="person" else {"counter":"접수대 · 여관 장부","hatch":"지하 덮개","ground":"이 위치에서","owner":"여관 주인","system":"여관 설정"}.get(kind_,"여관")
+
+func context_anchor(kind_: String,id_: String) -> Vector2:
+	var p=Vector2(29*32,20*32)
+	if kind_ in ["person","actions"]: p=people[int(id_)].pos-Vector2(0,36)
+	elif kind_=="hatch": p=Vector2(15*32,21*32)
+	elif kind_=="ground": p=terrain.center(context_cell)
+	elif kind_=="owner": p=player.position
+	return get_canvas_transform()*p
+
+func context_items(kind_: String,id_: String) -> Array:
+	if paused: return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
+	match kind_:
+		"person":
+			var index=int(id_); var p: Dictionary=people[index]
+			if dragging>=0: return [["drop","내려놓기"]]
+			if p.down: return [["carry","끌고 가기"],["talk","상태 확인"]]
+			if index==2:
+				return [["talk","말 걸기"]] if gentle_opening and inn.served<1 else [["talk","말 걸기"],["hire","서빙 맡기기" if inn.hired else "고용 · 8닢"]]
+			var items= [["serve","식사 내어주기"],["talk","말 걸기"],["actions","다른 행동"]] if p.get("checkout",0.0)>clock else [["room1","접수 · 1호 배정"],["room2","접수 · 2호 배정"],["talk","말 걸기"],["actions","다른 행동"]]
+			if gentle_opening and inn.served<3: items=items.filter(func(item): return item[0]!="actions")
+			return items
+		"actions": return [["serve","식사 내어주기"],["expel","내보내기"],["subdue","제압 시도"]]
+		"counter": return [["journal","오늘의 장부 · 사건/결산"],["staff","직원에게 말 걸기"],["system","저장 · 화면 설정"],["stop","현재 행동 취소"]]
+		"hatch": return [["hatch","덮개 닫기" if hatch_open else "덮개 열기"],["enter","지하 창고로 이동" if player.position.y<22*32 else "여관으로 올라가기"]]
+		"ground": return [["move","여기로 이동"],["mine","이곳 굴착"],["wood","목재 벽 설치"],["platform","발판 설치"],["torch","횃불 설치"],["drop","내려놓기"],["stop","현재 행동 취소"]]
+		"owner": return [["stop","현재 행동 취소"],["journal","운영 안내 · 장부"],["drop","내려놓기"],["system","저장 · 화면 설정"]]
+		"system": return [["pause","일시 정지"],["overview","전체 / 가까이 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
+	return []
+
+func context_action(kind_: String,id_: String,action: String) -> void:
+	match action:
+		"journal": episode_ui.open(); return
+		"resume": episode_pause(false); return
+		"pause": episode_pause(true); return
+		"system": object_context.open("system"); return
+		"actions": object_context.open("actions",id_); return
+		"fullscreen": DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if DisplayServer.window_get_mode()!=DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_WINDOWED); return
+		"overview": _overview_camera(); return
+		"save": _save(); return
+		"load": _load_save(); return
+		"stop": _stop_navigation(); return
+		"staff": selected_person=2; object_context.open("person","2"); return
+		"drop": dragging=-1; return
+	if kind_ in ["person","actions"]:
+		var index=int(id_); selected_person=index
+		var focus: Vector2=people[index].pos-Vector2(0,19)
+		if player.position.distance_to(focus)<=85: _perform_person_action(index,action)
+		elif _approach(focus,60): pending_person_action={"id":index,"action":action}
+	elif kind_=="hatch":
+		if action=="hatch": _go_hatch()
+		elif action=="enter":
+			if not hatch_open: message="먼저 덮개를 열자."; object_context.open("hatch"); return
+			_navigate_to(Vector2(18*32+16,26*32) if player.position.y<22*32 else Vector2(16*32+16,21*32))
+	elif kind_=="ground":
+		if action=="move": _select_mode("move"); _navigate_to(terrain.center(context_cell))
+		elif action=="mine":
+			if player.position.distance_to(terrain.center(context_cell))<=128: _begin_automatic_mining(context_cell)
+			elif _approach(terrain.center(context_cell),118): navigation_job={"action":"mine","cell":context_cell}
+		else:
+			mode="block" if action=="wood" else action; build_material="wood"; target=context_cell; _work_target(0.1); mode="move"
+
+func _perform_person_action(index: int,action: String) -> void:
+	selected_person=index
+	var p: Dictionary=people[index]
+	if p.get("hidden",false) or player.position.distance_to(p.pos-Vector2(0,19))>95:
+		message="손님이 자리를 옮겼다. 다시 선택하자."; return
+	match action:
+		"talk":
+			var line=["길이 막혔소. 조용한 방 하나와 따뜻한 식사가 필요하오.","누가 묻더라도 내가 여기 왔다는 말은 하지 마시오.","서빙을 맡기면 주인님은 다른 일을 보셔도 됩니다."][index]
+			object_context.open("person",str(index),line)
+		"room1","room2": _assign_guest_room(1 if action=="room1" else 2)
+		"serve":
+			if inn.orders<=0: object_context.open("person",str(index),"지금은 주문할 게 없소.")
+			else: inn.orders-=1; inn.coins+=4; inn.served+=1; message=p.name+"에게 식사를 내었다. +4닢"
+		"hire":
+			if inn.hired: message="직원이 서빙을 맡고 있다."
+			elif inn.coins>=8: inn.coins-=8; inn.hired=true; message="직원을 고용했다."
+			else: object_context.open("person",str(index),"고용비 8닢이 필요합니다.")
+		"expel":
+			p.hidden=true; p.return_at=clock+24; p.checkout=0; p.room=0; message=p.name+"을 내보냈다."
+		"subdue","carry": _interact()
+
+func _npc_route(index: int,foot: Vector2) -> void:
+	_ensure_navigation()
+	var p: Dictionary=people[index]
+	p.route=navigation.route(npc_bodies[index].position,foot); p.nav_started=false; p.nav_time=0.0; p.nav_jump=0.0; p.goal=foot
+
+func _drive_npcs(delta: float) -> void:
+	if npc_bodies.is_empty(): return
+	for i in range(people.size()):
+		var p: Dictionary=people[i]; var b=npc_bodies[i]
+		b.visible=not p.down and not p.get("hidden",false)
+		b.active=not paused and not p.down and not p.get("hidden",false)
+		if p.down: b.position=p.pos-Vector2(0,27); continue
+		if paused or p.get("hidden",false): continue
+		p.pos=b.position+Vector2(0,27); p.face=b.facing
+		b.axis=0; b.climb_axis=0; b.jump_held=false; b.climbing=false
+		if object_context.panel.visible and object_context.kind=="person" and object_context.target==str(i): b.active=false; continue
+		if not pending_person_action.is_empty() and int(pending_person_action.id)==i: b.active=false; continue
+		if p.get("route",[]).is_empty(): continue
+		var step: Dictionary=p.route[0]; var diff: Vector2=step.point-b.position
+		b.climbing=absf(b.position.x-15*32)<30 and b.position.y>-32 and b.position.y<26*32
+		if p.nav_started and b.is_on_floor() and ((step.kind=="jump" and diff.y>18) or (step.kind=="drop" and diff.y < -18 and p.nav_time>0.3)):
+			_npc_route(i,p.goal); continue
+		if absf(diff.x)<9 and absf(diff.y)<10 and (step.kind!="jump" or b.is_on_floor()):
+			p.route.pop_front(); p.nav_started=false; p.nav_time=0.0
+			if p.route.is_empty(): continue
+			step=p.route[0]; diff=step.point-b.position
+		p.nav_time+=delta
+		if p.nav_time>5:
+			_npc_route(i,p.goal); continue
+		b.axis=clampf(diff.x/24.0,-1,1) if absf(diff.x)>5 else 0.0
+		if b.climbing and step.kind!="jump":
+			b.climb_axis=clampf(diff.y/12.0,-1,1)
+			if step.kind=="walk" and absf(diff.x)>5: b.climb_axis=clampf((step.point.y-2-b.position.y)/8.0,-0.35,0.35)
+		if not p.nav_started:
+			if step.kind=="jump" and (b.is_on_floor() or b.climbing):
+				if b.climbing: b.coyote=0.1
+				b.jump_requested=true; p.nav_jump=0.5; p.nav_started=true
+			elif step.kind=="drop": b.drop_down(); p.nav_started=true
+			elif step.kind!="jump": p.nav_started=true
+		p.nav_jump=maxf(0,p.nav_jump-delta); b.jump_held=p.nav_jump>0
+		if b.jump_held: b.climbing=false
+
+func _click_context(key: String) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await _test_click(object_context.controls[key].get_global_rect().get_center())
+
+func _verify_context_reception() -> int:
+	var failed=0
+	object_context.close(); camera_pan=Vector2.ZERO
+	player.position=Vector2(26*32+16,21*32-27); player.velocity=Vector2.ZERO
+	for i in range(people.size()):
+		people[i].checkout=0; people[i].dirty=false; people[i].down=false; people[i].hidden=false; people[i].route=[]
+		people[i].pos=Vector2((25+i*5)*32,21*32); npc_bodies[i].position=people[i].pos-Vector2(0,27)
+	camera.position=Vector2(27*32,300)
+	for i in range(12): await get_tree().physics_frame
+	var money=inn.coins
+	await _test_click(get_canvas_transform()*(people[1].pos-Vector2(0,25)))
+	if not object_context.panel.visible or object_context.target!="1": failed+=1; push_error("Wrong guest context")
+	await _click_context("room2")
+	if inn.coins!=money: failed+=1; push_error("Remote reception charged before approach")
+	await _wait_navigation(500)
+	if people[1].room!=2 or people[1].checkout<=clock or inn.coins!=money+8: failed+=1; push_error("Direct reception selected wrong guest")
+	var goal=Vector2(33*32+16,14*32)
+	for i in range(1100):
+		await get_tree().physics_frame
+		if people[1].pos.distance_to(goal)<20: break
+	if people[1].pos.distance_to(goal)>20: failed+=1; push_error("Guest did not physically enter room: "+str(people[1].pos))
+	object_context.open("person","1")
+	await get_tree().process_frame
+	if object_context.panel.get_global_rect().end.x>get_viewport().get_visible_rect().size.x: failed+=1; push_error("Context overflowed viewport")
+	object_context.close()
+	print("2D LOCAL RECEPTION CHECKS: ",failed," failures")
+	return failed
+
+func capture_context(show_menu: bool) -> void:
+	test_mode=true; paused=false; gentle_opening=true; player.active=false; episode.data.briefed=true; set_physics_process(false)
+	camera.position=Vector2(26*32,300); camera.zoom=Vector2.ONE
+	for body in npc_bodies: body.active=false
+	if show_menu: object_context.open("person","0")
+	queue_redraw(); episode_ui.refresh()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	object_context.refresh()
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://../../docs/context-2d-"+("guest" if show_menu else "inn")+".png")
+	get_tree().quit()

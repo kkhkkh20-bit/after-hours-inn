@@ -21,8 +21,9 @@ func _init() -> void:
 		"logs":[], "served":0, "departed":0}
 	data.stealth = stealth_defaults()
 	data.ops=Intrigue.defaults()
-	for x in range(-1,2):
-		for y in range(-1,2): data.cells[cell_key(Vector2i(x,y))] = true
+	data.excavation=excavation_defaults()
+	for x in range(-3,2):
+		for y in range(-2,3): data.cells[cell_key(Vector2i(x,y))] = true
 	spawn_guest()
 	note("손님이 도착했다. 접수대 가까이에서 1 / 2로 객실을 배정한다.")
 
@@ -34,18 +35,18 @@ func add_obstacle(rect: Rect2) -> void:
 	obstacles.append(rect.grow(0.18))
 
 func rebuild_grid() -> void:
-	grid.region = Rect2i(0,0,28,16)
+	grid.region = Rect2i(0,0,56,32)
 	grid.cell_size = Vector2(0.5,0.5)
-	grid.offset = Vector2(-6.75,-3.75)
+	grid.offset = Vector2(-13.75,-7.75)
 	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
 	grid.update()
-	for x in range(28):
-		for y in range(16):
+	for x in range(56):
+		for y in range(32):
 			var id := Vector2i(x,y)
 			grid.set_point_solid(id, not surface_walkable(grid.get_point_position(id)))
 
 func surface_walkable(pos: Vector2) -> bool:
-	if not Rect2(-6.8,-3.8,13.6,7.6).has_point(pos): return false
+	if not Rect2(-13.8,-7.8,27.6,15.6).has_point(pos): return false
 	for rect in obstacles:
 		if rect.has_point(pos): return false
 	return true
@@ -58,14 +59,17 @@ func walkable(pos: Vector2, floor_: int) -> bool:
 	return true
 
 func path_to(from: Vector2, to: Vector2) -> Array:
-	var a := Vector2i(floori((from.x+7)/0.5),floori((from.y+4)/0.5))
-	var b := Vector2i(floori((to.x+7)/0.5),floori((to.y+4)/0.5))
+	var a := Vector2i(floori((from.x+14)/0.5),floori((from.y+8)/0.5))
+	var b := Vector2i(floori((to.x+14)/0.5),floori((to.y+8)/0.5))
 	if not grid.is_in_boundsv(a) or not grid.is_in_boundsv(b): return []
 	if grid.is_point_solid(a) or grid.is_point_solid(b): return []
 	return Array(grid.get_point_path(a,b))
 
 func move_player(offset: Vector2) -> void:
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty(): return
+	if offset.length()>0.001:
+		data.excavation.path=[]
+		data.excavation.intent=""
 	var remaining := offset
 	while remaining.length() > 0.0001:
 		var step := remaining.limit_length(0.08)
@@ -187,6 +191,9 @@ func interact() -> void:
 	if not data.work.is_empty() or not data.dig.is_empty():
 		note("작업 중이다. X로 중단할 수 있다.")
 		return
+	if data.player.floor==1:
+		dig_nearest()
+		return
 	if Intrigue.inspector_action(self):return
 	if data.ops.drag!="":note("끌고 있는 대상을 먼저 C로 내려놓아야 한다.");return
 	if explain_noise(): return
@@ -284,6 +291,7 @@ func _step(dt: float) -> void:
 					data.work={}
 					pickup(order_id,"player")
 					note("식사가 준비됐다. 주문한 손님에게 전달하자.")
+	update_excavation(dt)
 	Intrigue.tick(self,dt)
 	update_work(dt)
 	update_awareness(dt)
@@ -407,12 +415,15 @@ func cancel_work() -> void:
 		data.money+=1
 	data.work={}
 	data.dig={}
+	data.excavation.path=[]
+	data.excavation.intent=""
 	note("작업을 중단했다.")
 
 func change_floor() -> bool:
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty(): return false
 	if data.player.floor==0 and data.player.pos.distance_to(HATCH)<1.2:
 		observe_hatch()
+		data.excavation.hatch_open=true
 		data.player.floor=1
 		data.player.pos=Vector2.ZERO
 		Intrigue.sync_drag(self)
@@ -438,6 +449,9 @@ static func parse_cell(key: String) -> Vector2i:
 func start_dig(cell: Vector2i) -> bool:
 	if data.paused or data.ops.drag!="" or data.player.floor!=1 or not data.work.is_empty() or not data.dig.is_empty(): return false
 	if absi(cell.x)>12 or absi(cell.y)>8 or data.cells.has(cell_key(cell)): return false
+	if data.excavation.durability<=0:
+		note("도구가 닳았다. 접수대 T로 2닢에 수리한다.")
+		return false
 	if data.money<1:
 		note("굴착 도구 비용 1닢이 부족하다.")
 		return false
@@ -446,6 +460,9 @@ func start_dig(cell: Vector2i) -> bool:
 		note("내 바로 옆 흙벽만 팔 수 있다.")
 		return false
 	data.money-=1
+	data.excavation.path=[]
+	data.excavation.intent=""
+	data.excavation.durability-=1
 	data.dig={"cell":cell_key(cell),"remaining":10.0 if data.stealth.quiet else 4.0,"quiet":data.stealth.quiet}
 	note("조용한 굴착 10초. X 중단." if data.stealth.quiet else "빠른 굴착 4초. 소리가 크다. X 중단.")
 	return true
@@ -503,6 +520,10 @@ func restore(saved: Variant) -> bool:
 	# Existing 0.3 saves acquire awareness defaults; in-flight jobs remain valid.
 	if not candidate.has("stealth"): candidate.stealth=stealth_defaults()
 	if not candidate.has("ops"):candidate.ops=Intrigue.defaults()
+	if not candidate.has("excavation"):
+		candidate.excavation=excavation_defaults()
+		for x in range(-3,2):
+			for y in range(-2,3):candidate.cells[cell_key(Vector2i(x,y))]=true
 	for key in data:
 		if not candidate.has(key): return false
 	if not candidate.staff.has("facing"): candidate.staff.facing=Vector2.DOWN
@@ -625,4 +646,74 @@ func explain_noise() -> bool:
 	s.explain_until=data.clock+45
 	finish_investigation()
 	note("물자를 확인했다고 짧게 설명했다. 이전에 확인한 사실은 지워지지 않는다.")
+	return true
+
+func excavation_defaults() -> Dictionary:
+	return {"durability":24,"path":[],"intent":"","cell":"","hatch_open":false}
+
+func queue_floor() -> bool:
+	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
+	data.excavation.path=[]
+	data.excavation.intent=""
+	var target: Vector2=HATCH if data.player.floor==0 else Vector2.ZERO
+	if data.player.pos.distance_to(target)<0.8:return change_floor()
+	var route: Array=path_to(data.player.pos,target) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,target)
+	if route.is_empty():note("입구까지 갈 수 있는 통로가 없다.");return false
+	data.excavation.path=route
+	data.excavation.intent="floor"
+	note("입구까지 걸어간 뒤 층을 바꾼다. WASD / X로 취소.")
+	return true
+
+func queue_dig(cell: Vector2i) -> bool:
+	if data.paused or data.player.floor!=1 or data.ops.drag!="" or not data.work.is_empty() or not data.dig.is_empty():return false
+	if absi(cell.x)>12 or absi(cell.y)>8 or data.cells.has(cell_key(cell)):return false
+	var current:=Vector2i(roundi(data.player.pos.x),roundi(data.player.pos.y))
+	if absi(current.x-cell.x)+absi(current.y-cell.y)==1:return start_dig(cell)
+	var best: Array=[]
+	for offset in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+		var stand: Vector2i=cell+offset
+		if not data.cells.has(cell_key(stand)):continue
+		var route: Array=Intrigue.basement_route(self,data.player.pos,Vector2(stand))
+		if not route.is_empty() and (best.is_empty() or route.size()<best.size()):best=route
+	if best.is_empty():note("열린 통로와 맞닿은 흙벽을 골라야 한다.");return false
+	if data.excavation.durability<=0 or data.money<1:note("도구 내구도와 굴착 비용을 확인하자. 접수대 T 수리.");return false
+	data.excavation.path=best
+	data.excavation.intent="dig"
+	data.excavation.cell=cell_key(cell)
+	note("선택한 흙벽 옆으로 이동한 뒤 직접 판다. X 취소.")
+	return true
+
+func dig_nearest() -> bool:
+	var best:=Vector2i(99,99)
+	var distance:=INF
+	for key in data.cells:
+		var cell:=parse_cell(key)
+		for offset in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+			var next: Vector2i=cell+offset
+			if data.cells.has(cell_key(next)) or absi(next.x)>12 or absi(next.y)>8:continue
+			var delta: float=data.player.pos.distance_squared_to(Vector2(next))
+			if delta<distance:distance=delta;best=next
+	return queue_dig(best)
+
+func update_excavation(dt: float) -> void:
+	var job: Dictionary=data.excavation
+	if job.intent=="":return
+	if not data.work.is_empty() or not data.dig.is_empty():job.path=[];job.intent="";return
+	var walker: Dictionary={"pos":data.player.pos,"path":job.path}
+	follow(walker,dt*(1.15 if data.ops.drag!="" else (2.2 if data.player.carry!="" else 2.9)))
+	data.player.pos=walker.pos
+	Intrigue.sync_drag(self)
+	if walker.path.is_empty():
+		var action: String=job.intent
+		job.intent=""
+		if action=="floor":change_floor()
+		elif action=="dig":start_dig(parse_cell(job.cell))
+
+func repair_tools() -> bool:
+	if data.paused or not near_counter():note("접수대에서 T로 도구를 수리한다.");return false
+	if data.excavation.durability>=24:note("곡괭이와 삽은 아직 튼튼하다.");return false
+	if data.money<2:note("도구 수리비 2닢이 부족하다.");return false
+	data.money-=2
+	data.excavation.durability=24
+	note("곡괭이와 삽을 수리했다. 내구도 24.")
 	return true

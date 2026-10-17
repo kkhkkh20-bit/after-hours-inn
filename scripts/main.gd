@@ -32,6 +32,14 @@ var viewed_floor := 0
 var surface_zoom := 24.0
 var basement_zoom := 12.0
 var pointer_position := Vector2.ZERO
+var hatch_lid: Node3D
+var tool_pivot: Node3D
+var pick_head: MeshInstance3D
+var shovel_head: MeshInstance3D
+var dig_progress: ProgressBar
+var floor_button: Button
+var panels_hidden:=false
+var information_controls: Array[Control]=[]
 var action_buttons: Dictionary={}
 var contract_panel: Label
 var target_panel: Label
@@ -182,34 +190,35 @@ func light_at(pos: Vector3, energy: float) -> void:
 
 func build_surface() -> void:
 	box(Vector3(42, 0.3, 34), Vector3(0, -0.5, 0), Color("283b43"), true)
-	box(Vector3(14.4, 0.35, 8.4), Vector3(0, -0.17, 0), Color("342e29"), true)
-	for x in range(-7, 7):
-		for z in range(-4, 4):
+	box(Vector3(20.4, 0.35, 12.4), Vector3(0, -0.17, 0), Color("342e29"), true)
+	for x in range(-10, 10):
+		for z in range(-6, 6):
 			model("town", "planks", Vector3(x + 0.5, 0.01, z + 0.5), Vector3(0.99, 0.06, 0.99))
 	# Back and west walls remain tall; front walls are deliberately cut away.
-	for x in range(-7, 7):
-		model("town", "wall-wood-window-small" if x % 4 == 0 else "wall-wood", Vector3(x + 0.5, 0.07, -4), Vector3(0.17, 2.5, 1), PI / 2, true)
-	for z in range(-4, 4):
-		model("town", "wall-wood", Vector3(-7, 0.07, z + 0.5), Vector3(0.17, 2.5, 1), 0, true)
-	box(Vector3(0.15, 0.45, 8), Vector3(7, 0.24, 0), Color("66523a"), true)
-	box(Vector3(14, 0.45, 0.15), Vector3(0, 0.24, 4), Color("66523a"), true)
+	for x in range(-10, 10):
+		model("town", "wall-wood-window-small" if x % 4 == 0 else "wall-wood", Vector3(x + 0.5, 0.07, -6), Vector3(0.17, 2.5, 1), PI / 2, true)
+	for z in range(-6, 6):
+		model("town", "wall-wood", Vector3(-10, 0.07, z + 0.5), Vector3(0.17, 2.5, 1), 0, true)
+	box(Vector3(0.15, 0.45, 12), Vector3(10, 0.24, 0), Color("66523a"), true)
+	box(Vector3(9, 0.45, 0.15), Vector3(-5.5, 0.24, 6), Color("66523a"), true)
+	box(Vector3(9, 0.45, 0.15), Vector3(5.5, 0.24, 6), Color("66523a"), true)
 	# Room partition with two open doorways at z=-2 and z=2.
-	for z in range(-4, 4):
+	for z in range(-6, 6):
 		if z == -3 or z == 1:
 			continue
 		box(Vector3(0.16, 1.0, 1), Vector3(2, 0.55, z + 0.5), Color("76654c"), true)
-	box(Vector3(5, 1, 0.15), Vector3(4.5, 0.55, 0), Color("76654c"), true)
+	box(Vector3(8, 1, 0.15), Vector3(6, 0.55, 0), Color("76654c"), true)
 	for z in [-2.0, 2.0]:
 		model("furniture", "bedSingle", Vector3(5.6, 0.08, z), Vector3(1.1, 0.75, 2.0), 0, true)
 		model("furniture", "rugRectangle", Vector3(3.7, 0.08, z), Vector3(1.4, 0.025, 2.0))
 	model("furniture", "table", Vector3(-1.7, 0.08, -2.7), Vector3(2.7, 0.95, 0.9), 0, true)
 	model("furniture", "books", Vector3(-2.4, 1.04, -2.7), Vector3(0.5, 0.17, 0.35))
 	model("furniture", "bookcaseOpen", Vector3(-5.4, 0.08, -3.4), Vector3(1.35, 1.9, 0.4), 0, true)
-	for x in [-4.8, -1.6]:
+	for x in [-7.5, -4.8]:
 		model("furniture", "tableRound", Vector3(x, 0.08, 0.4), Vector3(1.4, 0.8, 1.4), 0, true)
 		for z in [-0.7, 1.6]:
 			model("furniture", "chair", Vector3(x, 0.08, z), Vector3(0.52, 1, 0.58), PI if z < 0 else 0, true)
-	model("furniture", "bench", Vector3(-5.5, 0.08, 3), Vector3(1.8, 0.9, 0.6), 0, true)
+	model("furniture", "bench", Vector3(-8.5, 0.08, 3), Vector3(1.8, 0.9, 0.6), 0, true)
 	model("furniture", "coatRackStanding", Vector3(0.7, 0.08, 3.2), Vector3(0.5, 1.7, 0.5))
 	for pos in [Vector3(-4, 0.08, -3.3), Vector3(3.4, 0.08, -3.3), Vector3(3.4, 0.08, 3.2)]:
 		model("town", "lantern", pos, Vector3(0.25, 1.8, 0.25))
@@ -249,9 +258,11 @@ func _ready() -> void:
 	sun.shadow_enabled = true
 	build_surface()
 	box(Vector3(1,0.03,1),Vector3(-3.25,0.09,2.75),Color("243632"))
-	world_label("Q  지하",Vector3(-3.25,0.18,2.75),surface)
+	world_label("지하 입구 · 클릭 / Q",Vector3(-3.25,0.4,2.75),surface)
+	build_excavation_visuals()
 	sim.rebuild_grid()
 	player = actor(Vector3.ZERO,Color("8f7147"))
+	attach_tools()
 	staff_visual = actor(Vector3.ZERO,Color("4a7771"))
 	collector_visual = actor(Vector3.ZERO,Color("6d3b47"))
 	inspector_visual=actor(Vector3.ZERO,Color("933e32"))
@@ -264,7 +275,9 @@ func _ready() -> void:
 	world_label("징수원",Vector3(0,1.95,0),collector_visual)
 	world_root = basement
 	light_at(Vector3(0,2.8,0),1.2)
-	world_label("Q  위층",Vector3(0,0.45,0),basement)
+	world_label("Q  위층",Vector3(0,1.9,0),basement)
+	for x in [-0.35,0.35]:box(Vector3(0.07,1.7,0.07),Vector3(x,0.85,-0.2),Color("8d754e"))
+	for y in [0.25,0.55,0.85,1.15,1.45]:box(Vector3(0.7,0.07,0.07),Vector3(0,y,-0.2),Color("b09972"))
 	world_root = surface
 	camera = Camera3D.new()
 	add_child(camera)
@@ -282,6 +295,18 @@ func _ready() -> void:
 		get_tree().quit(result)
 	elif "--input-verify" in args:
 		await input_verify()
+	elif "--capture-excavation" in args:
+		capturing=true
+		sim.queue_floor()
+		sim.tick(4)
+		sim.queue_dig(Vector2i(2,0))
+		sim.tick(2)
+		sync_view(0)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://docs/v06-excavation.png")
+		get_tree().quit()
 	elif "--capture" in args or "--capture-basement" in args or "--capture-stealth" in args or "--capture-operation" in args or "--capture-prison" in args:
 		capturing = true
 		sim.data.player.pos = Simulation.COUNTER
@@ -333,7 +358,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
-		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v04-surface.png")
+		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v06-surface.png")
 		if "--capture-operation" in args:output="res://docs/v05-operation.png"
 		if "--capture-prison" in args:output="res://docs/v05-prison.png"
 		get_viewport().get_texture().get_image().save_png(output)
@@ -415,12 +440,23 @@ func make_ui() -> void:
 	contract_panel=ui_label(canvas,Vector2(32,328),Vector2(242,78),15)
 	button(canvas,"의뢰 / 보수 [J]",Vector2(32,412),Vector2(130,32),func():Simulation.Intrigue.contract_action(sim))
 	button(canvas,"거절 / 보호 [K]",Vector2(166,412),Vector2(108,32),func():Simulation.Intrigue.contract_action(sim,true))
+	floor_button=button(canvas,"지하 입구 열고 내려가기 [Q]",Vector2(320,230),Vector2(330,34),func():sim.queue_floor())
+	action_buttons["dig"]=button(canvas,"가까운 흙벽 파기 [E]",Vector2(658,230),Vector2(312,34),func():sim.dig_nearest())
+	button(canvas,"도구 수리 [T] · 2닢",Vector2(994,630),Vector2(266,26),func():sim.repair_tools())
+	dig_progress=ProgressBar.new()
+	dig_progress.position=Vector2(334,272)
+	dig_progress.size=Vector2(622,18)
+	dig_progress.show_percentage=true
+	canvas.add_child(dig_progress)
 	panel(canvas,Vector2(320,552),Vector2(650,90))
 	target_panel=ui_label(canvas,Vector2(334,558),Vector2(620,36),16)
 	action_buttons["subdue"]=button(canvas,"제압 2초 [Z]",Vector2(334,601),Vector2(140,32),func():Simulation.Intrigue.subdue(sim))
 	action_buttons["drag"]=button(canvas,"끌기 / 풀기 [C]",Vector2(480,601),Vector2(152,32),func():Simulation.Intrigue.drag_or_release(sim))
 	action_buttons["cell"]=button(canvas,"구금칸 [B]",Vector2(638,601),Vector2(140,32),func():Simulation.Intrigue.build_or_hold(sim))
 	action_buttons["bribe"]=button(canvas,"경비 뇌물 [O]",Vector2(784,601),Vector2(168,32),func():Simulation.Intrigue.inspector_action(sim,true))
+	for node in canvas.get_children():
+		if node is Control and node.position.y>=138 and node.position.y<=654 and (node.position.x<300 or node.position.x>=994):information_controls.append(node)
+	button(canvas,"정보 패널 접기 / 펼치기 [I]",Vector2(1000,100),Vector2(260,28),toggle_information)
 
 func room_text(number: int) -> String:
 	var room_: Dictionary=sim.data.rooms[str(number)]
@@ -436,7 +472,7 @@ func refresh_ui() -> void:
 	var minute:=int(420+d.clock*6)
 	var day:=minute/1440+1
 	var within:=minute%1440
-	hud.text="문 닫은 뒤  /  국경 여관  0.5\n%d일  %02d:%02d    보유 %d닢    미납 %d닢    %s    %s" % [day,within/60,within%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층","일시정지" if d.paused else "%d배속" % d.speed]
+	hud.text="문 닫은 뒤  /  국경 여관  0.6\n%d일  %02d:%02d    보유 %d닢    미납 %d닢    %s    %s" % [day,within/60,within%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층","일시정지" if d.paused else "%d배속" % d.speed]
 	var queue:=sim.waiting()
 	if queue.is_empty(): reception.text="접수 대기  0명\n다음 손님을 기다리는 중"
 	else:
@@ -462,10 +498,10 @@ func refresh_ui() -> void:
 		lines.append("· "+str(item.text))
 	feed.text="최근 소식\n"+"\n".join(lines)
 	var action: String="접수대 E: 식사 준비·집기  /  주문 손님 곁 E: 전달  /  퇴실한 객실 E: 청소"
-	if d.player.floor==1:action="입구 Q: 위층 복귀  /  바로 옆 흙벽 클릭: 굴착·1닢 / R: 빠르게·조용히  /  위층 영업은 계속 진행"
+	if d.player.floor==1:action="흙벽 클릭: 걸어가서 직접 파기 / E: 가까운 벽 파기 / Q: 위층 복귀 / R: 곡괭이·삽"
 	if not d.work.is_empty():action="작업 중  %.1f초 남음 · X로 중단" % d.work.remaining
 	if not d.dig.is_empty():action="굴착 중  %.1f초 남음 · 소음 %.1f · X로 중단" % [d.dig.remaining,d.noise]
-	hint.text=action+"\nWASD 이동   1/2 방 배정   G 거절   H 직원   Q 계단   Space 정지   Tab 배속   휠 확대\nR 굴착 방식   X 작업 중단   V 시야 표시   M 소리   F5 저장   F9 불러오기   Esc 종료"
+	hint.text=action+"\nWASD 이동   1/2 방 배정   G 거절   H 직원   Q 계단   Space 정지   Tab 배속   휠 확대\nR 굴착 방식   X 작업 중단   V 시야   M 소리   I 정보접기   F5 저장   F9 불러오기   Esc 종료"
 	if OS.has_feature("web"):
 		hint.text=hint.text.replace("F5 저장   F9 불러오기","저장·불러오기는 오른쪽 버튼").replace("Esc 종료","Esc 정지")
 	var stealth: Dictionary=d.stealth
@@ -474,7 +510,11 @@ func refresh_ui() -> void:
 	if d.clock<stealth.refuse_until:stage="업무 거부 %.0f초" % (stealth.refuse_until-d.clock)
 	awareness.text="직원 경계 %d / 100  ·  %s  ·  확인 기억 %d\n굴착 %s  |  소음 %.1f  |  직원에게 들리는 소리 %.1f" % [int(stealth.suspicion),stage,int(stealth.memory),"조용히 10초" if stealth.quiet else "빠르게 4초",d.noise,stealth.heard]
 	awareness.modulate=Color("ffb882") if stealth.phase!="idle" or d.clock<stealth.refuse_until else Color("c3d8d0")
-	if stealth.phase in ["approach","listen"] and d.player.floor==0:hint.text="직원 시야 안 가까이 E: 물자 확인이었다고 설명 / X: 작업 중단\n"+hint.text
+	if stealth.phase in ["approach","listen"] and d.player.floor==0:hint.text="직원 시야 안 가까이 E: 설명 / X: 작업 중단\n"+hint.text
+	if d.excavation.intent!="":notice.text="이동 중 · 도착하면 작업 / WASD 또는 X로 취소"
+	floor_button.text="위층 입구로 걸어가기 [Q]" if d.player.floor==1 else "지하 입구 열고 내려가기 [Q]"
+	if d.player.floor==1 and d.ops.drag=="":
+		target_panel.text="도구: %s / 내구도 %d · 흙벽을 클릭하면 이동해서 직접 판다" % ["삽 · 조용히 10초" if d.stealth.quiet else "곡괭이 · 빠르게 4초",int(d.excavation.durability)]
 	var contract: Dictionary=d.ops.contract
 	var contract_names: Dictionary={"offered":"그림자 의뢰 / 보수 24닢","active":"억류 의뢰 진행","ready":"조건 달성 / 접수대 J 보수","paid":"보수 수령 / 구금자는 남아 있음","protected":"의뢰 폭로 / 손님 보호","declined":"의뢰 거절 / 정상 영업","failed":"의뢰 실패"}
 	contract_panel.text=str(contract_names.get(contract.state,contract.state))
@@ -488,6 +528,7 @@ func refresh_ui() -> void:
 		var states: Dictionary={"waiting":"접수 대기","entering":"입실 중","staying":"투숙","down":"기절 %.0f초" % maxf(0,target.wake_at-d.clock),"captive":"지하 구금","escaping":"탈출 중","leaving":"퇴장 중"}
 		target_panel.text="선택: %s / %s / %s" % [target.name,states.get(target.state,target.state),"지하" if target.floor==1 else "위층"]
 	if d.ops.drag!="":target_panel.text+="  ·  끄는 중: "+str(d.people[d.ops.drag].name)
+	if d.player.floor==1 and target_id=="" and d.ops.drag=="":target_panel.text="흙벽 클릭 → 걸어가서 도구질 / E 가까운 벽 / R 곡괭이·삽 / 내구도 %d" % int(d.excavation.durability)
 	var near_id: String=Simulation.Intrigue.select_near(sim)
 	var actionable: bool=Simulation.Intrigue.available(sim)
 	var reachable: bool=near_id!="" and Simulation.Intrigue.close(sim,near_id)
@@ -495,6 +536,8 @@ func refresh_ui() -> void:
 	action_buttons.drag.disabled=not (actionable and (d.ops.drag!="" or (reachable and d.people[near_id].state in ["down","captive"])))
 	action_buttons.cell.disabled=not actionable or d.player.floor!=1
 	action_buttons.cell.text="구금 [B]" if d.ops.built else "구금칸 8닢 [B]"
+	action_buttons.dig.disabled=d.player.floor!=1 or not actionable or d.ops.drag!=""
+	floor_button.disabled=not actionable
 	action_buttons.bribe.disabled=not actionable or not sim.near_counter() or d.ops.inspector.state!="waiting"
 	var investigation: Dictionary=d.ops.inspector
 	if investigation.state!="idle":
@@ -505,7 +548,9 @@ func refresh_ui() -> void:
 	notice.text=""
 	if d.ops.drag!="":notice.text="대상 운반 중 · 이동이 느려진다 / 지하 B 구금 / C 내려놓기"
 	if d.player.carry!="":notice.text="식사 운반 중 → "+str(d.people[d.orders[d.player.carry].guest].name)
-	if d.player.floor==1 and pending>0:notice.text="위층 주문 %d건 · 직원 %s" % [pending,staff_status]
+	if d.player.floor==1 and d.ops.drag=="":notice.text="곡괭이·삽 기본 지급 / 내구도 %d · T: 접수대 수리 2닢 / 흙벽 클릭 또는 E로 파기" % int(d.excavation.durability)
+	if d.excavation.intent!="":notice.text="입구/흙벽으로 이동 중 · WASD 또는 X로 취소"
+	if d.player.floor==1 and pending>0:notice.text+=" / 위층 주문 %d건" % pending
 
 func sync_actor(visual: Node3D, pos: Vector2, dt: float) -> void:
 	var before:=Vector2(visual.position.x,visual.position.z)
@@ -571,6 +616,13 @@ func sync_view(dt: float) -> void:
 	if vision_clock>=0.12 or dt==0:
 		vision_clock=0
 		refresh_vision()
+	tool_pivot.visible=not upstairs and d.ops.drag==""
+	tool_pivot.rotation.x=sin(d.clock*13)*0.85-0.3 if not d.dig.is_empty() else -0.2
+	pick_head.visible=not d.stealth.quiet
+	shovel_head.visible=d.stealth.quiet
+	hatch_lid.rotation.x=-1.25 if d.excavation.hatch_open else 0
+	dig_progress.visible=not d.dig.is_empty()
+	if not d.dig.is_empty():dig_progress.value=100*(1-d.dig.remaining/(10.0 if d.dig.get("quiet",false) else 4.0))
 	refresh_ui()
 
 func rebuild_basement() -> void:
@@ -628,7 +680,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_G:sim.reject_guest()
 			KEY_E:sim.interact()
 			KEY_H:sim.toggle_staff()
-			KEY_Q:sim.change_floor()
+			KEY_Q:sim.queue_floor()
+			KEY_T:sim.repair_tools()
+			KEY_I:toggle_information()
 			KEY_X:sim.cancel_work()
 			KEY_Z:Simulation.Intrigue.subdue(sim)
 			KEY_C:Simulation.Intrigue.drag_or_release(sim)
@@ -647,7 +701,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.button_index==MOUSE_BUTTON_LEFT:
 			var target_id:=pick_person(event.position)
 			if target_id!="":sim.data.ops.selected=target_id
-			elif sim.data.player.floor==1:sim.start_dig(hover_cell)
+			elif sim.data.player.floor==1:
+				var hit: Variant=Plane(Vector3.UP,0.9).intersects_ray(camera.project_ray_origin(event.position),camera.project_ray_normal(event.position))
+				if hit!=null:sim.queue_dig(Vector2i(roundi(hit.x),roundi(hit.z)))
+			elif event.position.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<40:sim.queue_floor()
 			else:sim.data.ops.selected=""
 
 func _physics_process(delta: float) -> void:
@@ -668,7 +725,7 @@ func _physics_process(delta: float) -> void:
 			if dig_cursor!=null:
 				dig_cursor.visible=earth_edges.has(Simulation.cell_key(hover_cell))
 				dig_cursor.position=Vector3(hover_cell.x,0.94,hover_cell.y)
-	var focus_target:=Vector3(sim.data.player.pos.x,0,sim.data.player.pos.y) if sim.data.player.floor==1 else Vector3.ZERO
+	var focus_target:=Vector3(sim.data.player.pos.x,0,sim.data.player.pos.y)
 	camera_focus=camera_focus.lerp(focus_target,minf(1,delta*4))
 	camera.position=camera_focus+Vector3(16,18,21)
 	camera.look_at(camera_focus)
@@ -791,6 +848,44 @@ func input_verify() -> void:
 	checks.append(sim.data.ops.built)
 	await send_key(KEY_B)
 	checks.append(sim.data.people.guest_1.state=="captive" and sim.data.ops.drag=="")
+	sim=Simulation.new()
+	sim.obstacles.assign(geometry)
+	sim.rebuild_grid()
+	sync_view(0)
+	mouse=InputEventMouseButton.new()
+	mouse.position=Vector2(450,247)
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.pressed=true
+	get_viewport().push_input(mouse,true)
+	await get_tree().process_frame
+	mouse=InputEventMouseButton.new()
+	mouse.position=Vector2(450,247)
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.pressed=false
+	get_viewport().push_input(mouse,true)
+	await get_tree().process_frame
+	checks.append(sim.data.excavation.intent=="floor")
+	sim.tick(5)
+	sync_view(0)
+	checks.append(sim.data.player.floor==1 and sim.data.excavation.hatch_open)
+	var soil_screen:=camera.unproject_position(Vector3(2,0.9,0))
+	mouse=InputEventMouseButton.new()
+	mouse.position=soil_screen
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.pressed=true
+	get_viewport().push_input(mouse,true)
+	await get_tree().process_frame
+	checks.append(sim.data.excavation.intent=="dig")
+	sim.tick(6)
+	checks.append(sim.data.cells.has("2,0") and sim.data.excavation.durability==23)
+	await send_key(KEY_E)
+	checks.append(sim.data.excavation.intent=="dig" or not sim.data.dig.is_empty())
+	sim.tick(6)
+	checks.append(sim.data.cells.size()==27 and sim.data.excavation.durability==22)
+	sim.data.player.floor=0
+	sim.data.player.pos=Simulation.COUNTER
+	await send_key(KEY_T)
+	checks.append(sim.data.excavation.durability==24)
 	var failed:=0
 	for i in range(checks.size()):
 		if not checks[i]:
@@ -907,3 +1002,30 @@ func build_holding_visual() -> void:
 	var label:=world_label("구금칸",Vector3(-0.3,0.2,0.65),holding_visual)
 	label.pixel_size=0.004
 	world_root=surface
+
+func build_excavation_visuals() -> void:
+	# Lid, rim and ladder give the entrance a physical shape instead of a label.
+	world_root=surface
+	for x in [-0.6,0.6]:box(Vector3(0.1,0.12,1.3),Vector3(Simulation.HATCH.x+x,0.12,Simulation.HATCH.y),Color("8d754e"))
+	hatch_lid=Node3D.new()
+	surface.add_child(hatch_lid)
+	hatch_lid.position=Vector3(Simulation.HATCH.x,0.14,Simulation.HATCH.y-0.6)
+	world_root=hatch_lid
+	box(Vector3(1.05,0.08,1.15),Vector3(0,0,0.55),Color("705037"))
+	box(Vector3(0.24,0.08,0.08),Vector3(0,0.08,0.9),Color("b5a477"))
+	world_root=surface
+	# The tool is attached after the owner is created in _ready.
+
+func attach_tools() -> void:
+	tool_pivot=Node3D.new()
+	player.add_child(tool_pivot)
+	tool_pivot.position=Vector3(0.32,1.05,-0.2)
+	world_root=tool_pivot
+	box(Vector3(0.055,0.95,0.055),Vector3(0,-0.2,0),Color("8a6843"))
+	pick_head=box(Vector3(0.52,0.09,0.11),Vector3(0,0.25,0),Color("9baba9"))
+	shovel_head=box(Vector3(0.28,0.3,0.07),Vector3(0,0.25,0),Color("899893"))
+	world_root=surface
+
+func toggle_information() -> void:
+	panels_hidden=not panels_hidden
+	for node in information_controls:node.visible=not panels_hidden

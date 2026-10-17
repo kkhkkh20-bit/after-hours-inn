@@ -222,6 +222,36 @@ static func run(obstacles: Array) -> int:
 	busy.tick(20)
 	expect(busy.data.served==1 and busy.data.stealth.phase in ["approach","listen","idle"],"Existing meal ownership completes before investigation",results)
 	preload("res://scripts/intrigue_tests.gd").run(obstacles,results)
+	var excavation=fresh(obstacles)
+	expect(excavation.data.cells.size()==25,"Larger 5 by 5 basement starts with room to walk",results)
+	expect(excavation.surface_walkable(Vector2(-12,5)),"Expanded yard is actually walkable",results)
+	expect(excavation.queue_floor(),"Entrance command queues actual approach",results)
+	excavation.tick(5)
+	expect(excavation.data.player.floor==1 and excavation.data.excavation.hatch_open,"Approach opens the hatch and enters basement",results)
+	expect(excavation.queue_dig(Vector2i(2,0)),"Distant edge click queues reachable digging",results)
+	expect(excavation.data.excavation.intent=="dig" and excavation.data.dig.is_empty(),"Digging waits until the owner reaches the worksite",results)
+	var travel_save=JSON.parse_string(JSON.stringify(excavation.snapshot()))
+	var excavated=fresh(obstacles)
+	expect(excavated.restore(travel_save),"Queued excavation survives save",results)
+	excavated.tick(6)
+	expect(excavated.data.cells.has("2,0") and excavated.data.excavation.durability==23,"Owner arrives, swings tool and opens selected earth",results)
+	excavated.data.excavation.durability=0
+	excavated.data.player.pos=Vector2(2,0)
+	expect(not excavated.start_dig(Vector2i(3,0)),"Worn tools prevent unpaid excavation",results)
+	excavated.data.player.floor=0
+	excavated.data.player.pos=Sim.COUNTER
+	var repair_coins: int=excavated.data.money
+	expect(excavated.repair_tools() and excavated.data.money==repair_coins-2 and excavated.data.excavation.durability==24,"Reception repairs tools for one explicit fee",results)
+	expect(not excavated.repair_tools() and excavated.data.money==repair_coins-2,"Full tools cannot be charged twice",results)
+	var canceled=fresh(obstacles)
+	canceled.data.player.floor=1
+	canceled.queue_dig(Vector2i(2,0))
+	canceled.cancel_work()
+	canceled.tick(8)
+	expect(not canceled.data.cells.has("2,0") and canceled.data.excavation.durability==24,"Canceling approach consumes neither tools nor terrain",results)
+	canceled.queue_floor()
+	canceled.move_player(Vector2(-0.1,0))
+	expect(canceled.data.excavation.intent=="","Manual walking cancels automated approach",results)
 	var failures:=0
 	for result in results:
 		if not result[0]:failures+=1

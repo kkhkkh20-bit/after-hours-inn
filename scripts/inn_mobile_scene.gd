@@ -23,7 +23,7 @@ func activate(key: String) -> void:
 	if not guests.is_empty():host.activate_selection({"kind":"person","id":guests[0].id})
 	else:host.object_context.open("automation","","식사·접수·청소는 알바가 자동으로 처리합니다.")
 func blocks(point: Vector2) -> bool:
-	if not root.visible:return false
+	if not root.visible or not host.inn_view or host.view_layer!="surface" or host.builder.active:return false
 	for b in pins.values():
 		if b.visible and b.get_global_rect().has_point(point):return true
 	return false

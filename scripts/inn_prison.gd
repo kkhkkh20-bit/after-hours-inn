@@ -44,7 +44,7 @@ static func slot(f: Dictionary,index: int) -> Vector2:
 static func request(s,id: String) -> bool:
 	if s.data.paused or not s.data.people.has(id):return false
 	var p: Dictionary=s.data.people[id]
-	if p.state in ["dead","gone","captive","escaping","leaving"]:s.note("지금은 수감할 수 없는 대상입니다.");return false
+	if p.state in ["dead","gone","captive"]:s.note("지금은 수감할 수 없는 대상입니다.");return false
 	var f=available_cell(s)
 	if f.is_empty():s.note("감옥이 가득 찼습니다. 감옥을 늘리거나 증설하세요.");return false
 	cancel(s);s.Tycoon.cancel_booking(s);s.cancel_work();s.data.service_target="";s.data.deferred_command={}
@@ -66,7 +66,7 @@ static func escort(s) -> void:
 	var id=str(job.target);var f=s.Sandbox.facility(s,str(job.cell))
 	if not s.data.people.has(id) or f.is_empty() or s.data.clock>float(job.deadline):cancel(s);return
 	var p: Dictionary=s.data.people[id]
-	if p.state in ["dead","gone","leaving","escaping","captive"]:cancel(s);return
+	if p.state in ["dead","gone","captive"]:cancel(s);return
 	if not s.data.work.is_empty() or not s.data.dig.is_empty() or s.data.excavation.intent!="":return
 	if job.stage=="approach":
 		if s.data.player.floor!=p.floor:

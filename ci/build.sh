@@ -6,6 +6,7 @@ touch build/.gdignore
 godot --headless --editor --import
 godot --headless --audio-driver Dummy --script tools/check_template_mix.gd
 godot --headless --audio-driver Dummy --script tools/check_building.gd
+godot --headless --audio-driver Dummy --script tools/check_controls.gd
 godot --headless --export-release "Web" "build/web/$web_name.html"
 mv "build/web/$web_name.html" build/web/index.html
 godot --headless --export-release "Windows Desktop" build/windows/AfterHours.exe

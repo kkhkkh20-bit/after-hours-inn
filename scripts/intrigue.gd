@@ -72,11 +72,12 @@ static func quick_action(sim, action: String) -> bool:
 	var id:=select_near(sim)
 	if id=="" or not close(sim,id):return false
 	var person: Dictionary=sim.data.people[id]
-	if person.state not in ["arriving","waiting","staying","entering","dining","restrained","down","captive"]:return false
+	if person.state not in ["arriving","waiting","staying","entering","dining","restrained","down","captive","escaping","leaving"]:return false
 	if sim.data.ops.drag!="" and sim.data.ops.drag!=id:return false
 	if action=="grab" and person.state in ["down","captive","restrained"]:return false
 	sim.data.work={"type":"quick","action":action,"target":id,"remaining":0.7 if action=="grab" else (1.5 if action=="sleep" else 2.0)}
 	sim.note({"grab":"다가가 붙잡는 중…","sleep":"기절시키는 중…","kill":"위험 행동 진행 중…"}[action])
+	if action=="grab":update_quick_action(sim,1.0)
 	return true
 
 static func update_quick_action(sim, dt: float) -> void:
@@ -85,7 +86,7 @@ static func update_quick_action(sim, dt: float) -> void:
 	if sim.data.work.remaining>0:return
 	var job: Dictionary=sim.data.work.duplicate(); sim.data.work={}
 	var id: String=job.target
-	if not close(sim,id) or sim.data.people[id].state not in ["arriving","waiting","staying","entering","dining","restrained","down","captive"]:
+	if not close(sim,id) or sim.data.people[id].state not in ["arriving","waiting","staying","entering","dining","restrained","down","captive","escaping","leaving"]:
 		sim.note("대상이 멀어져 행동을 멈췄다.");return
 	clear_orders(sim,id)
 	var p: Dictionary=sim.data.people[id]
@@ -167,7 +168,7 @@ static func basement_route(sim, from: Vector2, to: Vector2) -> Array:
 	if sim.cellar_nav==null or sim.cellar_stamp!=stamp:
 		sim.cellar_nav=AStarGrid2D.new()
 		sim.cellar_nav.region=Rect2i(-sim.CELLAR_LIMIT,sim.CELLAR_LIMIT*2+Vector2i.ONE)
-		sim.cellar_nav.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER;sim.cellar_nav.update()
+		sim.cellar_nav.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES;sim.cellar_nav.update()
 		sim.cellar_nav.fill_solid_region(sim.cellar_nav.region,true)
 		for key in sim.data.cells:
 			var cell: Vector2i=sim.parse_cell(key)

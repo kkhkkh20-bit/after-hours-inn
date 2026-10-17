@@ -3,6 +3,8 @@ const Rules=preload("res://scripts/inn_sandbox.gd")
 var host
 var backend=preload("res://scripts/inn_kenney_backend.gd").new()
 var active=false
+var camera_pan=false
+var pan_button: Button
 var root: Control
 var tray: PanelContainer
 var launch: Button
@@ -29,6 +31,7 @@ func setup(h) -> void:
 	var column=VBoxContainer.new();column.add_theme_constant_override("separation",10);tray.add_child(column)
 	var row=HBoxContainer.new();column.add_child(row)
 	var title=Label.new();title.text="건설";title.add_theme_font_override("font",h.episode_font());title.add_theme_font_size_override("font_size",26);title.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(title)
+	pan_button=button("화면 이동",row,toggle_camera_pan);pan_button.custom_minimum_size=Vector2(120,60);pan_button.add_theme_font_size_override("font_size",19)
 	var rotate=button("회전",row,func():backend.quarter=(backend.quarter+1)%4;ghost_key="";preview(last_point));rotate.custom_minimum_size=Vector2(112,60);rotate.toggle_mode=false
 	var remove=button("철거",row,func():choose("remove"));remove.custom_minimum_size=Vector2(112,60);remove.toggle_mode=false
 	var done=button("완료",row,close);done.custom_minimum_size=Vector2(120,60);done.toggle_mode=false
@@ -57,8 +60,9 @@ func choose(mode: String) -> void:
 	if mode=="tunnel":mode="dig"
 	var first=not active
 	if first:
+		host.object_context.close()
 		saved_paused=host.sim.data.paused;host.Commands.cancel(host,true)
-	active=true;host.sim.data.paused=true;host.object_context.close();host.dig_mode=mode;tray.show();launch.hide();host.comfort.say("건설 중 · 시간 정지 / 완료하면 운영 재개")
+	camera_pan=false;pan_button.set_pressed_no_signal(false);active=true;host.sim.data.paused=true;host.object_context.close();host.dig_mode=mode;tray.show();launch.hide();host.comfort.say("건설 중 · 시간 정지 / 완료하면 운영 재개")
 	if host.dig_cancel!=null:host.dig_cancel.hide()
 	var target_layer="surface" if mode=="shaft" else "below"
 	if first or host.view_layer!=target_layer:
@@ -68,6 +72,7 @@ func choose(mode: String) -> void:
 		var desired=Vector3(at.x,0,at.y)+(Rules.OFFSET if mode!="shaft" else Vector3.ZERO)
 		var base=host.focus_position();host.camera_offset=Vector2(desired.x-base.x,desired.z-base.z)
 		host.camera.size=21;host.camera_focus=desired;host.camera.position=desired+host.camera_arm();host.camera.look_at(desired);host.template_camera.capture()
+	host.mobile_scene.update()
 	for key in buttons:buttons[key].set_pressed_no_signal(key==mode)
 	preview(last_point)
 func close() -> void:
@@ -83,6 +88,7 @@ func hit(point: Vector2) -> Variant:
 	var y=.08 if host.dig_mode=="shaft" else Rules.OFFSET.y+.08
 	return Plane(Vector3.UP,y).intersects_ray(host.camera.project_ray_origin(point),host.camera.project_ray_normal(point))
 func preview(point: Vector2) -> void:
+	if camera_pan:return
 	if not active or blocks(point) or point.y<166:return
 	last_point=point
 	var at: Variant=hit(point)
@@ -100,7 +106,7 @@ func preview(point: Vector2) -> void:
 			if not adjacent:error="열린 바닥 옆 흙을 고르세요."
 	elif mode=="shaft":error=shaft_error(Vector2(cell))
 	elif mode=="remove":error=backend.removal_error(cell)
-	status.text=error if error!="" else ("시설 터치로 철거 · 절반 환급" if mode=="remove" else "바닥 터치로 즉시 설치 · 드래그로 화면 이동" if mode.begins_with("build:") or mode=="shaft" else "흙 터치로 한 칸 굴착 · 드래그로 화면 이동")
+	status.text=error if error!="" else ("시설 터치로 철거 · 절반 환급" if mode=="remove" else "바닥 터치로 즉시 설치 · 화면 고정" if mode.begins_with("build:") or mode=="shaft" else "흙 터치로 한 칸 굴착 · 화면 고정")
 	status.modulate=Color("edab91") if error!="" else Color("bee2b2")
 	var key="%s:%s:%s" %[mode,cell,error]
 	if is_instance_valid(ghost) and key==ghost_key:return
@@ -115,7 +121,7 @@ func shaft_error(at: Vector2) -> String:
 		if e.top.distance_to(at)<2:return "다른 입구와 너무 가깝습니다."
 	return "공사비 3닢이 필요합니다." if host.sim.data.money<3 else ""
 func place(point: Vector2) -> void:
-	if blocks(point) or point.y<166:return
+	if camera_pan or blocks(point) or point.y<166:return
 	preview(point)
 	if error!="":host.sim.note(error);return
 	var mode: String=host.dig_mode
@@ -128,7 +134,9 @@ func place(point: Vector2) -> void:
 			host.sim.data.money-=3;Rules.finish(host.sim,{"kind":"entrance","point":Vector2(cell),"cell":Rules.underground(Vector2(cell))});okay=true
 	else:okay=preload("res://scripts/inn_excavation.gd").dig_to(host.sim,cell)
 	if okay:
-		host.sync_view(0);host.journal.refresh();preview(point)
+		host.sync_view(0);host.journal.refresh()
+		if mode.begins_with("build:") or mode=="shaft":close()
+		else:preview(point)
 
 func icon(key: String) -> Texture2D:
 	var shapes={
@@ -140,3 +148,12 @@ func icon(key: String) -> Texture2D:
 		"shaft":"<path d='M7 7h34v34H7zM19 12v27m10-27v27m-10-6h10m-10-9h10m-10-9h10'/>"}
 	var svg='<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g fill="none" stroke="#dfc48d" stroke-width="3" stroke-linejoin="round">'+str(shapes.get(key,""))+'</g></svg>'
 	var img=Image.new();img.load_svg_from_string(svg);return ImageTexture.create_from_image(img)
+
+func toggle_camera_pan() -> void:
+	camera_pan=not camera_pan;pan_button.set_pressed_no_signal(camera_pan)
+	if camera_pan:
+		backend.selector.hide();status.text="화면 이동 중 · 드래그 후 화면 이동 버튼을 다시 누르세요."
+	else:
+		host.camera_focus=host.focus_position()+Vector3(host.camera_offset.x,0,host.camera_offset.y)
+		host.camera.position=host.camera_focus+host.camera_arm();host.camera.look_at(host.camera_focus);host.template_camera.capture()
+		ghost_key="";preview(last_point)

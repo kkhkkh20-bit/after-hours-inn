@@ -1,0 +1,13 @@
+TOUCH PASS warehouse opens from a real screen touch
+TOUCH PASS touch purchase changes the live inventory
+TOUCH PASS ground touch chooses a walking destination
+TOUCH PASS live simulation reaches touched destination
+TOUCH PASS reception touch interrupts an existing walk and opens request
+TOUCH PASS room guidance is immediate while owner stays put
+TOUCH PASS third-floor touch physically reaches the attic
+TOUCH PASS basement touch completes the return journey
+TOUCH PASS build tray opens from a screen touch
+TOUCH PASS touching a valid floor installs one structure
+TOUCH PASS a second touch cannot double-place or double-charge
+LIVE TOUCH 11/11
+ERROR: 2 resources still in use at exit (run with --verbose for details).

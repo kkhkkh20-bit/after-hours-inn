@@ -63,7 +63,7 @@ func rebuild_grid() -> void:
 	grid.region = Rect2i(0,0,144,96)
 	grid.cell_size = Vector2(0.5,0.5)
 	grid.offset = Vector2(-23.75,-19.75)
-	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	grid.update()
 	for x in range(144):
 		for y in range(96):
@@ -119,7 +119,7 @@ func gallery_route(from: Vector2, to: Vector2,floor_: int=2) -> Array:
 	upstairs.region=Rect2i(0,0,40,30)
 	upstairs.cell_size=Vector2(0.5,0.5)
 	upstairs.offset=Vector2(-9.75,-8.75)
-	upstairs.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER
+	upstairs.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	upstairs.update()
 	for x in range(40):
 		for y in range(30):
@@ -919,6 +919,18 @@ func update_excavation(dt: float) -> void:
 	var job: Dictionary=data.excavation
 	if job.intent=="":motion.halt();return
 	if not data.work.is_empty() or not data.dig.is_empty():job.path=[];job.intent="";return
+	# Follow a live target, rather than first finishing a walk to its old position.
+	if str(job.intent).begins_with("command:") and str(job.get("target",""))!="":
+		var id=str(job.target);var command=str(job.intent).trim_prefix("command:")
+		if command in ["approach","grab","subdue","sleep","kill","drag","greet","dismiss","confirm_room","deliver"]:
+			if not data.people.has(id) or data.people[id].state=="gone" or data.people[id].floor!=data.player.floor:
+				job.path=[];job.intent="";motion.halt();note("대상이 떠났거나 층을 이동했습니다.");return
+			var target: Vector2=data.people[id].pos
+			if data.player.pos.distance_to(target)<1.1:
+				job.path=[];job.intent="";motion.halt();perform_command(command,id);return
+			if data.clock>=float(job.get("repath_at",0)) and target.distance_to(Vector2(job.get("chase_position",Vector2(999,999))))>.35:
+				job.repath_at=data.clock+.2;job.chase_position=target
+				if not queue_command(command,id):return
 	while not job.path.is_empty() and data.player.pos.distance_to(Vector2(job.path[0]))<.001:job.path.pop_front()
 	var walker: Dictionary={"pos":data.player.pos,"path":job.path}
 	motion.settings.max_speed=travel_multiplier*(1.4 if data.ops.drag!="" else (2.8 if data.player.carry!="" else 4.0))
@@ -994,12 +1006,14 @@ func queue_move(target: Vector2) -> bool:
 func queue_command(command: String, id: String="") -> bool:
 	if data.paused:note("일시정지 중입니다. 영업을 재개해주세요.");return false
 	var tag=command+":"+id
-	if data.excavation.get("command_tag","")!=tag:
+	var fresh_command=data.excavation.get("command_tag","")!=tag
+	if fresh_command:
 		data.excavation.command_tag=tag;data.excavation.command_deadline=data.clock+15
 	elif data.clock>float(data.excavation.get("command_deadline",data.clock+15)):
 		data.excavation.command_tag="";data.excavation.intent="";data.excavation.path=[]
 		note("대상에게 접근하지 못했습니다. 다시 선택해주세요.");return false
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
+	var live_target=command in ["subdue","grab","sleep","kill","drag","deliver","approach","admit1","admit2","admit3","admit4","admit5","greet","dismiss","confirm_room"]
 	var target: Vector2=COUNTER
 	if command in ["subdue","grab","sleep","kill","drag","deliver","approach","admit1","admit2","admit3","admit4","admit5","greet","dismiss","confirm_room"]:
 		if not data.people.has(id) or data.people[id].floor!=data.player.floor or data.people[id].state=="gone":note("현재 층에서 대상을 다시 선택하자.");return false
@@ -1021,14 +1035,14 @@ func queue_command(command: String, id: String="") -> bool:
 		if Sandbox.active(self) and data.player.floor!=Sandbox.floor_of(n):data.deferred_command={"command":command,"id":id};return queue_gallery(Sandbox.floor_of(n))
 	elif data.player.floor!=0:note("먼저 1층 접수대로 돌아가야 한다.");return false
 	data.excavation.target=id
-	if data.player.pos.distance_to(target)<0.85:
+	if data.player.pos.distance_to(target)<0.85 and (not live_target or Intrigue.close(self,id)):
 		data.excavation.intent=""
 		perform_command(command,id)
 		return true
 	if not queue_move(target):return false
 	data.excavation.intent="command:"+command
 	data.excavation.target=id
-	note("대상에게 다가갑니다. 다른 바닥을 누르면 이동을 바꿉니다.")
+	if fresh_command:note("대상에게 다가갑니다. 다른 명령이나 바닥을 누르면 즉시 바꿉니다.")
 	return true
 
 func perform_command(command: String, id: String="") -> void:

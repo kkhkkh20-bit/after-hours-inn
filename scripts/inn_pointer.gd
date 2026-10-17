@@ -25,7 +25,8 @@ func motion(point: Vector2) -> void:
 	if not pressed or blocked or pinching:return
 	if point.distance_to(origin)>=DRAG_DISTANCE:dragged=true
 	if dragged:
-		host.pan_camera(point-last)
+		if not host.builder.active or host.builder.camera_pan:host.pan_camera(point-last)
+		elif host.builder.active:host.builder.preview(point)
 	last=point
 
 func finish(point: Vector2) -> void:

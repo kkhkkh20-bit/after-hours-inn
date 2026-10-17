@@ -119,12 +119,14 @@ static func reserve(s,n: int,id: String) -> bool:
 	if p.state not in ["waiting","arriving","staying","dining"] or p.get("visit","")=="meal":s.note("지금 객실을 안내할 수 없는 손님입니다.");return false
 	if int(p.room)==n:s.note("이미 이 방을 이용 중입니다.");return false
 	if r.guest!="" or r.reserved not in ["",id]:s.note("그 방은 사용 중이거나 다른 손님이 예약했습니다.");return false
+	if r.dirty:s.note("청소가 끝난 빈 객실을 선택해주세요.");return false
 	cancel_booking(s)
-	s.cancel_work();s.data.service_target="";s.data.deferred_command={}
+	s.Prison.cancel(s);s.cancel_work();s.data.service_target="";s.data.deferred_command={}
 	r.reserved=id
 	s.data.booking_request={"room":n,"guest":id,"deadline":s.data.clock+90,"relocation":int(p.room)>0}
-	s.note("%d호를 예약했습니다. %s" %[n,"청소 후 손님을 안내합니다." if r.dirty else "주인이 손님에게 다가가 안내합니다."])
-	return true
+	var okay=confirm(s,id)
+	if okay:s.note("%d호 안내 완료 · 손님이 객실로 이동합니다." %n)
+	return okay
 
 static func booking_step(s) -> void:
 	ensure(s)

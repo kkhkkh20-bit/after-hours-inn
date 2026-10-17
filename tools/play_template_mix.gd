@@ -23,6 +23,12 @@ func run() -> void:
 	await app.pointer_click(at,true)
 	check("ground touch chooses a walking destination",app.sim.data.excavation.intent=="move")
 	check("live simulation reaches touched destination",await until(func():return app.sim.data.excavation.intent=="",10) and app.sim.data.player.pos.distance_to(target)<.08)
+	var guest: Dictionary=app.sim.data.people.guest_1;guest.state="arriving";guest.floor=0;guest.pos=Vector2(-1.75,.25);guest.path=app.sim.path_to(guest.pos,app.sim.COUNTER);guest.role="";guest.visit="stay";guest.room=0;guest.known=false
+	app.Commands.move(app,Vector2(-.25,2.25));var old_owner=app.sim.data.player.pos;app.mobile_scene.update()
+	await app.pointer_click(app.mobile_scene.pins.reception.get_global_rect().get_center(),true);await process_frame
+	check("reception touch interrupts an existing walk and opens request",app.object_context.kind=="conversation")
+	await app.pointer_click(app.object_context.controls["recommend_room"].get_global_rect().get_center(),true);await process_frame
+	check("room guidance is immediate while owner stays put",guest.room>0 and app.sim.data.rooms[str(guest.room)].guest=="guest_1" and app.sim.data.player.pos==old_owner and app.sim.data.booking_request.is_empty())
 	app.object_context.refresh();await app.pointer_click(app.object_context.controls["@view:attic"].get_global_rect().get_center(),true)
 	check("third-floor touch physically reaches the attic",await until(func():return app.sim.data.player.floor==3 and app.floor_journey==-1,50))
 	app.object_context.refresh();await app.pointer_click(app.object_context.controls["@view:below"].get_global_rect().get_center(),true)

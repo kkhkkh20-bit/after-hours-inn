@@ -1,0 +1,11 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS placement gesture really reaches the world
+PASS dragging a building never moves its camera
+PASS placement drag release never installs accidentally
+PASS room assignment completes without waiting for owner approach
+PASS ground route contains genuine diagonal steps
+PASS chase updates destination before reaching stale position
+PASS moving fleeing guest is caught without waiting at old location
+PASS camera pans only after explicit screen-move mode
+CONTROLS 8/8

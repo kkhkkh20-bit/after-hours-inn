@@ -24,9 +24,10 @@ func run() -> void:
 	var cash=s.data.money;var count=s.data.sandbox.facilities.size()
 	await app.pointer_click(at,true);await process_frame
 	check("one touch installs once and charges once",s.data.sandbox.facilities.size()==count+1 and s.data.money==cash-10)
-	check("selection stays active for repeat placement",app.builder.active and app.dig_mode=="build:furnace")
+	check("one placement ends with no duplicate cursor",not app.builder.active and app.dig_mode=="" and app.builder.ghost==null)
 	await app.pointer_click(at,true);await process_frame
 	check("overlap cannot duplicate or charge",s.data.sandbox.facilities.size()==count+1 and s.data.money==cash-10)
+	app.builder.choose("dig")
 	var dig=Vector2i.ZERO
 	for x in range(-25,45):
 		for y in range(-15,20):
@@ -61,9 +62,9 @@ func run() -> void:
 	prison.members=[];app.builder.close();app.template_camera.capture();var start=app.camera.global_position
 	app.camera_offset+=Vector2(4,0);app.template_camera.drive(.016)
 	check("template camera smoothly moves toward pan target",app.camera.global_position!=start and app.template_camera.position.distance_to(app.template_camera.camera_position)>0.1)
-	app.builder.open();app.pointer.pressed=true;app.pointer.dragged=true;start=app.camera.global_position
+	app.builder.open();app.builder.toggle_camera_pan();app.pointer.pressed=true;app.pointer.dragged=true;start=app.camera.global_position
 	app.pan_camera(Vector2(70,0));app._physics_process(.016)
-	check("drag pans before finger release",app.camera.global_position!=start)
+	check("explicit camera mode pans before finger release",app.camera.global_position!=start)
 	app.pointer.reset();app.builder.close()
 	print("BUILDING ",checks.filter(func(v):return v).size(),"/",checks.size())
 	quit(0 if not checks.has(false) else 1)

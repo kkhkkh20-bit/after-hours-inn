@@ -35,7 +35,7 @@ func run() -> void:
 			app.object_context.close();app.cancel_everything();app.sim.data.player.floor=floor_;app.sim.data.player.pos=Vector2(8,-4.25);app.show_upper(floor_);app.camera.size=24;app.sync_view(0);app.journal.refresh();app.object_context.refresh();app.mobile_scene.update()
 			await process_frame;await process_frame;await RenderingServer.frame_post_draw
 			root.get_texture().get_image().save_png("res://docs/mobile-v181-after-floor%d.png" %floor_)
-	if tag in ["v182","v183","v184"]:
+	if tag in ["v182","v183","v184","v185"]:
 		app.object_context.close();app.cancel_everything();app.sim.data.player.floor=1;app.sim.data.player.pos=Vector2(16,-5);app.displayed_floor=1
 		app.set_dig_mode("build:furnace");app.sync_view(0);app.journal.refresh();app.object_context.refresh();app.mobile_scene.update()
 		await process_frame;await process_frame;await RenderingServer.frame_post_draw

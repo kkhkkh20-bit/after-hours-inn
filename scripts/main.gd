@@ -943,7 +943,7 @@ func _physics_process(delta: float) -> void:
 			dig_cursor.visible=earth_edges.has(Simulation.cell_key(hover_cell))
 			dig_cursor.position=Vector3(hover_cell.x,0.07,hover_cell.y)
 	if not overview and sim.data.excavation.intent!="":camera_offset=camera_offset.lerp(Vector2.ZERO,minf(1,delta*3))
-	if (not pointer.pressed or pointer.dragged or pointer.pinching) and not object_context.panel.visible:template_camera.drive(delta)
+	if (not builder.active or builder.camera_pan) and (not pointer.pressed or pointer.dragged or pointer.pinching) and not object_context.panel.visible:template_camera.drive(delta)
 
 	sync_view(delta)
 	episode_ui.refresh()
@@ -1619,6 +1619,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		object_context.open("conversation",id_,Dialogue.begin(sim,id_));return
 	if Sandbox.active(sim) and sandbox_action(kind_,id_,action):return
 	if kind_=="conversation":
+		if action=="recommend_room" or action.begins_with("book"):Commands.cancel(self,true)
 		var result=Dialogue.choose(sim,id_,action)
 		if result=="reopen":object_context.open("conversation",id_,Dialogue.line(sim,id_));return
 		if result=="close":return
@@ -1674,12 +1675,12 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 			if selected=="" or not sim.data.people.has(selected): sim.note("먼저 손님에게 말을 걸어 원하는 것을 듣자."); return
 			if Campaign.active(sim) and not sim.data.people[selected].get("known",false):context_action("person",selected,"greet");return
 			sim.request_room(int(id_),selected); return
-	if action.begins_with("admit"):sim.request_room(int(action.trim_prefix("admit")),id_);return
+	if action.begins_with("admit"):Commands.cancel(self,true);sim.request_room(int(action.trim_prefix("admit")),id_);return
 	if action=="farewell":return
 	if action=="greet":
-		if Campaign.active(sim):sim.cancel_work();sim.data.service_target="";sim.data.booking_request={}
-		pending_chat=id_
+		Commands.cancel(self,true);_activate_selection_now({"kind":"person","id":id_});return
 	if kind_ in ["person","actions","other"]: sim.data.ops.selected=id_
+	if action in ["grab","sleep","subdue","kill","approach","drag","dismiss"]:Commands.cancel(self,true)
 	sim.queue_command(action,id_)
 
 func build_backdrop() -> void:

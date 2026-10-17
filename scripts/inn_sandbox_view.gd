@@ -20,6 +20,7 @@ static func build(h) -> void:
 			var title=h.world_label(e.name+(" · 올라가기" if floor_==1 else " · 내려가기"),Vector3(0,0.35,0.9),node);title.pixel_size=0.009;title.set_meta("builder_label",floor_==1)
 	for f in h.sim.data.sandbox.facilities:
 		var node=Node3D.new();root.add_child(node);node.set_meta("floor",1);node.position=h.world_point(f.pos,1);h.world_root=node
+		node.rotation.y=int(f.get("rotation",0))*PI/2
 		preload("res://scripts/inn_facility_art.gd").build(h,f.type)
 		if f.type=="prison":
 			node.set_meta("prison",f.id)

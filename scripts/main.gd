@@ -2,6 +2,7 @@ extends Node3D
 const Pointer=preload("res://scripts/inn_pointer.gd")
 const Selection=preload("res://scripts/inn_selection.gd")
 const Commands=preload("res://scripts/inn_commands.gd")
+var template_camera=preload("res://scripts/inn_kenney_camera.gd").new()
 var builder=preload("res://scripts/inn_builder.gd").new()
 var mobile_scene=preload("res://scripts/inn_mobile_scene.gd").new()
 var inn_view=false
@@ -358,6 +359,7 @@ func _ready() -> void:
 	journal=preload("res://scripts/inn_journal.gd").new();add_child(journal);journal.setup(self)
 	comfort.setup(self)
 	mobile_scene.setup(self)
+	template_camera.configure(self);add_child(template_camera)
 	add_child(builder);builder.setup(self)
 	if args.is_empty():start_campaign();comfort.offer_resume()
 	if "--capture-sandbox" in args:
@@ -664,7 +666,7 @@ func world_point(pos: Vector2, floor_: int, height: float=0.0) -> Vector3:
 	return Vector3(pos.x,height+Simulation.floor_height(pos,floor_),pos.y)+((Sandbox.OFFSET if Sandbox.active(sim) else CELLAR_OFFSET) if floor_==1 else Vector3.ZERO)
 
 func focus_position() -> Vector3:
-	if inn_view:return Vector3(-2,0,1)
+	if inn_view:return Vector3(0,0,1)
 	if overview and Sandbox.active(sim):
 		if view_layer=="all":return Vector3(5,-.5,7)
 		if view_layer=="below":return Sandbox.OFFSET+Vector3(sim.data.player.pos.x if sim.data.player.floor==1 else 16,0,sim.data.player.pos.y if sim.data.player.floor==1 else -5)
@@ -678,7 +680,7 @@ func set_layer(value: String) -> void:
 	if object_context!=null:object_context.close()
 	inn_view=false;view_layer=value;overview=true;camera_offset=Vector2.ZERO
 	camera.size={"all":68.0,"below":24.0,"rooms":24.0,"attic":24.0,"surface":44.0}.get(value,31.0)
-	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus);template_camera.capture()
 	sync_view(0)
 
 func walking_hit(point: Vector2) -> Variant:
@@ -938,11 +940,8 @@ func _physics_process(delta: float) -> void:
 			dig_cursor.visible=earth_edges.has(Simulation.cell_key(hover_cell))
 			dig_cursor.position=Vector3(hover_cell.x,0.07,hover_cell.y)
 	if not overview and sim.data.excavation.intent!="":camera_offset=camera_offset.lerp(Vector2.ZERO,minf(1,delta*3))
-	var focus_target:=focus_position()+Vector3(camera_offset.x,0,camera_offset.y)
-	if not pointer.pressed and not object_context.panel.visible:
-		camera_focus=camera_focus.lerp(focus_target,1.0-exp(-delta*6))
-	camera.position=camera_focus+camera_arm()
-	camera.look_at(camera_focus)
+	if (not pointer.pressed or pointer.dragged or pointer.pinching) and not object_context.panel.visible:template_camera.drive(delta)
+
 	sync_view(delta)
 	episode_ui.refresh()
 	if Campaign.active(sim):
@@ -1044,7 +1043,7 @@ func follow_owner(snap: bool=true) -> void:
 	if snap:
 		camera.size=comfort.zoom
 		camera_focus=focus_position()
-		camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+		camera.position=camera_focus+camera_arm();camera.look_at(camera_focus);template_camera.capture()
 	sync_view(0)
 
 func frame_owner() -> void:
@@ -1537,7 +1536,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		object_context.open("prison_overview","",sim.Prison.overview(sim));return
 	if action.begins_with("open_prison:"):
 		var id=action.trim_prefix("open_prison:");var cell=Sandbox.facility(sim,id);set_layer("below")
-		var point=world_point(cell.pos,1);var focus=focus_position();camera_offset=Vector2(point.x-focus.x,point.z-focus.z);camera_focus=point;camera.size=22;camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+		var point=world_point(cell.pos,1);var focus=focus_position();camera_offset=Vector2(point.x-focus.x,point.z-focus.z);camera_focus=point;camera.size=22;camera.position=camera_focus+camera_arm();camera.look_at(camera_focus);template_camera.capture()
 		object_context.open("prison",id,sim.Prison.summary(sim,id));return
 	if action=="group_care":sim.Prison.group_care(sim,id_);object_context.open("prison",id_,sim.Prison.summary(sim,id_));return
 	if action in ["prison_policy","prison_settings"]:object_context.open(action,id_);return
@@ -2116,7 +2115,7 @@ func sync_tycoon_workers(dt: float) -> void:
 		tycoon_room_marks[n].modulate=Color("c6a06b") if room_.dirty else (Color("a9bd89") if room_.guest=="" else Color("d4d6cf"))
 
 func camera_arm() -> Vector3:
-	if builder.active or view_layer=="below":return Vector3(18,28,18)
+	if builder.active or view_layer=="below" or inn_view:return Vector3(26,25.8,26)
 	return Vector3(26,34,0) if inn_view else CAMERA_ARM.rotated(Vector3.UP,view_angle)
 
 func set_dig_mode(value: String) -> void:
@@ -2177,13 +2176,13 @@ func _notification(what: int) -> void:
 
 func show_inn() -> void:
 	if object_context!=null:object_context.close()
-	view_layer="surface";inn_view=true;overview=true;camera_offset=Vector2.ZERO;camera.size=28
-	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+	view_layer="surface";inn_view=true;overview=true;camera_offset=Vector2.ZERO;camera.size=38
+	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus);template_camera.capture()
 	sync_view(0)
 	if mobile_scene.host!=null:mobile_scene.update()
 	if journal!=null:journal.refresh()
 
 func show_upper(floor_: int) -> void:
 	set_layer("attic" if floor_==3 else "rooms")
-	camera.size=24;camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+	camera.size=24;camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus);template_camera.capture()
 	sync_view(0);mobile_scene.update();journal.refresh()

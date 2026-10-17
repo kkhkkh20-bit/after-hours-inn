@@ -11,6 +11,11 @@ cp assets/furniture/License.txt build/windows/licenses/furniture-CC0.txt
 cp assets/town/License.txt build/windows/licenses/town-CC0.txt
 cp assets/fonts/OFL.txt build/windows/licenses/font-OFL.txt
 cp assets/audio/LICENSE.txt build/windows/licenses/audio-original.txt
+cp third_party/kenney_city_builder/LICENSE.md build/windows/licenses/kenney-city-builder-MIT.txt
+cp third_party/kenney_city_builder/UPSTREAM.md build/windows/licenses/kenney-city-builder-source.md
+mkdir -p build/web/licenses
+cp third_party/kenney_city_builder/LICENSE.md build/web/licenses/kenney-city-builder-MIT.txt
+cp third_party/kenney_city_builder/UPSTREAM.md build/web/licenses/kenney-city-builder-source.md
 cp README.md build/windows/README.md
 touch build/web/.nojekyll
 printf '%s\n' "${GITHUB_SHA:-local}" > build/web/version.txt

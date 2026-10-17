@@ -108,7 +108,10 @@ static func finish(s,job: Dictionary) -> void:
 		s.data.sandbox.entrances.append({"id":id,"name":"비밀 입구 %d" %(s.data.sandbox.entrances.size()+1),"top":job.point,"bottom":center,"open":false})
 		s.note("비밀 입구 완성. 입구를 누르면 내려갑니다. 다른 입구까지 흙벽을 이어 파보세요.")
 	else:
-		s.data.sandbox.facilities.append({"id":"facility_%d" %s.data.sandbox.facilities.size(),"type":job.kind,"pos":Vector2(center),"occupant":"","until":0.0})
+		var serial=int(s.data.sandbox.get("next_facility_id",s.data.sandbox.facilities.size()))
+		while s.data.sandbox.facilities.any(func(f):return f.id=="facility_%d" %serial):serial+=1
+		s.data.sandbox.next_facility_id=serial+1
+		s.data.sandbox.facilities.append({"id":"facility_%d" %serial,"type":job.kind,"pos":Vector2(center),"occupant":"","until":0.0})
 		s.note(TYPES[job.kind].name+" 완성. 시설을 눌러 사용하세요.")
 	s.data.sandbox.revision+=1
 static func facility(s,id: String) -> Dictionary:

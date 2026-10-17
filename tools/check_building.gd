@@ -41,5 +41,29 @@ func run() -> void:
 	check("done resumes and preserves camera position",not s.data.paused and not app.builder.active and app.camera_focus==pos)
 	app.builder.open();app.cancel_everything()
 	check("global cancel clears ghost and construction mode",not app.builder.active and app.dig_mode=="")
+	var backend=app.builder.backend
+	check("actual Kenney builder is inherited",backend.get_script().get_base_script().resource_path=="res://third_party/kenney_city_builder/builder.gd")
+	check("actual Kenney view rig is inherited",app.template_camera.get_script().get_base_script().resource_path=="res://third_party/kenney_city_builder/view.gd")
+	app.builder.choose("build:stash");var candidate=Vector2i.ZERO
+	for x in range(5,24):
+		for y in range(-12,3):
+			var c=Vector2i(x,y)
+			if app.Sandbox.placement_error(s,"stash",c)=="":candidate=c;break
+		if candidate!=Vector2i.ZERO:break
+	backend.quarter=1;cash=s.data.money
+	check("template placement deducts the selected resource price",backend.stamp("stash",candidate) and s.data.money==cash-4)
+	check("rotation survives in the inn save model",int(s.data.sandbox.facilities.back().rotation)==1)
+	check("template GridMap records placed structures",backend.gridmap.get_cell_item(Vector3i(candidate.x,0,candidate.y))==2)
+	check("template removal refunds once",backend.remove(candidate) and s.data.money==cash-2)
+	check("repeated removal cannot refund twice",not backend.remove(candidate) and s.data.money==cash-2)
+	var prison=s.data.sandbox.facilities.filter(func(f):return f.type=="prison")[0];prison.members=["test"]
+	check("occupied prison cannot be demolished",not backend.remove(Vector2i(prison.pos)))
+	prison.members=[];app.builder.close();app.template_camera.capture();var start=app.camera.global_position
+	app.camera_offset+=Vector2(4,0);app.template_camera.drive(.016)
+	check("template camera smoothly moves toward pan target",app.camera.global_position!=start and app.template_camera.position.distance_to(app.template_camera.camera_position)>0.1)
+	app.builder.open();app.pointer.pressed=true;app.pointer.dragged=true;start=app.camera.global_position
+	app.pan_camera(Vector2(70,0));app._physics_process(.016)
+	check("drag pans before finger release",app.camera.global_position!=start)
+	app.pointer.reset();app.builder.close()
 	print("BUILDING ",checks.filter(func(v):return v).size(),"/",checks.size())
 	quit(0 if not checks.has(false) else 1)

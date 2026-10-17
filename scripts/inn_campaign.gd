@@ -8,6 +8,7 @@ static func start(sim) -> void:
 	sim.start_gentle_opening()
 	sim.data.campaign={"active":true,"day":1,"next_dawn":480.0,"intro":true,"summary":false,"ending":"","deal":"waiting","cargo":false,"guard_day":0,"guard_done":0,"worker":"","broker":"","reputation":0,"talks":0,"bookings":0,"start_money":24,"start_served":0,"history":[],"rumors":[],"fugitive":"","protected":false,"ledger_found":false,"evidence_used":false,"collector":"","tax_paid":false}
 	Sandbox.start(sim)
+	preload("res://scripts/inn_tycoon.gd").start(sim)
 	sim.note("국경이 닫힌 지 사흘. 여관의 열쇠까지 빼앗길 수는 없다.")
 
 static func special(sim,role: String,name_: String,line: String) -> String:
@@ -53,7 +54,7 @@ static func rent(day: int) -> int:
 static func settle(sim) -> void:
 	var c: Dictionary=sim.data.campaign
 	if c.summary or c.ending!="":return
-	var cost=rent(int(c.day))+(4 if sim.data.staff.hired else 0)+(8 if int(c.day)==3 and not c.tax_paid else 0)
+	var cost=rent(int(c.day))+(preload("res://scripts/inn_tycoon.gd").wage(sim) if sim.data.has("tycoon") else (4 if sim.data.staff.hired else 0))+(8 if int(c.day)==3 and not c.tax_paid else 0)
 	sim.charge(cost,"%d일차 임대료·급여%s" %[c.day,"·세금" if int(c.day)==3 else ""])
 	var record={"day":c.day,"income":int(sim.data.money)-int(c.start_money)+cost,"served":int(sim.data.served)-int(c.start_served),"cost":cost+(8 if int(c.day)==3 and c.tax_paid else 0),"balance":sim.data.money,"debt":sim.data.debt}
 	c.history.append(record); c.summary=true
@@ -67,9 +68,11 @@ static func next_day(sim) -> void:
 	if not c.summary or c.ending!="":return
 	c.day+=1; c.next_dawn+=Sandbox.DAY; c.summary=false; c.start_money=sim.data.money; c.start_served=sim.data.served
 	sim.data.paused=false
+	if sim.data.has("tycoon"):sim.data.tycoon.day_sales=0
 	sim.note("%d일차. 빈방을 정리하고 다시 손님을 맞는다." %c.day)
 
 static func goal(sim) -> String:
+	if sim.data.has("tycoon"):return preload("res://scripts/inn_tycoon.gd").goal(sim)
 	var c: Dictionary=sim.data.campaign
 	if c.ending!="":return c.ending
 	if sim.data.ops.inspector.state=="waiting":return "순찰대가 주인의 설명을 기다립니다"

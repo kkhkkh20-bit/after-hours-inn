@@ -66,7 +66,7 @@ static func build(h) -> void:
 	for z in [-4,-2,0,6,8]:h.model("town","fence",Vector3(23.5,-0.1,z),Vector3(0.15,1.1,2))
 	for z in [1,5]:h.box(Vector3(0.3,2.5,0.3),Vector3(23.2,1.15,z),timber)
 	h.box(Vector3(0.4,0.25,4.5),Vector3(23.2,2.4,3),timber)
-	h.model("town","cart",Vector3(16,-0.12,-3),Vector3(1.7,1.3,3),0.4,true)
+	h.model("town","cart",Vector3(20.5,-0.12,-3),Vector3(1.7,1.3,3),0.4,true)
 	for x in [11.5,14.0,21.5]:
 		h.model("town","lantern",Vector3(x,-0.08,4.5),Vector3(0.2,2,0.2));h.light_at(Vector3(x,1.9,4.5),0.7)
 	# Open lean-to, stacked wood and well use modest procedural meshes.
@@ -79,5 +79,18 @@ static func build(h) -> void:
 	h.box(Vector3(1.7,0.6,1.2),Vector3(19.5,0.2,7.5),stone,true)
 	h.box(Vector3(1.9,0.12,1.6),Vector3(19.5,2.1,7.5),Color("4d5150"))
 	for pos in [Vector3(-13,-0.1,-7),Vector3(18,-0.1,-7),Vector3(24,-0.1,10)]:h.model("town","tree",pos,Vector3(2.5,5,2.5))
+	# Owner's back office: a walled service room away from restaurant traffic.
+	h.box(Vector3(7,0.15,4.2),Vector3(14,-0.03,-3.4),Color("514936"))
+	for x in range(11,17):
+		for z in [-5,-4,-3,-2]:h.model("town","planks",Vector3(x+0.5,0.05,z+0.5),Vector3(1,0.06,1))
+	# Two doors: courtyard service door and a rear bypass door. Guests have a separate navigation grid.
+	for pair in [[11.5,2.0],[15.6,3.0]]:
+		h.box(Vector3(pair[1],2.0,0.15),Vector3(pair[0],1,-5.4),Color("68563d"),true)
+	for x in [10.5,17.4]:h.box(Vector3(0.15,1.8,4),Vector3(x,0.9,-3.4),Color("5c4b36"),true)
+	for pair in [[11.1,1.2],[15.3,4.0]]:h.box(Vector3(pair[1],0.9,0.15),Vector3(pair[0],0.45,-1.3),Color("776346"),true)
+	h.model("furniture","bookcaseOpen",Vector3(16.6,0.08,-4.2),Vector3(1,1.5,0.4))
+	for x in [14.5,15.4]:h.box(Vector3(0.65,0.65,0.65),Vector3(x,0.36,-4.3),Color("84663e"))
+	h.world_label("주인 전용 창고 · 손님 출입 금지",Vector3(14,1.7,-2.8),h.surface).pixel_size=0.013
+	h.world_label("뒤편 전용 출입로",Vector3(13.4,0.4,-6.4),h.surface).pixel_size=0.011
 	# Earth under the section, low enough not to conceal the playable cellar.
 	h.box(Vector3(20,0.18,7),Vector3(1,-4.45,4),Color("393026"))

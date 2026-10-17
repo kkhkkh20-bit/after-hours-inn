@@ -132,14 +132,14 @@ static func release(s,id: String) -> void:
 	s.note(p.name+"을 풀어주었다.");s.data.sandbox.revision+=1
 static func move_person(s,p: Dictionary,target: Vector2,floor_: int) -> void:
 	p.destination=target;p.destination_floor=floor_
-	if int(p.floor)==floor_:p.path=s.gallery_route(p.pos,target) if floor_==2 else s.path_to(p.pos,target);p.travel=""
-	elif int(p.floor)==0:p.path=s.path_to(p.pos,s.STAIRS);p.travel="up"
+	if int(p.floor)==floor_:p.path=s.gallery_route(p.pos,target) if floor_==2 else s.guest_path(p.pos,target);p.travel=""
+	elif int(p.floor)==0:p.path=s.guest_path(p.pos,s.STAIRS);p.travel="up"
 	else:p.path=s.gallery_route(p.pos,s.STAIRS);p.travel="down"
 static func arrive(s,p: Dictionary) -> bool:
 	var travel: String=p.get("travel","")
 	if travel=="":return false
 	p.travel="";p.floor=2 if travel=="up" else 0;p.pos=s.STAIRS
-	p.path=s.gallery_route(p.pos,p.destination) if p.floor==2 else s.path_to(p.pos,p.destination);return true
+	p.path=s.gallery_route(p.pos,p.destination) if p.floor==2 else s.guest_path(p.pos,p.destination);return true
 static func staff_step(s,dt: float) -> bool:
 	var w: Dictionary=s.data.staff
 	if not w.hired:return false
@@ -162,7 +162,7 @@ static func staff_step(s,dt: float) -> bool:
 		s.follow(w,dt*3.3)
 		if w.path.is_empty():w.floor=0;w.pos=s.STAIRS;w.path=[]
 		return true
-	if w.target=="" and w.carry=="" and s.data.orders.values().all(func(o):return o.status not in ["queued","ready"]):
+	if not s.data.has("tycoon") and w.target=="" and w.carry=="" and s.data.orders.values().all(func(o):return o.status not in ["queued","ready"]):
 		for n in s.data.rooms:
 			if s.data.rooms[n].dirty and s.data.rooms[n].guest=="":
 				var point=room_point(int(n))

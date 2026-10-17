@@ -1,6 +1,7 @@
 extends RefCounted
 ## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
 
+const Tycoon=preload("res://scripts/inn_tycoon.gd")
 const Sandbox=preload("res://scripts/inn_sandbox.gd")
 const Intrigue = preload("res://scripts/intrigue.gd")
 const COUNTER := Vector2(-1.75, -1.75)
@@ -13,6 +14,7 @@ const SAVE_VERSION := 3
 var travel_multiplier:=1.0
 var obstacles: Array[Rect2] = []
 var grid := AStarGrid2D.new()
+var guest_grid:=AStarGrid2D.new()
 var data: Dictionary
 
 func _init() -> void:
@@ -55,6 +57,19 @@ func rebuild_grid() -> void:
 		for y in range(40):
 			var id := Vector2i(x,y)
 			grid.set_point_solid(id, not surface_walkable(grid.get_point_position(id)))
+
+func guest_path(from: Vector2,to: Vector2) -> Array:
+	if not Tycoon.active(self):return path_to(from,to)
+	var a=Vector2i(floori((from.x+14)/0.5),floori((from.y+8)/0.5))
+	var b=Vector2i(floori((to.x+14)/0.5),floori((to.y+8)/0.5))
+	if not guest_grid.is_in_boundsv(a) or not guest_grid.is_in_boundsv(b):return []
+	return Array(guest_grid.get_point_path(a,b))
+
+func rebuild_guest_grid() -> void:
+	guest_grid.region=grid.region;guest_grid.cell_size=grid.cell_size;guest_grid.offset=grid.offset;guest_grid.diagonal_mode=grid.diagonal_mode;guest_grid.update()
+	for x in range(grid.region.size.x):
+		for y in range(grid.region.size.y):
+			var id=Vector2i(x,y);guest_grid.set_point_solid(id,grid.is_point_solid(id) or Tycoon.PRIVATE.has_point(guest_grid.get_point_position(id)))
 
 func surface_walkable(pos: Vector2) -> bool:
 	if not Rect2(-13.8,-7.8,38.0,20.0).has_point(pos): return false
@@ -139,6 +154,7 @@ func calendar_text() -> String:
 	return "%d일차 %02d:%02d · %s" %[1+minutes/1440,(minutes%1440)/60,minutes%60,"낮" if minutes%1440>=360 and minutes%1440<1200 else "밤"]
 
 func request_room(number: int,id: String) -> bool:
+	if Tycoon.active(self):return Tycoon.check_in(self,id,number)
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():note("현재 작업을 마치거나 주인을 눌러 취소하자.");return false
 	if not data.people.has(id) or data.rooms[str(number)].guest!="":return false
 	if preload("res://scripts/inn_campaign.gd").active(self) and not data.people[id].get("known",false):note("먼저 손님에게 말을 걸어 원하는 것을 듣자.");return false
@@ -184,7 +200,7 @@ func spawn_guest() -> void:
 		var seats=[Vector2(-7.5,1.75),Vector2(-4.75,1.75),Vector2(-7.5,3.25),Vector2(-4.75,3.25)] if Sandbox.active(self) else [Vector2(-3.75,1.75),Vector2(-6.25,2.75),Vector2(-1.25,0.75)]
 		var p: Dictionary=data.people[id]
 		p.pos=Vector2(14.25,3.25); p.state="arriving"
-		p.path=path_to(p.pos,seats[(int(data.serial)-1)%seats.size()])
+		p.path=guest_path(p.pos,seats[(int(data.serial)-1)%seats.size()])
 	if Sandbox.active(self):
 		var p: Dictionary=data.people[id]
 		p.faction=["상인조합","전령단","국경군","약초상단"][(int(data.serial)-1)%4]
@@ -206,7 +222,7 @@ func near_counter() -> bool:
 
 func assign_room(number: int, guest_id: String="") -> bool:
 	var direct=guest_id!="" and data.people.has(guest_id) and data.people[guest_id].floor==data.player.floor and data.player.pos.distance_to(data.people[guest_id].pos)<1.35
-	if data.paused or (not direct and not near_counter()):
+	if data.paused or (not Tycoon.active(self) and not direct and not near_counter()):
 		note("접수대 가까이에서 객실을 배정해야 한다.")
 		return false
 	var key := str(number)
@@ -221,7 +237,7 @@ func assign_room(number: int, guest_id: String="") -> bool:
 	var id: String = guest_id if guest_id!="" else waiting()[0]
 	if id not in waiting(): return false
 	var person: Dictionary = data.people[id]
-	var path := path_to(person.pos,STAIRS if Sandbox.active(self) and number>=3 else room_target(number))
+	var path := guest_path(person.pos,STAIRS if Sandbox.active(self) and number>=3 else room_target(number))
 	if path.is_empty():
 		note("객실까지 갈 수 없다. 통로를 확인해야 한다.")
 		return false
@@ -237,8 +253,11 @@ func assign_room(number: int, guest_id: String="") -> bool:
 			var preferred=1 if person.get("role","")=="fugitive" or (int(id.get_slice("_",1))-1)%4 in [0,2] else 2
 			data.campaign.reputation+=1 if number==preferred else -1
 			if number==preferred and int(person.rate)>0:data.money+=2;note("방이 마음에 든 손님이 2닢을 더 건넸다.")
-	data.money += int(person.rate)
-	note("%s → %d호. 숙박비 %d닢을 받았다." % [person.name,number,person.rate])
+	var payment=int(person.rate)+(Tycoon.room_bonus(self,number) if Tycoon.active(self) else 0)
+	if person.get("relocating",false):payment=0;person.relocating=false
+	data.money+=payment
+	if Tycoon.active(self):Tycoon.income(self,payment,"%d호 숙박" %number)
+	note("%s → %d호. 숙박비 %d닢을 받았다." % [person.name,number,payment])
 	return true
 
 func reject_guest() -> void:
@@ -265,7 +284,7 @@ func start_cooking(order_id: String, holder: String) -> bool:
 	data.money -= 1
 	order_.status = "cooking"
 	order_.holder = holder
-	order_.remaining = 3.0
+	order_.remaining=maxf(0.8,3.0-float(data.tycoon.kitchen)*0.6) if Tycoon.active(self) else 3.0
 	return true
 
 func pickup(order_id: String, holder: String) -> bool:
@@ -290,10 +309,12 @@ func deliver(order_id: String, holder: String) -> bool:
 	order_.holder = ""
 	if holder=="player": data.player.carry=""
 	else: data.staff.carry=""
-	data.money += 4
+	var price=Tycoon.meal_price(self) if Tycoon.active(self) else 4
+	data.money+=price
+	if Tycoon.active(self):Tycoon.income(self,price,"식사")
 	data.served += 1
 	if data.people[order_.guest].get("visit","")=="meal": data.people[order_.guest].checkout=data.clock+8
-	note("%s에게 식사 전달. 4닢을 받았다." % data.people[order_.guest].name)
+	note("%s에게 식사 전달. %d닢을 받았다." %[data.people[order_.guest].name,price])
 	return true
 
 func interact() -> void:
@@ -409,6 +430,7 @@ func _step(dt: float) -> void:
 	Intrigue.tick(self,dt)
 	update_work(dt)
 	Sandbox.tick(self,dt)
+	Tycoon.tick(self,dt)
 	update_awareness(dt)
 	update_worker(dt)
 	update_money()

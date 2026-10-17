@@ -1,4 +1,8 @@
 extends Node3D
+const Tycoon=preload("res://scripts/inn_tycoon.gd")
+var receptionist_visual: CharacterBody3D
+var cleaner_visual: CharacterBody3D
+var tycoon_room_marks: Dictionary={}
 const Sandbox=preload("res://scripts/inn_sandbox.gd")
 var smoke_visual: Node3D
 var sandbox_visual: Node3D
@@ -572,6 +576,7 @@ func sync_view(dt: float) -> void:
 		if person.state=="captive":labels[id].text+=" · 구금"
 		labels[id].modulate=Color("ffd394") if d.ops.selected==id else Color.WHITE
 	if Sandbox.active(sim):sync_sandbox_smoke()
+	if Tycoon.active(sim):sync_tycoon_workers(dt)
 	if last_cell_count!=d.cells.size():rebuild_basement()
 	if Sandbox.active(sim) and sandbox_revision!=int(d.sandbox.revision):preload("res://scripts/inn_sandbox_view.gd").build(self)
 	staff_marker.text=("마라" if Campaign.active(sim) else "직원")+" · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
@@ -719,7 +724,7 @@ func start_campaign() -> void:
 			ambience.stream.loop_mode=AudioStreamWAV.LOOP_FORWARD;ambience.stream.loop_begin=0;ambience.stream.loop_end=128000
 			room_chime=AudioStreamPlayer.new();room_chime.stream=preload("res://assets/audio/inn-chime.wav");room_chime.volume_db=-19;add_child(room_chime)
 		ambience.play()
-	Campaign.start(sim);basement.position=Sandbox.OFFSET;camera.keep_aspect=Camera3D.KEEP_WIDTH
+	Campaign.start(sim);sim.rebuild_guest_grid();basement.position=Sandbox.OFFSET;camera.keep_aspect=Camera3D.KEEP_WIDTH
 	for child in basement.get_children():
 		if child!=terrain and child!=cellar_lamp:child.hide()
 	hatch_lid.hide();last_cell_count=-1;sandbox_revision=-1
@@ -730,7 +735,7 @@ func start_campaign() -> void:
 	episode.data.briefed=true;episode_ui.root.hide();journal.open("intro");set_layer("all")
 
 func context_opened(kind_: String) -> void:
-	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk"] and not dialogue_paused:
+	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk","automation"] and not dialogue_paused:
 		dialogue_previous_pause=sim.data.paused;dialogue_paused=true;sim.data.paused=true
 
 func context_closed(_kind: String) -> void:
@@ -743,7 +748,7 @@ func rest_until_dawn() -> void:
 	journal.refresh()
 
 func save_game() -> void:
-	var file:=FileAccess.open("user://inn-secret-v14.json" if Campaign.active(sim) else "user://inn-v03.json",FileAccess.WRITE)
+	var file:=FileAccess.open("user://inn-tycoon-v15.json" if Campaign.active(sim) else "user://inn-v03.json",FileAccess.WRITE)
 	if file==null:
 		sim.note("저장 파일을 만들 수 없다.")
 		return
@@ -753,7 +758,7 @@ func save_game() -> void:
 	sim.note("저장했다. 진행 중인 주문과 작업도 함께 기록했다.")
 
 func load_game() -> void:
-	var save_path="user://inn-secret-v14.json" if Campaign.active(sim) else "user://inn-v03.json"
+	var save_path="user://inn-tycoon-v15.json" if Campaign.active(sim) else "user://inn-v03.json"
 	if not FileAccess.file_exists(save_path):
 		sim.note("저장된 기록이 없다. 메뉴에서 먼저 저장하자.")
 		return
@@ -867,7 +872,7 @@ func world_tap(point: Vector2) -> void:
 	if (view_layer=="surface" and sim.data.player.floor==1) or (view_layer=="below" and sim.data.player.floor!=1):return
 	pointer_position=point
 	if Sandbox.active(sim) and sandbox_ground_request(point):pressed_owner=false;pressed_person="";return
-	if Sandbox.active(sim):sim.data.sandbox.tunnel_plan=[]
+	if Sandbox.active(sim) and not (Tycoon.active(sim) and pressed_person!="" and sim.data.people.has(pressed_person) and sim.data.people[pressed_person].get("role","")==""):sim.data.sandbox.tunnel_plan=[]
 	var inspector: Dictionary=sim.data.ops.inspector
 	if inspector.state not in ["idle","scheduled"] and inspector.floor==sim.data.player.floor and point.distance_to(camera.unproject_position(world_point(inspector.pos,inspector.floor,0.9)))<30:
 		pressed_owner=false
@@ -882,7 +887,8 @@ func world_tap(point: Vector2) -> void:
 	var target_id: String=pressed_person if pressed_person!="" and sim.data.people.has(pressed_person) and sim.data.people[pressed_person].state!="gone" else pick_person(point)
 	pressed_person=""
 	if target_id!="":
-		sim.data.excavation.path=[]; sim.data.excavation.intent=""; sim.data.ops.selected=target_id
+		if not Tycoon.active(sim) or sim.data.people[target_id].get("role","")!="":sim.data.excavation.path=[];sim.data.excavation.intent=""
+		sim.data.ops.selected=target_id
 		if Campaign.active(sim):context_action("person",target_id,"greet")
 		else:object_context.open("person",target_id)
 		return
@@ -1316,6 +1322,7 @@ func context_heading() -> String:
 	return "길목 여관 · 영업%d일 · %s" %[sim.data.campaign.day,sim.calendar_text().split(" ",true,1)[1]] if Campaign.active(sim) else sim.calendar_text()
 
 func context_stats() -> String:
+	if Tycoon.active(sim):return "%d닢 · 객실 %d/5 · 오늘 매출 %d · 알바 %d명" %[sim.data.money,sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.tycoon.day_sales,1+int(sim.data.tycoon.reception)+int(sim.data.tycoon.cleaning)]
 	if Campaign.active(sim):return "%d닢 · 새벽 납부 %d · 평판 %d · 신고 %d" %[sim.data.money,Campaign.rent(int(sim.data.campaign.day))+(4 if sim.data.staff.hired else 0)+(8 if int(sim.data.campaign.day)==3 and not sim.data.campaign.tax_paid else 0),sim.data.campaign.reputation,sim.data.ops.reports]
 	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.values().filter(func(p): return p.state!="gone").size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
 
@@ -1324,6 +1331,7 @@ func context_title(kind_: String,id_: String) -> String:
 	if kind_=="ground":return "비밀 입구 자리"
 	if kind_=="cellar_floor":return "지하 시설 공사"
 	if kind_=="portal":return Sandbox.entrance(sim,id_).get("name","비밀 입구")
+	if kind_=="automation":return "알바 고용 · 여관 성장"
 	if kind_=="facility":return Sandbox.TYPES[Sandbox.facility(sim,id_).type].name
 	if kind_=="guard_talk":return "국경 순찰대"
 	if kind_=="staff_talk":return "마라 · 믿을 수 있는 동료"
@@ -1352,6 +1360,9 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
+	if kind_=="automation":
+		var t: Dictionary=sim.data.tycoon
+		return [["hire_reception","접수 알바 · 10닢 / 일당 2닢",not t.reception],["hire_cleaning","청소 알바 · 10닢 / 일당 2닢",not t.cleaning],["upgrade_kitchen","주방 개선 · %d닢 / 식사값·속도 상승" %(12+int(t.kitchen)*8),int(t.kitchen)<3],["delegate","마라에게 식사 자동 운영 맡기기"]]
 	if kind_=="conversation":return Dialogue.options(sim,id_)
 	if Sandbox.active(sim):
 		match kind_:
@@ -1365,14 +1376,16 @@ func context_items(kind_: String,id_: String) -> Array:
 			"facility":
 				var f=Sandbox.facility(sim,id_)
 				return [["facility_use",{"prison":"데려온 대상 구금 / 감옥 확인","furnace":"운반 중인 시신 처리 · 12초","stash":"의뢰 상자 은닉 · 추가 6닢","refuge":"데려온 사람 보호"}[f.type]],["facility_remove","시설 철거 · 절반 환급"]]
-			"owner":return [["stop","현재 행동 취소"],["floor","가까운 입구로 층 이동"],["build_mode","비밀 입구 자리 고르기"],["drop","운반 내려놓기"],["journal","장부 · 의뢰"],["system","저장 · 화면 설정"]]
-			"room":return [["room_chat","묵는 손님과 이야기"],["clean","정리하기"],["journal","객실과 장부"]]
+			"owner":return [["stop","현재 행동 취소"],["automation","알바 고용 · 여관 성장"],["floor","가까운 입구로 층 이동"],["build_mode","비밀 입구 자리 고르기"],["drop","운반 내려놓기"],["journal","장부 · 의뢰"],["system","저장 · 화면 설정"]]
+			"room":
+				var level=int(sim.data.tycoon.rooms[id_]) if Tycoon.active(sim) else 0
+				return [["room_chat","묵는 손님과 이야기"],["upgrade_room","객실 개선 · %d닢 / 숙박비 +2닢" %(8+level*6),level<3],["clean","정리하기"],["automation","알바 고용 · 자동화"]]
 	if kind_=="guard_talk":
 		var items=[["guard_honest","장부를 보여드리겠습니다."],["guard_lie","식재료 창고뿐입니다."],["guard_pay","수고비를 받으시죠. · 8닢"]]
 		if sim.data.campaign.ledger_found:items.push_front(["guard_evidence","이 반입 허가를 확인해보시죠."])
 		return items
-	if kind_=="staff_talk":return [["delegate","홀과 손님 식사를 맡아주세요."],["takeover","잠시 쉬세요. 내가 맡을게요."],["ally_story","요즘 손님들 사이에 무슨 일이 있나요?"]]
-	if Campaign.active(sim) and kind_=="counter":return [["journal","오늘의 장부와 지출"],["recruit","마라와 이야기하기"],["build_mode","비밀 입구 자리 고르기"],["system","저장 · 화면 설정"]]
+	if kind_=="staff_talk":return [["automation","접수·청소 알바 고용"],["delegate","식사는 계속 맡아주세요."],["takeover","내가 직접 서빙할게요."],["ally_story","손님들 사이에 무슨 일이 있나요?"]]
+	if Campaign.active(sim) and kind_=="counter":return [["automation","알바 고용 · 주방 개선"],["journal","오늘 매출과 지출"],["recruit","마라와 이야기하기"],["private_entry","주인 전용 창고로 이동"],["system","저장 · 화면 설정"]]
 	if sim.data.paused: return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
 	match kind_:
 		"person":
@@ -1414,6 +1427,8 @@ func travel_to_floor(target: int) -> void:
 	else:sim.queue_floor()
 
 func context_action(kind_: String,id_: String,action: String) -> void:
+	if action=="greet" and Tycoon.active(sim) and sim.data.people.has(id_) and sim.data.people[id_].get("role","")=="" and sim.data.people[id_].state not in ["down","dead","restrained","captive","sheltered"]:
+		object_context.open("conversation",id_,Dialogue.begin(sim,id_));return
 	if Sandbox.active(sim) and sandbox_action(kind_,id_,action):return
 	if kind_=="conversation":
 		var result=Dialogue.choose(sim,id_,action)
@@ -1751,7 +1766,7 @@ func demo_playthrough() -> void:
 	get_tree().quit()
 
 func capture_demo(talking: bool) -> void:
-	set_physics_process(false);capturing=true;Campaign.start(sim);basement.position=Sandbox.OFFSET;camera.keep_aspect=Camera3D.KEEP_WIDTH
+	set_physics_process(false);capturing=true;Campaign.start(sim);sim.rebuild_guest_grid();basement.position=Sandbox.OFFSET;camera.keep_aspect=Camera3D.KEEP_WIDTH
 	for child in basement.get_children():
 		if child!=terrain and child!=cellar_lamp:child.hide()
 	hatch_lid.hide();last_cell_count=-1;sandbox_revision=-1
@@ -1793,6 +1808,16 @@ func sandbox_tap(point: Vector2) -> bool:
 	return false
 
 func sandbox_action(kind_: String,id_: String,action: String) -> bool:
+	match action:
+		"automation":object_context.open("automation");return true
+		"hire_reception":Tycoon.hire(sim,"reception");return true
+		"hire_cleaning":Tycoon.hire(sim,"cleaning");return true
+		"upgrade_kitchen":Tycoon.upgrade_kitchen(sim);return true
+		"upgrade_room":Tycoon.upgrade_room(sim,int(id_));return true
+		"private_entry":
+			if sim.data.player.floor==2:sim.queue_gallery();return true
+			if sim.data.player.floor==1:sim.queue_floor();return true
+			sim.queue_move(Tycoon.PRIVATE_ENTRY);return true
 	if action.begins_with("connect:"):Sandbox.connect_tunnel(sim,id_,action.trim_prefix("connect:"));return true
 	if action.begins_with("build_") and action!="build_mode":Sandbox.build(sim,action.trim_prefix("build_"),build_cell);return true
 	match action:
@@ -1818,7 +1843,7 @@ func sandbox_action(kind_: String,id_: String,action: String) -> bool:
 		"interrogate":
 			var p: Dictionary=sim.data.people[id_];p.dialogue_stage="interrogate";object_context.open("conversation",id_,"살려주면 말하겠소. 회색 망토가 운반하는 건 군수 약품이오. 징수원은 그걸 알고 있소.");return true
 		"escort":
-			var p: Dictionary=sim.data.people[id_];p.state="restrained";p.path=[];sim.data.ops.drag=id_;sim.note("같이 이동합니다. 은신처에 데려가 보호할 수 있습니다.");return true
+			var p: Dictionary=sim.data.people[id_];p.state="restrained";p.escorted=true;p.path=[];sim.data.ops.drag=id_;sim.note("같이 이동합니다. 은신처에 데려가 보호할 수 있습니다.");return true
 		"mediate":
 			var p: Dictionary=sim.data.people[id_];p.feuds=0;p.last_feud=sim.data.clock+60;p.bubble="알겠소. 오늘은 참지.";p.bubble_until=sim.data.clock+5;sim.note("다툼을 말렸다. 방을 떨어뜨려 배정하면 다시 마주칠 일이 줄어든다.");return true
 		"relocate":sim.data.people[id_].dialogue_stage="rooms";object_context.open("conversation",id_,"다른 방으로 옮길 수 있겠소?");return true
@@ -1884,3 +1909,18 @@ func sandbox_ground_request(point: Vector2) -> bool:
 	if entrance_placing or (pos.distance_to(last_ground_tap)<1.2 and Time.get_ticks_msec()-last_ground_time<900):
 		entrance_placing=false;last_ground_time=0;build_point=pos;object_context.open("ground");return true
 	return false
+
+func sync_tycoon_workers(dt: float) -> void:
+	if receptionist_visual==null:
+		receptionist_visual=actor(Vector3.ZERO,Color("6f8155"));world_label("토마 · 자동 접수",Vector3(0,1.95,0),receptionist_visual).pixel_size=0.014
+		cleaner_visual=actor(Vector3.ZERO,Color("89718a"));world_label("리아 · 객실 청소",Vector3(0,1.95,0),cleaner_visual).pixel_size=0.014
+	receptionist_visual.visible=sim.data.tycoon.reception and view_layer!="below"
+	cleaner_visual.visible=sim.data.tycoon.cleaning and view_layer!="below"
+	sync_actor(receptionist_visual,Vector2(-0.25,-1.25),dt)
+	var worker: Dictionary=sim.data.tycoon.cleaner;sync_actor(cleaner_visual,worker.pos,dt,int(worker.floor))
+	for n in sim.data.rooms:
+		if not tycoon_room_marks.has(n):
+			var at=world_point(Sandbox.room_point(int(n)),Sandbox.floor_of(int(n)),0.6);tycoon_room_marks[n]=world_label("",at,actors_root);tycoon_room_marks[n].pixel_size=0.012
+		var room_: Dictionary=sim.data.rooms[n]
+		tycoon_room_marks[n].text="%s호 · %s%s" %[n,"청소 필요" if room_.dirty else ("이용 중" if room_.guest!="" else "빈방")," · 개선 %d" %int(sim.data.tycoon.rooms[n]) if int(sim.data.tycoon.rooms[n])>0 else ""]
+		tycoon_room_marks[n].modulate=Color("c6a06b") if room_.dirty else (Color("a9bd89") if room_.guest=="" else Color("d4d6cf"))

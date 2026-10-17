@@ -182,6 +182,9 @@ static func flee(sim, id: String) -> void:
 	person.state="escaping" if person.floor!=0 else "leaving"
 	person.report_pending=true
 	person.path=sim.gallery_route(person.pos,sim.STAIRS) if person.floor==2 else (basement_route(sim,person.pos,Vector2.ZERO) if person.floor==1 else sim.path_to(person.pos,sim.ENTRY))
+	if sim.data.has("sandbox") and person.floor==1:
+		var e=preload("res://scripts/inn_sandbox.gd").nearest(sim,person.pos,1)
+		if not e.is_empty():person.path=basement_route(sim,person.pos,Vector2(e.bottom));person.escape_top=e.top
 
 static func sees(sim, watcher: Dictionary, point: Vector2, floor_: int, cone: bool=true) -> bool:
 	if int(watcher.get("floor",0))!=floor_:return false
@@ -290,6 +293,7 @@ static func inspector_action(sim, bribe: bool=false) -> bool:
 	else:
 		inspector.state="search"
 		inspector.path=sim.path_to(inspector.pos,sim.HATCH)
+		if sim.data.has("sandbox"):inspection_entry(sim)
 		inspector.remaining=12
 		sim.note("경비가 지하 입구 주변을 조사한다. 깊은 지하 전체를 수색하는 것은 아니다.")
 	return true
@@ -299,7 +303,7 @@ static func end_inspection(sim) -> void:
 	sim.data.ops.heat=maxi(0,int(sim.data.ops.heat)-20)
 	if inspector.floor==1:
 		inspector.state="return_below"
-		inspector.path=basement_route(sim,inspector.pos,Vector2.ZERO)
+		inspector.path=basement_route(sim,inspector.pos,inspector.get("bottom",Vector2.ZERO))
 	else:
 		inspector.state="leaving"
 		inspector.path=sim.path_to(inspector.pos,sim.GATE)
@@ -341,12 +345,12 @@ static func update_inspector(sim, dt: float) -> void:
 				"entering":inspector.state="waiting";inspector.remaining=20
 				"search":
 					inspector.floor=1
-					inspector.pos=Vector2.ZERO
+					inspector.pos=inspector.get("bottom",Vector2.ZERO)
 					inspector.state="sweep"
-					inspector.path=basement_route(sim,Vector2.ZERO,Vector2(1,0))
+					inspector.path=basement_route(sim,inspector.pos,inspector.pos+Vector2(1,0))
 				"return_below":
 					inspector.floor=0
-					inspector.pos=sim.HATCH
+					inspector.pos=inspector.get("top",sim.HATCH)
 					inspector.state="leaving"
 					inspector.path=sim.path_to(inspector.pos,sim.GATE)
 				"leaving":inspector.state="idle"
@@ -365,6 +369,7 @@ static func inspector_action_for_timeout(sim) -> void:
 	inspector.state="search"
 	inspector.remaining=12
 	inspector.path=sim.path_to(inspector.pos,sim.HATCH)
+	if sim.data.has("sandbox"):inspection_entry(sim)
 	sim.note("응답이 없어 경비가 입구 주변 조사에 들어간다.")
 
 static func tick(sim, dt: float) -> void:
@@ -388,7 +393,7 @@ static func tick(sim, dt: float) -> void:
 			else:sim.note("대상이 멀어져 제압에 실패했다.")
 	for id in sim.data.people.keys():
 		var person: Dictionary=sim.data.people[id]
-		if person.state in ["dead","restrained"]:witness(sim,id,"body")
+		if person.state=="dead" or (person.state=="restrained" and not person.get("escorted",false)):witness(sim,id,"body")
 		if person.state=="down":
 			witness(sim,id,"body")
 			if sim.data.clock>=person.wake_at:
@@ -397,7 +402,7 @@ static func tick(sim, dt: float) -> void:
 		elif person.state=="escaping":
 			sim.follow(person,dt*1.4)
 			if person.path.is_empty():
-				person.pos=sim.STAIRS if person.floor==2 else sim.HATCH
+				person.pos=sim.STAIRS if person.floor==2 else person.get("escape_top",sim.HATCH)
 				person.floor=0
 				person.state="leaving"
 				person.path=sim.path_to(person.pos,sim.ENTRY)
@@ -423,3 +428,10 @@ static func tick(sim, dt: float) -> void:
 			contract.state="failed"
 			sim.note("의뢰를 실패했다. 대상이 떠났거나 제한 시간이 지났다.")
 	update_inspector(sim,dt)
+
+static func inspection_entry(sim) -> void:
+	var guard: Dictionary=sim.data.ops.inspector
+	var entries: Array=sim.data.sandbox.entrances.filter(func(e):return e.open)
+	if entries.is_empty():
+		guard.resolved=true;end_inspection(sim);sim.note("경비가 홀과 마당을 살폈지만 숨겨진 입구는 찾지 못했다.");return
+	var e: Dictionary=entries[0];guard.top=e.top;guard.bottom=Vector2(e.bottom);guard.path=sim.path_to(guard.pos,e.top)

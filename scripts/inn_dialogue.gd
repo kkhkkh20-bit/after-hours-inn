@@ -20,6 +20,7 @@ static func line(sim,id: String) -> String:
 		return {"worker":"홀은 제가 맡을게요. 주인님이 어디로 가든 묻지 않을게요. 비밀은 지킬 수 있어요.","broker":"약입니다. 누구에게 가는지는 묻지 마시오. 국경군은 약도 군수품이라 부르니까.","fugitive":"후퇴 명령을 전했을 뿐인데 탈영병이 됐습니다. 순찰대에는 제 이름을 말하지 말아주십시오."}.get(p.get("role",""),["이전 주인이 장부를 지하 동쪽 기둥 너머에 숨겼다더군. 순찰대가 오기 전에 찾아보는 게 좋겠소.","이 근방에 약을 실어 나르는 사람이 있다던데요. 관문을 통과할 수가 없대요.","같은 지붕 아래 있다고 같은 편은 아니오. 객실 문은 잠가두시오.","아픈 사람은 늘어나는데 약값은 세 배가 됐어요."][(int(id.get_slice("_",1))-1)%4])
 	if p.state=="dead":return "숨이 끊어졌다. 이곳에 그대로 둘 수는 없다."
 	if p.state=="down":return "잠시 의식을 잃었다. 깨어나기 전에 판단해야 한다."
+	if p.state=="restrained" and p.get("escorted",false):return "안내해주십시오. 조용히 따라가겠습니다."
 	if p.state=="restrained":return "놓으시오. 대체 왜 이러는 거요?"
 	if p.get("role","")=="collector":return "군세 여덟 닢이오. 오늘 새벽 전까지 내시오. 이미 낸 세금은 결산에서 다시 받지 않겠소."
 	if p.get("role","")=="worker":return "일할 사람 구하시죠? 여덟 닢이면 시작할게요. 서빙은 제가 맡고, 하루 품삯은 네 닢입니다."
@@ -50,7 +51,7 @@ static func options(sim,id: String) -> Array:
 	if p.get("role","")=="broker":return [["accept_cargo","상자를 맡겠습니다. +12닢"],["accept_hold","생포 의뢰도 있습니까? · 선택 의뢰"],["ask_story","상자에 무엇이 들었습니까?"],["refuse_cargo","우리 여관에서는 안 됩니다."]]
 	if p.get("role","")=="fugitive" and not p.get("protected",false):return [["shelter","방을 드리겠습니다. 돈은 됐어요."],["escort","함께 지하 은신처로 갑시다."],["feed_fugitive","식사라도 드시고 가세요."],["ask_story","누가 당신을 찾습니까?"],["dismiss","여기는 안 됩니다."]]
 	var result=[]
-	if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":result.append(["offer_room","방을 보여드리겠습니다."])
+	if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":result.append(["offer_room","숙박비 받고 방을 안내한다 · +%d닢부터" %int(p.rate)])
 	else:
 		if p.get("visit","")=="meal" and p.state=="arriving" or sim.data.orders.values().any(func(o):return o.guest==id and o.status not in ["served","cancelled"]):result.append(["serve_meal","따뜻한 식사를 내오겠습니다."])
 	result.append(["ask_story","길에서는 별일 없었습니까?"])
@@ -65,7 +66,7 @@ static func choose(sim,id: String,action: String) -> String:
 	if action.begins_with("book"):
 		var n=int(action.trim_prefix("book"))
 		if int(p.room)>0:
-			var old=int(p.room);sim.data.rooms[str(old)].guest="";sim.data.rooms[str(old)].dirty=true;p.room=0;p.state="waiting";p.arrival=sim.data.clock
+			var old=int(p.room);sim.data.rooms[str(old)].guest="";sim.data.rooms[str(old)].dirty=true;p.room=0;p.relocating=true;p.state="waiting";p.arrival=sim.data.clock
 		if sim.request_room(n,id):p.chosen_room=n
 		return "close"
 	match action:
@@ -79,7 +80,10 @@ static func choose(sim,id: String,action: String) -> String:
 			var n=1 if action=="book1" else 2
 			if sim.request_room(n,id):p.chosen_room=n
 			return "close"
-		"serve_meal":sim.request_direct_service(id);return "close"
+		"serve_meal":
+			if sim.data.staff.delegated:sim.note("마라가 식사를 준비하고 가져다드립니다.")
+			else:sim.request_direct_service(id)
+			return "close"
 		"pay_tax":Campaign.pay_tax(sim);return "close"
 		"hire_worker":Campaign.hire(sim,id);return "close"
 		"accept_cargo":Campaign.broker_choice(sim,true);return "close"

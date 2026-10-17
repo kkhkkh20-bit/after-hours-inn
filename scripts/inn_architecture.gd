@@ -6,7 +6,7 @@ static func build(h) -> void:
 	var stone:=Color("575a50")
 	# The front is a deliberate section cut: no giant ground plane hiding the cellar.
 	h.box(Vector3(38,0.5,5),Vector3(5,-0.4,-8.5),Color("313d3c"))
-	h.box(Vector3(14,0.5,20),Vector3(17,-0.4,2),Color("424b43"))
+	h.box(Vector3(14,0.5,20),Vector3(17,-0.4,2),Color("424b43")).set_meta("outside_ground",true)
 	h.box(Vector3(4,0.5,18),Vector3(-12,-0.4,1),Color("34423e"))
 	# Four foundation strips leave a real opening above the cellar ladder.
 	h.box(Vector3(6.15,0.3,12.4),Vector3(-7.125,-0.16,0),timber)
@@ -23,7 +23,7 @@ static func build(h) -> void:
 	h.world_label("뒤편 샛문",Vector3(-5,0.3,-5.6),h.surface).pixel_size=0.008
 	h.world_label("뒷마당 우회로",Vector3(5,0.3,-6.6),h.surface).pixel_size=0.008
 	for x in range(-10,11,4):h.box(Vector3(0.2,3.2,0.25),Vector3(x,1.55,-6),timber)
-	h.box(Vector3(0.2,0.65,12),Vector3(-10,0.38,0),plaster,true)
+	for pair in [[-3.5,5.0],[4.0,4.0]]:h.box(Vector3(.2,.65,pair[1]),Vector3(-10,.38,pair[0]),plaster,true)
 	for z in [-5,-1,3,6]:h.box(Vector3(0.22,3,0.22),Vector3(-10,1.5,z),timber)
 	for pair in [[-4.25,3.5],[0.0,2.0],[4.75,2.5]]:
 		h.box(Vector3(0.16,0.45,pair[1]),Vector3(10,0.22,pair[0]),stone,true)
@@ -110,3 +110,25 @@ static func build(h) -> void:
 	h.world_label("정문 · 숙박 접수",Vector3(.25,.35,6.25),h.surface).pixel_size=.01
 	h.world_label("식사 손님 자리",Vector3(-6.5,.3,2.8),h.surface).pixel_size=.009
 	for x in range(1,23):h.box(Vector3(.85,.025,.45),Vector3(x+.25,-.05,8.25),Color("82775b"))
+
+	# West dining wing joins the central hall through a clear three-metre opening.
+	h.box(Vector3(12,.22,12),Vector3(-16,-.16,0),timber)
+	h.box(Vector3(.18,.7,12),Vector3(-22,.4,0),plaster,true)
+	for z in [-6,6]:h.box(Vector3(12,.7,.18),Vector3(-16,.4,z),plaster,true)
+	for x in [-19.0,-14.0]:
+		h.model("furniture","tableRound",Vector3(x,.08,.4),Vector3(1.4,.8,1.4),0,true)
+		for z in [-.7,1.6]:h.model("furniture","chair",Vector3(x,.08,z),Vector3(.52,1,.58),PI if z<0 else 0,true)
+		h.light_at(Vector3(x,2.4,.3),1.0)
+	h.world_label("서쪽 식당 홀",Vector3(-16,.3,4.8),h.surface).pixel_size=.012
+	# Large grounds can hide in the exploded cutaway so they never cover the cellar.
+	var outer=Node3D.new();h.surface.add_child(outer);outer.set_meta("outside_ground",true);h.world_root=outer
+	# Large north and east grounds remain open for movement and future buildings.
+	h.box(Vector3(72,.15,12),Vector3(12,-.30,-13.5),Color("46503e"))
+	h.box(Vector3(24,.15,48),Vector3(36,-.30,4),Color("4d5342"))
+	h.world_label("확장 마당",Vector3(34,.3,8),h.surface).pixel_size=.014
+	for x in range(25,48,4):
+		for z in range(-16,25,4):h.box(Vector3(1.2,.025,1.2),Vector3(x,-.2,z),Color("666953"))
+
+	h.box(Vector3(48,.15,20),Vector3(0,-.30,18),Color("4b5140"))
+	h.box(Vector3(2,.15,12),Vector3(-23,-.30,0),Color("4b5140"))
+	h.world_root=h.surface

@@ -22,6 +22,7 @@ static func line(sim,id: String) -> String:
 	if p.state=="down":return "잠시 의식을 잃었다. 깨어나기 전에 판단해야 한다."
 	if p.state=="restrained" and p.get("escorted",false):return "안내해주십시오. 조용히 따라가겠습니다."
 	if p.state=="restrained":return "놓으시오. 대체 왜 이러는 거요?"
+	if p.get("role","")=="wanted":return "하룻밤 묵을 방이 필요하오. 소문 같은 건 믿지 마시오."
 	if p.get("role","")=="collector":return "군세 여덟 닢이오. 오늘 새벽 전까지 내시오. 이미 낸 세금은 결산에서 다시 받지 않겠소."
 	if p.get("role","")=="worker":return "일할 사람 구하시죠? 여덟 닢이면 시작할게요. 서빙은 제가 맡고, 하루 품삯은 네 닢입니다."
 	if p.get("role","")=="broker":return "오늘 밤, 지하에 상자 하나만 맡아주시오. 열두 닢이오. 순찰대가 물으면 식재료라고 하시오."
@@ -51,10 +52,11 @@ static func options(sim,id: String) -> Array:
 	if p.get("role","")=="broker":return [["accept_cargo","상자를 맡겠습니다. +12닢"],["accept_hold","생포 의뢰도 있습니까? · 선택 의뢰"],["ask_story","상자에 무엇이 들었습니까?"],["refuse_cargo","우리 여관에서는 안 됩니다."]]
 	if p.get("role","")=="fugitive" and not p.get("protected",false):return [["shelter","방을 드리겠습니다. 돈은 됐어요."],["escort","함께 지하 은신처로 갑시다."],["feed_fugitive","식사라도 드시고 가세요."],["ask_story","누가 당신을 찾습니까?"],["dismiss","여기는 안 됩니다."]]
 	var result=[]
+	if p.get("case_target",false):result.append(["dossier","혐의·의뢰 조건 확인"])
 	if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":
 		var n=sim.Tycoon.recommended_room(sim,id)
 		result.append(["recommend_room","추천 %d호 안내 · %d닢" %[n,int(p.rate)+sim.Tycoon.room_bonus(sim,n)] if n>0 else "빈방 없음 · 청소·퇴실 대기",n>0])
-		result.append(["offer_room","직접 방 선택"])
+		if not p.get("case_target",false):result.append(["offer_room","직접 방 선택"])
 	else:
 		if p.get("visit","")=="meal" and p.state=="arriving" or sim.data.orders.values().any(func(o):return o.guest==id and o.status not in ["served","cancelled"]):result.append(["serve_meal","따뜻한 식사를 내오겠습니다."])
 	result.append(["imprison","감옥에 가두기 · 자동 호송"])

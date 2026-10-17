@@ -535,6 +535,8 @@ func sync_view(dt: float) -> void:
 	var d: Dictionary=sim.data
 	var surface_shown: bool=view_layer!="below"
 	if apron!=null: apron.visible=view_layer=="surface"
+	for child in surface.get_children():
+		if child.has_meta("outside_ground"):child.visible=view_layer=="surface"
 	if footing==null:
 		var previous_root=world_root;world_root=surface
 		footing=box(Vector3(2.2,.12,2.2),Vector3.ZERO,Color("626551"));world_root=previous_root
@@ -581,7 +583,7 @@ func sync_view(dt: float) -> void:
 		actors[id].visible=(cellar_shown if person.floor==1 else surface_shown) and person.state!="gone" and Selection.visible_floor(self,person.floor)
 		sync_actor(actors[id],person.pos,dt,person.floor)
 		if person.state=="dining" and person.get("visit","")=="meal":
-			var seated=Vector2(-7.5 if person.pos.x<-6 else -4.8,1.6 if person.pos.y>0 else -.7)
+			var seated=sim.Layout.seat_display(person.pos)
 			actors[id].position=world_point(seated,0,-.28)
 			actors[id].rotation.y=0 if person.pos.y>0 else PI
 			actors[id].get_node("LeftLeg").rotation.x=-PI/2;actors[id].get_node("RightLeg").rotation.x=-PI/2
@@ -652,7 +654,7 @@ func focus_position() -> Vector3:
 func set_layer(value: String) -> void:
 	if object_context!=null:object_context.close()
 	view_layer=value;overview=true;camera_offset=Vector2.ZERO
-	camera.size={"all":39.5,"below":31.0,"rooms":24.0,"surface":31.0}.get(value,31.0)
+	camera.size={"all":68.0,"below":48.0,"rooms":24.0,"surface":44.0}.get(value,31.0)
 	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
 
@@ -827,7 +829,7 @@ func pan_camera(relative: Vector2) -> void:
 	var right:=Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
 	var down:=Vector2(camera.global_basis.z.x,camera.global_basis.z.z).normalized()
 	camera_offset-=(right*relative.x+down*relative.y)*scale_
-	camera_offset=camera_offset.limit_length(18)
+	camera_offset=camera_offset.limit_length(70)
 
 func _input(event: InputEvent) -> void:
 	var modal=(episode_ui!=null and episode_ui.opened) or (journal!=null and journal.opened)
@@ -836,7 +838,7 @@ func _input(event: InputEvent) -> void:
 	pointer.observe(event,modal or (mobile_ui!=null and mobile_ui.blocks_point(point)))
 	if event is InputEventMouseMotion or event is InputEventScreenDrag:pointer_position=event.position
 	if not modal and event is InputEventMagnifyGesture:
-		camera.size=clampf(camera.size/event.factor,12,42);get_viewport().set_input_as_handled()
+		camera.size=clampf(camera.size/event.factor,12,90);get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if episode_ui!=null and episode_ui.opened or journal!=null and journal.opened: return
@@ -872,8 +874,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5:save_game()
 			KEY_F9:load_game()
 	if event is InputEventMouseButton and event.device!=-1 and event.pressed:
-		if event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(12,camera.size-1)
-		elif event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(42,camera.size+1)
+		if event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(12,camera.size-2)
+		elif event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(90,camera.size+2)
 	if (event is InputEventScreenTouch and not event.pressed) or (event is InputEventMouseButton and event.device!=-1 and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed):
 		var tap: Dictionary=pointer.take()
 		if not tap.is_empty():world_tap(tap.point,tap.candidates)
@@ -1310,6 +1312,9 @@ func context_stats() -> String:
 
 func context_title(kind_: String,id_: String) -> String:
 	if kind_=="pick":return "대상 선택"
+	if kind_=="contracts":return "현상수배 게시판"
+	if kind_=="questioning":return "심문과 금품"
+	if kind_=="zones":return "구역 바로 보기"
 	if kind_ in ["prison","prison_roster"]:return "감옥 생활 관리"
 	if kind_=="inmate":return sim.data.people[id_].name+" · 수감 생활"
 	if kind_=="counter_more":return "접수대 · 다른 관리"
@@ -1333,7 +1338,7 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	if kind_ in ["pick","navigation"]:return request_anchor
 	var pos: Vector2=Simulation.COUNTER; var floor_: int=sim.data.player.floor
 	match kind_:
-		"person","actions","other","conversation","inmate":
+		"person","actions","other","conversation","inmate","questioning":
 			if sim.data.people.has(id_): pos=sim.data.people[id_].pos; floor_=sim.data.people[id_].floor
 		"room": pos=Sandbox.room_point(int(id_)) if Sandbox.active(sim) else Vector2(5.6,-2.0 if id_=="1" else 2.0); floor_=Sandbox.floor_of(int(id_))
 		"ground":pos=build_point;floor_=0
@@ -1351,15 +1356,21 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
-	if kind_=="counter_more":return [["recruit","마라와 이야기"],["private_entry","주인 전용 창고로 이동"],["view_tools","화면 방향"],["system","저장·설정"]]
+	if kind_=="counter_more":return [["zones","넓은 지도 · 구역 보기"],["recruit","마라와 이야기"],["private_entry","주인 전용 창고로 이동"],["view_tools","화면 방향"],["system","저장·설정"]]
 	if Sandbox.active(sim) and kind_=="owner":
 		var items=[]
 		if command_status()!="":items.append(["stop","현재 작업 취소"])
 		if sim.data.ops.drag!="" or sim.data.player.carry!="":items.append(["drop","운반 내려놓기"])
 		items.append(["build_tools","지하 시설 설치"] if sim.data.player.floor==1 else ["private_entry","비밀 창고로 이동"])
-		items.append(["journal","영업 장부"])
+		items.append(["contracts","현상수배 · 범죄 의뢰"])
 		if items.size()<4:items.append(["dig_tools","구멍·통로 파기"])
 		return items
+	if kind_=="contracts":
+		sim.Contracts.ensure(sim);var case=sim.Contracts.current(sim)
+		if case.is_empty():return [["case_accept","의뢰 수락 · 표적을 여관으로 유도"]]
+		return [["case_dossier","표적 혐의 확인"],["case_focus","표적 위치 보기"],["case_claim","보상 %d닢 수령" %int(case.reward),case.get("ready",false) and not case.paid],["case_next","다음 사건" if case.paid else "도주·사망 표적 다시 추적",case.paid or sim.data.people.get(case.target,{}).get("state","") in ["gone","dead"]]]
+	if kind_=="questioning":return [["question","차분히 심문 · 진술 +35"],["ransom","금품 갈취 · 20닢, 대상당 한 번"],["coerce","고문 심문 · 진술 +60, 불확실·추적 증가"],["verify_intel","정보 대조 · 5닢"]]
+	if kind_=="zones":return [["zone:inn","중앙 여관"],["zone:west","서쪽 식당"],["zone:prison","지하 서쪽 수감동"],["zone:security","지하 동쪽 보안동"],["zone:expansion","지하 남쪽 확장동"]]
 	if kind_=="prison":
 		var cell=Sandbox.facility(sim,id_);sim.Prison.ensure(sim)
 		return [["prison_roster","수감자 목록 · %d명" %cell.members.size()],["care_toggle","자동 돌봄 끄기" if cell.care else "자동 돌봄 켜기"],["security_toggle","경비·잠금 해제" if cell.guard else "경비·잠금 켜기"],["prison_expand","수용 인원 +2 · 8닢",int(cell.capacity)<12]]
@@ -1367,7 +1378,7 @@ func context_items(kind_: String,id_: String) -> Array:
 		sim.Prison.ensure(sim);var cell=Sandbox.facility(sim,id_);var entries=[]
 		for inmate in cell.members:entries.append(["inmate:"+inmate,sim.data.people[inmate].name+" · "+str(sim.data.people[inmate].life.action)])
 		return entries if not entries.is_empty() else [["prison_back","수감자가 없습니다 · 감옥으로"]]
-	if kind_=="inmate":return [["feed_inmate","식사 주기"],["rest_inmate","편히 쉬게 하기"],["release_inmate","석방하기"],["inmate_prison","감옥 관리"]]
+	if kind_=="inmate":return [["questioning","심문·정보·금품 갈취"],["feed_inmate","식사 주기"],["rest_inmate","편히 쉬게 하기"],["release_inmate","석방하기"],["inmate_prison","감옥 관리"]]
 	if kind_=="pick":
 		var items=[]
 		for i in selection_options.size():
@@ -1405,7 +1416,7 @@ func context_items(kind_: String,id_: String) -> Array:
 		if sim.data.campaign.ledger_found:items.push_front(["guard_evidence","이 반입 허가를 확인해보시죠."])
 		return items
 	if kind_=="staff_talk":return [["automation","접수·청소 알바 고용"],["delegate","식사는 계속 맡아주세요."],["takeover","내가 직접 서빙할게요."],["ally_story","손님들 사이에 무슨 일이 있나요?"]]
-	if Campaign.active(sim) and kind_=="counter":return [["automation","알바 고용·주방 개선"],["dig_tools","구멍·통로 파기"],["journal","영업 장부"],["counter_more","다른 관리"]]
+	if Campaign.active(sim) and kind_=="counter":return [["contracts","현상수배 · 범죄 의뢰"],["automation","알바 고용·주방 개선"],["journal","영업 장부"],["counter_more","지도·창고·다른 관리"]]
 	if sim.data.paused and not dialogue_paused and kind_!="system": return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
 	match kind_:
 		"person":
@@ -1439,7 +1450,7 @@ func context_items(kind_: String,id_: String) -> Array:
 			if sim.data.player.floor==1 and (not sim.gentle_opening() or sim.data.served>=3): items.append(["cell","구금칸 설치 / 구금"])
 			items.append(["system","저장 · 화면 설정"])
 			return items
-		"system": return [["easy_toggle","쉬운 운영 끄기 · 고용 유지" if sim.data.get("tycoon",{}).get("easy",false) else "쉬운 운영 켜기 · 무료 직원 지원"],["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
+		"system": return [["zones","넓은 지도 · 구역 보기"],["easy_toggle","쉬운 운영 끄기 · 고용 유지" if sim.data.get("tycoon",{}).get("easy",false) else "쉬운 운영 켜기 · 무료 직원 지원"],["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
 	return []
 
 func travel_to_floor(target: int) -> void:
@@ -1452,6 +1463,32 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 	if action.begins_with("pick:"):
 		var index=int(action.get_slice(":",1))
 		if index>=0 and index<selection_options.size():activate_selection(selection_options[index])
+		return
+	if action=="contracts":sim.Contracts.ensure(sim);object_context.open("contracts","",sim.Contracts.summary(sim));return
+	if action=="case_accept":sim.Contracts.accept(sim);object_context.open("contracts","",sim.Contracts.summary(sim));return
+	if action=="case_dossier":
+		var target=sim.Contracts.target(sim)
+		if target!="":object_context.open("contracts","",sim.Contracts.dossier(sim,target)+"\n"+sim.Contracts.summary(sim))
+		return
+	if action=="case_claim":sim.Contracts.claim(sim);object_context.open("contracts","",sim.Contracts.summary(sim));return
+	if action=="case_next":
+		if sim.Contracts.current(sim).get("paid",false):sim.Contracts.next(sim)
+		else:sim.Contracts.retry(sim)
+		object_context.open("contracts","",sim.Contracts.summary(sim));return
+	if action=="case_focus":
+		var target=sim.Contracts.target(sim)
+		if sim.data.people.has(target):
+			var person: Dictionary=sim.data.people[target];set_layer("below" if person.floor==1 else ("rooms" if person.floor==2 else "surface"));camera_offset=person.pos-Vector2(focus_position().x,focus_position().z)+(Vector2(Sandbox.OFFSET.x,Sandbox.OFFSET.z) if person.floor==1 else Vector2.ZERO);camera.size=22
+		return
+	if action=="questioning":object_context.open("questioning",id_,sim.Contracts.questioning(sim,id_));return
+	if action in ["question","ransom","coerce","verify_intel"]:
+		sim.Contracts.act(sim,id_,action);object_context.open("questioning",id_,sim.Contracts.questioning(sim,id_));return
+	if action=="dossier":object_context.open("conversation",id_,sim.Contracts.dossier(sim,id_));return
+	if action=="zones":object_context.open("zones");return
+	if action.begins_with("zone:"):
+		var zone=action.get_slice(":",1);set_layer("surface" if zone in ["inn","west"] else "below")
+		var point={"inn":Vector2(0,0),"west":Vector2(-16,0),"prison":Vector2(-14,-7),"security":Vector2(38,-7),"expansion":Vector2(12,15)}[zone]
+		var world=world_point(point,0 if zone in ["inn","west"] else 1);var focus=focus_position();camera_offset=Vector2(world.x-focus.x,world.z-focus.z);camera.size=28 if zone!="inn" else 38
 		return
 	if action=="imprison":
 		Commands.cancel(self,true);sim.Prison.request(sim,id_);return

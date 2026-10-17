@@ -62,3 +62,17 @@ static func build(h) -> void:
 		var at: Vector3=h.world_point(Rules.room_point(n),Rules.floor_of(n),0.2)
 		var label_=h.world_label("%d호" %n,at+Vector3(0,0.1,1),root);label_.pixel_size=0.011
 	h.world_root=h.surface;h.sandbox_revision=int(h.sim.data.sandbox.revision)
+
+	if h.sim.data.sandbox.get("wide_version",0)>=1:
+		h.world_root=root
+		for row in [[Vector2(-14,-7),"서쪽 수감동"],[Vector2(12,-7),"중앙 심문동"],[Vector2(38,-7),"동쪽 보안동"],[Vector2(12,15),"남쪽 확장동"]]:
+			var center: Vector2=row[0]
+			h.world_label(str(row[1]),h.world_point(center+Vector2(0,4),1,.25),root).pixel_size=.016
+			for x in [-7,7]:
+				for y in [-4,4]:h.box(Vector3(.15,1.6,.15),h.world_point(center+Vector2(x,y),1,.8),Color("66523a"))
+			h.light_at(h.world_point(center,1,2),1.0)
+		h.box(Vector3(2,.12,1),h.world_point(Vector2(12,-3),1,.85),Color("766046"))
+		for x in [-.8,.8]:
+			for z in [-.3,.3]:h.box(Vector3(.12,.8,.12),h.world_point(Vector2(12+x,-3+z),1,.4),Color("514434"))
+		h.box(Vector3(.65,.45,.65),h.world_point(Vector2(12,-2),1,.225),Color("6d5b43"))
+		h.world_root=h.surface

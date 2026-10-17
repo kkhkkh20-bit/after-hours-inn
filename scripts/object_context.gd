@@ -115,6 +115,8 @@ func refresh() -> void:
 	if panel.visible and detail_label!=null:
 		if kind=="prison":detail_label.text=host.sim.Prison.summary(host.sim,target)
 		elif kind=="inmate":detail_label.text=host.sim.Prison.inmate_summary(host.sim,target)
+		elif kind=="contracts":detail_label.text=host.sim.Contracts.summary(host.sim)
+		elif kind=="questioning":detail_label.text=host.sim.Contracts.questioning(host.sim,target)
 	var viewport=host.get_viewport().get_visible_rect().size
 	top.position.x=maxf(0,(viewport.x-720)/2)
 	heading.text="%d일 · %s" %[int(host.sim.data.campaign.day) if host.Campaign.active(host.sim) else 1,host.view_name()] if host.Campaign.active(host.sim) else "문 닫은 뒤"
@@ -126,8 +128,8 @@ func refresh() -> void:
 	top.visible=not ((host.journal!=null and host.journal.opened) or (host.episode_ui!=null and host.episode_ui.opened))
 	var job: String=host.command_status()
 	task_label.text=job;cancel_button.visible=job!=""
-	if panel.visible and kind in ["person","conversation","actions","other","inmate"]:
-		if not host.sim.data.people.has(target) or host.sim.data.people[target].state=="gone" or (kind=="inmate" and host.sim.data.people[target].state!="captive"):close()
+	if panel.visible and kind in ["person","conversation","actions","other","inmate","questioning"]:
+		if not host.sim.data.people.has(target) or host.sim.data.people[target].state=="gone" or (kind in ["inmate","questioning"] and host.sim.data.people[target].state!="captive"):close()
 
 func blocks(point: Vector2) -> bool:
 	return point.y<158 or (cancel_button.visible and cancel_button.get_global_rect().has_point(point)) or (panel.visible and panel.get_global_rect().has_point(point))

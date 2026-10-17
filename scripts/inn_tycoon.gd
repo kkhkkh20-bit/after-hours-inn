@@ -9,7 +9,7 @@ static func start(s) -> void:
 	s.data.campaign.freeplay=true
 	Sandbox.finish(s,{"kind":"entrance","point":PRIVATE_ENTRY,"cell":Sandbox.underground(PRIVATE_ENTRY)})
 	s.data.sandbox.entrances[0].name="창고 안 비밀 입구"
-	s.Layout.setup(s)
+	s.Layout.setup(s);s.Layout.expand(s)
 	s.data.player.pos=Vector2(-0.25,2.25)
 	s.note("마라: 접수·식사·청소는 저희가 맡을게요. 손님을 눌러 직접 안내해도 돼요. 비밀 입구는 뒤편 창고에 있어요.")
 static func wage(s) -> int:return (4 if s.data.staff.hired else 0)+(2 if s.data.tycoon.reception else 0)+(2 if s.data.tycoon.cleaning else 0)
@@ -81,6 +81,7 @@ static func tick(s,dt: float) -> void:
 	if w.remaining<=0:
 		s.data.rooms[w.target].dirty=false;s.note("리아가 %s호 청소를 마쳤다. 다시 손님을 받을 수 있다." %w.target);w.target=""
 static func goal(s) -> String:
+	if s.data.has("contracts"):return s.Contracts.goal(s)
 	var t: Dictionary=s.data.tycoon
 	if t.get("easy",false):return "쉬운 운영 · 접수·식사·청소 자동 · 손님을 눌러 직접 안내도 가능"
 	if not t.reception:return "손님을 눌러 요구 확인 · 접수대에서 접수 알바 고용"
@@ -88,6 +89,7 @@ static func goal(s) -> String:
 	return "자동 운영 중 · 손님·객실·주방을 눌러 관리"
 
 static func ensure(s) -> void:
+	if s.data.sandbox.get("wide_version",0)<1:s.Layout.expand(s)
 	if s.data.sandbox.get("starter_version",0)<1:s.Layout.setup(s)
 	for n in s.data.rooms:
 		var room_: Dictionary=s.data.rooms[n]

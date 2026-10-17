@@ -1,6 +1,7 @@
 extends RefCounted
 ## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
 
+const Contracts=preload("res://scripts/inn_contracts.gd")
 const Prison=preload("res://scripts/inn_prison.gd")
 const Layout=preload("res://scripts/inn_layout.gd")
 const Tycoon=preload("res://scripts/inn_tycoon.gd")
@@ -11,8 +12,10 @@ const ENTRY := Vector2(0.25, 3.25)
 const GATE := Vector2(22.25,3.25)
 const HATCH := Vector2(-3.25, 2.75)
 const STAIRS := Vector2(8.0, 5.0)
-const CELLAR_LIMIT := Vector2i(38,22)
+const CELLAR_LIMIT := Vector2i(64,40)
 const SAVE_VERSION := 3
+var cellar_nav: AStarGrid2D
+var cellar_stamp=""
 var travel_multiplier:=1.0
 var obstacles: Array[Rect2] = []
 var grid := AStarGrid2D.new()
@@ -44,7 +47,7 @@ func _init() -> void:
 
 func reset_progress() -> void:
 	var fresh=get_script().new()
-	data=fresh.data
+	data=fresh.data;cellar_stamp=""
 
 func note(text: String) -> void:
 	data.logs.append({"time":int(data.clock),"text":text})
@@ -54,20 +57,20 @@ func add_obstacle(rect: Rect2) -> void:
 	obstacles.append(rect.grow(0.18))
 
 func rebuild_grid() -> void:
-	grid.region = Rect2i(0,0,76,40)
+	grid.region = Rect2i(0,0,144,96)
 	grid.cell_size = Vector2(0.5,0.5)
-	grid.offset = Vector2(-13.75,-7.75)
+	grid.offset = Vector2(-23.75,-19.75)
 	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
 	grid.update()
-	for x in range(76):
-		for y in range(40):
+	for x in range(144):
+		for y in range(96):
 			var id := Vector2i(x,y)
 			grid.set_point_solid(id, not surface_walkable(grid.get_point_position(id)))
 
 func guest_path(from: Vector2,to: Vector2) -> Array:
 	if not Tycoon.active(self):return path_to(from,to)
-	var a=Vector2i(floori((from.x+14)/0.5),floori((from.y+8)/0.5))
-	var b=Vector2i(floori((to.x+14)/0.5),floori((to.y+8)/0.5))
+	var a=Vector2i(floori((from.x+24)/0.5),floori((from.y+20)/0.5))
+	var b=Vector2i(floori((to.x+24)/0.5),floori((to.y+20)/0.5))
 	if not guest_grid.is_in_boundsv(a) or not guest_grid.is_in_boundsv(b):return []
 	return Array(guest_grid.get_point_path(a,b))
 
@@ -78,7 +81,7 @@ func rebuild_guest_grid() -> void:
 			var id=Vector2i(x,y);guest_grid.set_point_solid(id,grid.is_point_solid(id) or Tycoon.PRIVATE.has_point(guest_grid.get_point_position(id)))
 
 func surface_walkable(pos: Vector2) -> bool:
-	if not Rect2(-13.8,-7.8,38.0,20.0).has_point(pos): return false
+	if not Rect2(-23.8,-19.8,72.0,48.0).has_point(pos): return false
 	for rect in obstacles:
 		if rect.has_point(pos): return false
 	return true
@@ -134,8 +137,8 @@ func queue_gallery() -> bool:
 	return true
 
 func path_to(from: Vector2, to: Vector2) -> Array:
-	var a := Vector2i(floori((from.x+14)/0.5),floori((from.y+8)/0.5))
-	var b := Vector2i(floori((to.x+14)/0.5),floori((to.y+8)/0.5))
+	var a := Vector2i(floori((from.x+24)/0.5),floori((from.y+20)/0.5))
+	var b := Vector2i(floori((to.x+24)/0.5),floori((to.y+20)/0.5))
 	if not grid.is_in_boundsv(a) or not grid.is_in_boundsv(b): return []
 	if grid.is_point_solid(a) or grid.is_point_solid(b): return []
 	return Array(grid.get_point_path(a,b))
@@ -442,7 +445,7 @@ func _step(dt: float) -> void:
 	update_work(dt)
 	Sandbox.tick(self,dt)
 	Tycoon.tick(self,dt)
-	if Sandbox.active(self):Layout.tick(self);Prison.tick(self,dt)
+	if Sandbox.active(self):Layout.tick(self);Prison.tick(self,dt);Contracts.tick(self)
 	update_awareness(dt)
 	update_worker(dt)
 	update_money()
@@ -684,6 +687,7 @@ func snapshot() -> Dictionary:
 	return {"version":SAVE_VERSION,"state":encode(data)}
 
 func restore(saved: Variant) -> bool:
+	cellar_stamp=""
 	if not saved is Dictionary or saved.get("version",0)!=SAVE_VERSION or not saved.get("state") is Dictionary: return false
 	var candidate: Dictionary=decode(saved.state)
 	for key in ["player","staff","rooms","people","orders","cells"]:

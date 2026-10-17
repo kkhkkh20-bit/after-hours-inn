@@ -163,12 +163,17 @@ static func build_or_hold(sim) -> bool:
 	return true
 
 static func basement_route(sim, from: Vector2, to: Vector2) -> Array:
-	var grid:=AStarGrid2D.new()
-	grid.region=Rect2i(-sim.CELLAR_LIMIT,sim.CELLAR_LIMIT*2+Vector2i.ONE)
-	grid.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER
-	grid.update()
-	for x in range(-sim.CELLAR_LIMIT.x,sim.CELLAR_LIMIT.x+1):
-		for y in range(-sim.CELLAR_LIMIT.y,sim.CELLAR_LIMIT.y+1):grid.set_point_solid(Vector2i(x,y),not sim.walkable(Vector2(x,y),1))
+	var stamp=str(sim.data.cells.size())+":"+str(sim.data.excavation.get("storeroom",false))
+	if sim.cellar_nav==null or sim.cellar_stamp!=stamp:
+		sim.cellar_nav=AStarGrid2D.new()
+		sim.cellar_nav.region=Rect2i(-sim.CELLAR_LIMIT,sim.CELLAR_LIMIT*2+Vector2i.ONE)
+		sim.cellar_nav.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER;sim.cellar_nav.update()
+		sim.cellar_nav.fill_solid_region(sim.cellar_nav.region,true)
+		for key in sim.data.cells:
+			var cell: Vector2i=sim.parse_cell(key)
+			if sim.cellar_nav.is_in_boundsv(cell) and sim.walkable(Vector2(cell),1):sim.cellar_nav.set_point_solid(cell,false)
+		sim.cellar_stamp=stamp
+	var grid: AStarGrid2D=sim.cellar_nav
 	var a:=Vector2i(roundi(from.x),roundi(from.y))
 	var b:=Vector2i(roundi(to.x),roundi(to.y))
 	if not grid.is_in_boundsv(a) or not grid.is_in_boundsv(b):return []

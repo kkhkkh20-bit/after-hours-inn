@@ -32,6 +32,7 @@ static func build(h) -> void:
 			var b:=base+tangent
 			var height:=0.35 if shift.y>0 else 2.15
 			if shift.x>0:height=0.7
+			if h.sim.data.has("sandbox"):height=0.48
 			var top_a:=a+Vector3(0,height+rough(a.x,a.z)*0.3,0)+n*0.2
 			var top_b:=b+Vector3(0,height+rough(b.x,b.z)*0.3,0)+n*0.2
 			var mid:=a.lerp(b,0.5)+Vector3(0,height*0.45,0)+n*(0.02+rough(base.x,base.z)*0.12)

@@ -41,7 +41,7 @@ static func tick(sim) -> void:
 	if elapsed>=120 and c.day==2 and c.fugitive=="":
 		c.fugitive=special(sim,"fugitive","부상 입은 전령","돈은 없습니다. 해 뜰 때까지만 문을 잠글 방이 필요합니다.")
 		sim.note("피곤한 전령이 문턱에 주저앉았다.")
-	if elapsed>=330 and int(c.guard_day)<int(c.day) and sim.data.ops.inspector.state=="idle":
+	if not sim.data.has("tycoon") and elapsed>=330 and int(c.guard_day)<int(c.day) and sim.data.ops.inspector.state=="idle":
 		c.guard_day=c.day; sim.data.ops.inspector.state="scheduled"; sim.data.ops.inspector.at=sim.data.clock
 		sim.note("마당 문에서 순찰대의 발소리가 들린다.")
 	if int(sim.data.ops.reports)>=3:
@@ -109,6 +109,13 @@ static func broker_choice(sim,accept: bool) -> void:
 	sim.data.people[id].state="leaving"; sim.data.people[id].path=sim.path_to(sim.data.people[id].pos,sim.GATE)
 
 static func guard_answer(sim,answer: String) -> void:
+	if sim.data.has("tycoon") and answer in ["guard_honest","guard_lie"]:
+		sim.data.campaign.guard_done=sim.data.campaign.day
+		if sim.data.ops.reports<=0:
+			sim.data.ops.inspector.resolved=true;preload("res://scripts/intrigue.gd").end_inspection(sim);sim.note("일반 지하창고임을 확인했다. 창고나 공사 자체는 조사 사유가 아니다.")
+		else:
+			sim.note("실종·목격 신고가 있어 경비가 현장에서 확인한다. 숨긴 사실을 저절로 알아내지는 못한다.");preload("res://scripts/intrigue.gd").inspector_action_for_timeout(sim)
+		return
 	var c: Dictionary=sim.data.campaign
 	var fugitive_here=c.fugitive!="" and sim.data.people.has(c.fugitive) and sim.data.people[c.fugitive].state not in ["gone","leaving"]
 	var hidden=c.cargo or (c.protected and fugitive_here)
@@ -139,4 +146,4 @@ static func pay_tax(sim) -> bool:
 static func can_rest(sim) -> bool:
 	if not active(sim):return false
 	var c: Dictionary=sim.data.campaign
-	return sim.data.staff.hired and sim.data.clock-(float(c.day)-1)*Sandbox.DAY>=Sandbox.DAY*0.65 and int(c.guard_done)>=int(c.day) and not c.summary and c.ending=="" and sim.data.work.is_empty() and sim.data.dig.is_empty()
+	return sim.data.staff.hired and sim.data.clock-(float(c.day)-1)*Sandbox.DAY>=Sandbox.DAY*0.65 and (int(c.guard_done)>=int(c.day) or (sim.data.has("tycoon") and sim.data.ops.inspector.state=="idle")) and not c.summary and c.ending=="" and sim.data.work.is_empty() and sim.data.dig.is_empty()

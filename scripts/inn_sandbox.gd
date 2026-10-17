@@ -64,7 +64,11 @@ static func build(s,type_: String,cell: Vector2i) -> bool:
 	if not s.queue_move(Vector2(cell)):return false
 	s.data.sandbox.route={"kind":type_,"cell":cell};s.data.excavation.intent="sandbox:build";return true
 static func perform(s,action: String,id: String) -> void:
-	if action=="sandbox:portal":transit(s,id);return
+	if action=="sandbox:portal":
+		transit(s,id)
+		if s.data.player.floor==1 and s.data.sandbox.has("pending_tunnel"):
+			var target: Vector2i=s.data.sandbox.pending_tunnel;s.data.sandbox.erase("pending_tunnel");preload("res://scripts/inn_excavation.gd").dig_to(s,target)
+		return
 	if action=="sandbox:build":
 		var job: Dictionary=s.data.sandbox.route.duplicate(true)
 		if job.is_empty():return
@@ -194,13 +198,15 @@ static func tick(s,dt: float) -> void:
 	if s.data.player.floor==1 and s.data.work.is_empty() and s.data.dig.is_empty() and s.data.excavation.intent=="" and not s.data.sandbox.get("tunnel_plan",[]).is_empty():
 		var cell: Vector2i=s.data.sandbox.tunnel_plan.pop_front()
 		if s.data.cells.has(s.cell_key(cell)):s.queue_move(Vector2(cell))
-		else:s.queue_dig(cell)
+		else:
+			if not s.queue_dig(cell):s.data.sandbox.tunnel_plan=[];s.note("굴착을 멈췄다. 목적지를 다시 지정하세요.")
+	preload("res://scripts/inn_excavation.gd").tick(s)
 	if s.data.clock>=float(s.data.sandbox.next_relation):s.data.sandbox.next_relation=s.data.clock+8;relationships(s)
 	if s.data.noise>3 and s.data.clock>=float(s.data.sandbox.get("next_noise",0)):
 		s.data.sandbox.next_noise=s.data.clock+6
 		for p in s.data.people.values():
-			if p.floor==0 and p.state in ["waiting","staying","dining"] and not p.get("heard_work",false) and sound_at(s,p.pos)>1:
-				p.heard_work=true;p.bubble="아래에서 무슨 소리가 나는 거요?";p.bubble_until=s.data.clock+6;s.note(p.name+"이 지하 소음을 들었다. 입구를 닫으면 소리가 줄어든다.")
+			if p.floor in [0,2] and p.state=="staying" and not p.get("heard_work",false) and sound_at(s,p.pos,p.floor)>0.75:
+				p.heard_work=true;p.bubble="방 아래 공사 소리 좀 줄여주시겠소?";p.bubble_until=s.data.clock+6;s.note(p.name+"의 객실 가까이에서 큰 공사 소리가 났다. 소음 불편일 뿐 범죄 의심이나 신고는 아니다.")
 static func relationships(s) -> void:
 	var list=s.data.people.values().filter(func(p):return p.state in ["waiting","staying","dining"] and p.get("role","")=="")
 	for i in range(list.size()):
@@ -217,23 +223,23 @@ static func relationships(s) -> void:
 			if a.get("feuds",0)>=2:s.data.money=maxi(0,int(s.data.money)-3);s.note("다툼 중 잔이 깨졌다. 손해 3닢.")
 			a.feuds=int(a.get("feuds",0))+1;return
 
-static func sound_at(s,point: Vector2) -> float:
-	var result=0.0
-	for e in s.data.sandbox.entrances:
-		var below: Array=s.Intrigue.basement_route(s,s.data.stealth.source,Vector2(e.bottom))
-		if below.is_empty():continue
-		var above_path: Array=s.path_to(point,e.top)
-		if above_path.is_empty():continue
-		result=maxf(result,maxf(0,s.data.noise-below.size()*0.25-above_path.size()*0.12)*(1.0 if e.open else 0.2))
-	return result
+static func sound_at(s,point: Vector2,floor_: int=0) -> float:
+	# This underground layer is six metres below the inn. Distance in the exploded
+	# drawing never affects acoustics; only the actual location and depth do.
+	var depth=float(s.data.sandbox.get("depth",6.0))+(3.2 if floor_==2 else 0.0)
+	if depth>7.5:return 0.0
+	var horizontal=Sandbox_above(s.data.stealth.source).distance_to(point)
+	if horizontal>3.2:return 0.0
+	var result=maxf(0,s.data.noise-depth*0.95-horizontal*0.8)
+	# A covered room floor muffles tool work; this can cause a noise complaint,
+	# never a crime report or an investigation by itself.
+	return result*0.65
+
+static func Sandbox_above(point: Vector2) -> Vector2:return above(point)
 
 static func connect_tunnel(s,from_id: String,to_id: String) -> void:
 	var a=entrance(s,from_id);var b=entrance(s,to_id)
 	if a.is_empty() or b.is_empty():return
-	if s.data.player.floor==0:use_entrance(s,from_id)
-	var at: Vector2i=a.bottom if s.data.player.floor==0 else Vector2i(roundi(s.data.player.pos.x),roundi(s.data.player.pos.y))
-	var target: Vector2i=b.bottom
-	var plan=[]
-	while at.x!=target.x:at.x+=1 if target.x>at.x else -1;plan.append(at)
-	while at.y!=target.y:at.y+=1 if target.y>at.y else -1;plan.append(at)
-	s.data.sandbox.tunnel_plan=plan;s.note("%s까지 직접 파서 연결한다. 바닥을 누르면 작업 경로를 취소한다." %b.name)
+	if s.data.player.floor==0:
+		if use_entrance(s,from_id):s.data.sandbox.pending_tunnel=b.bottom
+	else:preload("res://scripts/inn_excavation.gd").dig_to(s,b.bottom)

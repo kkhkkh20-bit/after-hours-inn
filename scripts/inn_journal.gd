@@ -57,6 +57,7 @@ func refresh() -> void:
 	root.show()
 	var c: Dictionary=sim.data.campaign
 	goal.text=host.Campaign.goal(sim)
+	if host.dig_mode!="":goal.text="구멍을 팔 지상 위치를 누르세요" if host.dig_mode=="shaft" else "통로를 이을 지하 목적지를 누르세요"
 	var message=host.episode_notice()
 	if message!=last_notice:last_notice=message;until=Time.get_ticks_msec()+4200
 	notice.text=message if Time.get_ticks_msec()<until and not opened else ""
@@ -71,7 +72,7 @@ func refresh() -> void:
 	var choices=[]
 	if c.intro:
 		title.text="문 닫은 뒤 · 여관 타이쿤"
-		body.text="전쟁 중 국경 마을의 여관 주인.\n\n손님을 받고 숙박비와 식사값을 벌어 여관을 키운다.\n\n손님 클릭 → 요구 듣기 → 돈 받고 방 안내.\n마라가 식사를 맡고, 접수·청소 알바를 고용하면\n주인이 다른 일을 해도 여관은 계속 돌아간다.\n\n접수대에서 알바 고용·주방 개선.\n객실을 눌러 개선하면 숙박 수입이 늘어난다.\n하루는 약 3분 30초. 매일 매출·임대료·급여를 결산한다.\n사흘에 끝나지 않고 영업을 이어간다.\n\n비밀 입구는 손님 출입이 막힌 뒤편 전용 창고 안.\n입구를 내려가 감옥·은신처·창고·화로를 짓거나\n다른 비밀 출구까지 직접 통로를 판다.\n비밀 의뢰를 받는 것은 당신의 선택이다."
+		body.text="전쟁 중 국경 마을의 여관 주인.\n\n손님을 받고 숙박비와 식사값을 벌어 여관을 키운다.\n\n손님 클릭 → 요구 듣기 → 돈 받고 방 안내.\n마라가 식사를 맡고, 접수·청소 알바를 고용하면\n주인이 다른 일을 해도 여관은 계속 돌아간다.\n\n접수대에서 알바 고용·주방 개선.\n객실을 눌러 개선하면 숙박 수입이 늘어난다.\n하루는 약 3분 30초. 매일 매출·임대료·급여를 결산한다.\n사흘에 끝나지 않고 영업을 이어간다.\n\n비밀 입구는 손님 출입이 막힌 뒤편 전용 창고 안.\n입구를 내려가 감옥·은신처·창고·화로를 짓거나\n구멍·통로 파기에서 목적지를 찍으면 자동으로 판다.\n화면 설정에서 앞·뒤·옆 방향을 바꿔 볼 수 있다.\n일반 창고나 깊은 공사는 범죄 의심 사유가 아니다.\n비밀 의뢰를 받는 것은 당신의 선택이다."
 		choices=[["begin","여관 문을 연다"]]
 		if FileAccess.file_exists("user://inn-tycoon-v15.json"):choices.push_front(["load","저장한 영업 이어서 하기"])
 	elif c.summary or c.ending!="":

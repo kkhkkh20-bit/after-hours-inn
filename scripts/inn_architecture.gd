@@ -19,11 +19,11 @@ static func build(h) -> void:
 			h.model("town","planks",Vector3(x+0.5,0.01,z+0.5),Vector3(1,0.06,1))
 	# Rear half-timber wall; camera-facing walls are low sections.
 	for pair in [[-8.0,4.0],[0.0,8.0],[8.0,4.0]]:
-		h.box(Vector3(pair[1],2.9,0.2),Vector3(pair[0],1.5,-6),plaster,true)
+		h.box(Vector3(pair[1],0.65,0.2),Vector3(pair[0],0.38,-6),plaster,true)
 	h.world_label("뒤편 샛문",Vector3(-5,0.3,-5.6),h.surface).pixel_size=0.008
 	h.world_label("뒷마당 우회로",Vector3(5,0.3,-6.6),h.surface).pixel_size=0.008
 	for x in range(-10,11,4):h.box(Vector3(0.2,3.2,0.25),Vector3(x,1.55,-6),timber)
-	h.box(Vector3(0.2,2.9,12),Vector3(-10,1.5,0),plaster,true)
+	h.box(Vector3(0.2,0.65,12),Vector3(-10,0.38,0),plaster,true)
 	for z in [-5,-1,3,6]:h.box(Vector3(0.22,3,0.22),Vector3(-10,1.5,z),timber)
 	for pair in [[-4.25,3.5],[0.0,2.0],[4.75,2.5]]:
 		h.box(Vector3(0.16,0.45,pair[1]),Vector3(10,0.22,pair[0]),stone,true)
@@ -72,7 +72,7 @@ static func build(h) -> void:
 	# Open lean-to, stacked wood and well use modest procedural meshes.
 	for x in [11,14]:
 		for z in [-5,-3.5]:h.box(Vector3(0.14,2,0.14),Vector3(x,1,z),timber)
-	var canopy: MeshInstance3D=h.box(Vector3(3.5,0.12,2.2),Vector3(12.5,2.1,-4.25),Color("424a4b"));canopy.rotation.x=-0.13
+	var canopy: MeshInstance3D=h.box(Vector3(3.5,0.12,0.35),Vector3(12.5,2.1,-5.15),Color("424a4b"));canopy.rotation.x=-0.13
 	for i in range(8):
 		var log_: MeshInstance3D=h.box(Vector3(0.22,0.22,1.1),Vector3(11.3+(i%4)*0.32,0.15+(i/4)*0.25,-4.3),Color("715438"));log_.rotation.z=0.12
 	for x in [18.8,20.2]:h.box(Vector3(0.15,2.1,0.15),Vector3(x,1,7.5),timber)
@@ -85,9 +85,9 @@ static func build(h) -> void:
 		for z in [-5,-4,-3,-2]:h.model("town","planks",Vector3(x+0.5,0.05,z+0.5),Vector3(1,0.06,1))
 	# Two doors: courtyard service door and a rear bypass door. Guests have a separate navigation grid.
 	for pair in [[11.5,2.0],[15.6,3.0]]:
-		h.box(Vector3(pair[1],2.0,0.15),Vector3(pair[0],1,-5.4),Color("68563d"),true)
-	for x in [10.5,17.4]:h.box(Vector3(0.15,1.8,4),Vector3(x,0.9,-3.4),Color("5c4b36"),true)
-	for pair in [[11.1,1.2],[15.3,4.0]]:h.box(Vector3(pair[1],0.9,0.15),Vector3(pair[0],0.45,-1.3),Color("776346"),true)
+		h.box(Vector3(pair[1],0.5,0.15),Vector3(pair[0],0.3,-5.4),Color("68563d"),true)
+	for x in [10.5,17.4]:h.box(Vector3(0.15,0.5,4),Vector3(x,0.3,-3.4),Color("5c4b36"),true)
+	for pair in [[11.1,1.2],[15.3,4.0]]:h.box(Vector3(pair[1],0.5,0.15),Vector3(pair[0],0.3,-1.3),Color("776346"),true)
 	h.model("furniture","bookcaseOpen",Vector3(16.6,0.08,-4.2),Vector3(1,1.5,0.4))
 	for x in [14.5,15.4]:h.box(Vector3(0.65,0.65,0.65),Vector3(x,0.36,-4.3),Color("84663e"))
 	h.world_label("주인 전용 창고 · 손님 출입 금지",Vector3(14,1.7,-2.8),h.surface).pixel_size=0.013

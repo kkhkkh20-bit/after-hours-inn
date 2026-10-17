@@ -53,6 +53,15 @@ static func tick(s,dt: float) -> void:
 			if p.state=="waiting" and p.get("role","")=="" and p.get("visit","")!="meal":
 				if check_in(s,id):s.note("토마가 %s의 숙박비를 받고 %d호로 안내했다." %[p.name,p.room])
 				break
+	if s.data.clock>=float(t.get("next_missing_check",0)):
+		t.next_missing_check=s.data.clock+8
+		for id in s.data.people:
+			var lost: Dictionary=s.data.people[id]
+			if not lost.get("was_registered",false) or lost.get("missing_reported",false) or s.data.clock<maxf(lost.get("checkout",0),lost.get("death_at",s.data.clock)+45):continue
+			for other in s.data.people.values():
+				if other.id==id or other.state not in ["waiting","staying","dining"] or other.get("faction","")=="" or other.get("faction","")!=lost.get("faction",""):continue
+				lost.missing_reported=true;other.bubble=lost.name+"은 어디 있습니까? 퇴실할 때가 지났는데요.";other.bubble_until=s.data.clock+7
+				s.Intrigue.report(s,other.name+"의 동료 실종 신고");break
 	if not t.cleaning:return
 	var w: Dictionary=t.cleaner
 	if w.target=="":
@@ -68,5 +77,14 @@ static func tick(s,dt: float) -> void:
 static func goal(s) -> String:
 	var t: Dictionary=s.data.tycoon
 	if not t.reception:return "손님 클릭 → 요구 듣기 → 숙박비 받고 방 배정 · 접수대에서 알바 고용"
+	if s.data.clock>=float(t.get("next_missing_check",0)):
+		t.next_missing_check=s.data.clock+8
+		for id in s.data.people:
+			var lost: Dictionary=s.data.people[id]
+			if not lost.get("was_registered",false) or lost.get("missing_reported",false) or s.data.clock<maxf(lost.get("checkout",0),lost.get("death_at",s.data.clock)+45):continue
+			for other in s.data.people.values():
+				if other.id==id or other.state not in ["waiting","staying","dining"] or other.get("faction","")=="" or other.get("faction","")!=lost.get("faction",""):continue
+				lost.missing_reported=true;other.bubble=lost.name+"은 어디 있습니까? 퇴실할 때가 지났는데요.";other.bubble_until=s.data.clock+7
+				s.Intrigue.report(s,other.name+"의 동료 실종 신고");break
 	if not t.cleaning:return "접수·식사 자동 운영 중 · 청소 알바를 고용하면 퇴실한 방도 자동 회전"
 	return "여관 자동 운영 중 · 객실·주방을 개선하거나 주인 전용 창고에서 비밀 활동"

@@ -101,7 +101,7 @@ static func update_quick_action(sim, dt: float) -> void:
 			p.state="down"; p.wake_at=sim.data.clock+45
 			sim.note("잠시 기절했다. 45초 뒤 깨어난다.")
 		"kill":
-			p.state="dead"; release_room(sim,id)
+			p.was_registered=int(p.room)>0;p.death_at=sim.data.clock;p.missing_reported=false;p.state="dead";release_room(sim,id)
 			sim.note("상대가 사망했다. 시신과 목격 위험이 남는다.")
 	witness(sim,id,"attack")
 

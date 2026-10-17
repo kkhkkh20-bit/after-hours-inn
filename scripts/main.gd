@@ -1,4 +1,11 @@
 extends Node3D
+const Excavation=preload("res://scripts/inn_excavation.gd")
+var dig_mode=""
+var view_angle=0.0
+var dig_board: MeshInstance3D
+var dig_route: MeshInstance3D
+var dig_cancel: Button
+var route_count=-1
 const Tycoon=preload("res://scripts/inn_tycoon.gd")
 var receptionist_visual: CharacterBody3D
 var cleaner_visual: CharacterBody3D
@@ -315,7 +322,7 @@ func _ready() -> void:
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = surface_zoom
 	camera.keep_aspect=Camera3D.KEEP_WIDTH
-	camera.position = CAMERA_ARM
+	camera.position = camera_arm()
 	camera.look_at(Vector3.ZERO)
 	camera.current = true
 	travel_marker=MeshInstance3D.new(); var marker_mesh=CylinderMesh.new(); marker_mesh.top_radius=0.34; marker_mesh.bottom_radius=0.34; marker_mesh.height=0.025; marker_mesh.radial_segments=24
@@ -577,6 +584,7 @@ func sync_view(dt: float) -> void:
 		labels[id].modulate=Color("ffd394") if d.ops.selected==id else Color.WHITE
 	if Sandbox.active(sim):sync_sandbox_smoke()
 	if Tycoon.active(sim):sync_tycoon_workers(dt)
+	if Tycoon.active(sim):sync_dig_visual()
 	if last_cell_count!=d.cells.size():rebuild_basement()
 	if Sandbox.active(sim) and sandbox_revision!=int(d.sandbox.revision):preload("res://scripts/inn_sandbox_view.gd").build(self)
 	staff_marker.text=("마라" if Campaign.active(sim) else "직원")+" · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
@@ -612,7 +620,7 @@ func set_layer(value: String) -> void:
 	camera.size=(39.5 if Sandbox.active(sim) else (22.8 if Campaign.active(sim) else 25.0)) if value!="below" else 24.0
 	camera_focus=(Vector3(0,-0.2,0.5) if value=="all" else Vector3(0,1.3,-0.4)) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
 	camera_focus=focus_position()
-	camera.position=camera_focus+CAMERA_ARM
+	camera.position=camera_focus+camera_arm()
 	camera.look_at(camera_focus)
 	sync_view(0)
 
@@ -648,7 +656,7 @@ func build_gallery() -> void:
 	box(Vector3(18,0.18,3),Vector3(0,3.1,-7),wood)
 	for x in range(-9,9):
 		for z in range(-8,-5):model("town","planks",Vector3(x+0.5,3.2,z+0.5),Vector3(1,0.04,1))
-	box(Vector3(18.2,2.5,0.2),Vector3(0,4.45,-8.5),Color("9a8568"))
+	box(Vector3(18.2,0.6,0.2),Vector3(0,3.55,-8.5),Color("9a8568"))
 	for x in [-9,-3,3,9]:
 		box(Vector3(0.16,2.7,0.25),Vector3(x,4.5,-8.5),Color("453327"))
 		if x in [-3,3]:box(Vector3(0.13,1.25,2),Vector3(x,3.85,-7.5),Color("877355"))
@@ -769,6 +777,7 @@ func load_game() -> void:
 	if sim.data.has("episode"):
 		episode.data=sim.data.episode.duplicate(true)
 		episode_ui.ending_shown=false
+	if Tycoon.active(sim) and sim.data.ops.reports==0:sim.data.ops.inspector.state="idle";sim.data.stealth.suspicion=0;sim.data.stealth.phase="idle"
 	if Campaign.active(sim):
 		sim.data.paused=false;episode_ui.root.hide();journal.opened=false;journal.panel.hide();journal.refresh()
 	last_cell_count=-1
@@ -871,6 +880,7 @@ func world_tap(point: Vector2) -> void:
 	elif sim.data.work.get("type","")=="quick":sim.cancel_work()
 	if (view_layer=="surface" and sim.data.player.floor==1) or (view_layer=="below" and sim.data.player.floor!=1):return
 	pointer_position=point
+	if dig_mode!="":apply_dig_point(point);pressed_owner=false;pressed_person="";return
 	if Sandbox.active(sim) and sandbox_ground_request(point):pressed_owner=false;pressed_person="";return
 	if Sandbox.active(sim) and not (Tycoon.active(sim) and pressed_person!="" and sim.data.people.has(pressed_person) and sim.data.people[pressed_person].get("role","")==""):sim.data.sandbox.tunnel_plan=[]
 	var inspector: Dictionary=sim.data.ops.inspector
@@ -977,7 +987,7 @@ func _physics_process(delta: float) -> void:
 	if not overview and sim.data.excavation.intent!="":camera_offset=camera_offset.lerp(Vector2.ZERO,minf(1,delta*3))
 	var focus_target:=focus_position()+Vector3(camera_offset.x,0,camera_offset.y)
 	camera_focus=camera_focus.lerp(focus_target,minf(1,delta*4))
-	camera.position=camera_focus+CAMERA_ARM
+	camera.position=camera_focus+camera_arm()
 	camera.look_at(camera_focus)
 	sync_view(delta)
 	episode_ui.refresh()
@@ -1074,7 +1084,7 @@ func frame_owner() -> void:
 	view_layer="all"
 	camera.size=14
 	camera_focus=focus_position()
-	camera.position=camera_focus+CAMERA_ARM
+	camera.position=camera_focus+camera_arm()
 	camera.look_at(camera_focus)
 	sync_view(0)
 
@@ -1331,6 +1341,8 @@ func context_title(kind_: String,id_: String) -> String:
 	if kind_=="ground":return "비밀 입구 자리"
 	if kind_=="cellar_floor":return "지하 시설 공사"
 	if kind_=="portal":return Sandbox.entrance(sim,id_).get("name","비밀 입구")
+	if kind_=="dig_tools":return "구멍과 통로 파기"
+	if kind_=="view_tools":return "화면 방향"
 	if kind_=="automation":return "알바 고용 · 여관 성장"
 	if kind_=="facility":return Sandbox.TYPES[Sandbox.facility(sim,id_).type].name
 	if kind_=="guard_talk":return "국경 순찰대"
@@ -1360,23 +1372,25 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
+	if kind_=="dig_tools":return [["place_shaft","구멍 파기 · 지상 위치 지정 / 3닢"],["place_tunnel","통로 파기 · 지하 목적지 지정"],["stop_dig","굴착 계획 취소"]]
+	if kind_=="view_tools":return [["view_front","앞에서 보기"],["view_back","뒤에서 보기"],["view_left","왼쪽에서 보기"],["view_right","오른쪽에서 보기"]]
 	if kind_=="automation":
 		var t: Dictionary=sim.data.tycoon
 		return [["hire_reception","접수 알바 · 10닢 / 일당 2닢",not t.reception],["hire_cleaning","청소 알바 · 10닢 / 일당 2닢",not t.cleaning],["upgrade_kitchen","주방 개선 · %d닢 / 식사값·속도 상승" %(12+int(t.kitchen)*8),int(t.kitchen)<3],["delegate","마라에게 식사 자동 운영 맡기기"]]
 	if kind_=="conversation":return Dialogue.options(sim,id_)
 	if Sandbox.active(sim):
 		match kind_:
-			"ground":return [["walk_here","여기로 이동"],["make_entrance","비밀 입구 공사 · 3닢 / 4초"]]
-			"cellar_floor":return [["walk_below","여기로 이동"],["build_prison","감옥 · 6닢"],["build_stash","은닉 창고 · 4닢"],["build_refuge","은신처 · 6닢"],["build_furnace","처리 화로 · 10닢"],["surface_exit","이 위치에 지상 출구 공사 · 3닢"]]
+			"ground":return [["walk_here","여기로 이동"],["make_entrance","이곳에 구멍 파기 · 3닢"]]
+			"cellar_floor":return [["place_tunnel","통로 파기 · 목적지 지정"],["walk_below","여기로 이동"],["build_prison","감옥 · 6닢"],["build_stash","은닉 창고 · 4닢"],["build_refuge","은신처 · 6닢"],["build_furnace","처리 화로 · 10닢"],["surface_exit","이 위치에 지상 출구 공사 · 3닢"]]
 			"portal":
-				var items=[["portal_use","올라가기" if sim.data.player.floor==1 else "내려가기"],["portal_cover","덮개 열기 / 숨기기"]]
+				var items=[["portal_use","올라가기" if sim.data.player.floor==1 else "내려가기"],["dig_tools","구멍·통로 파기"],["view_tools","뒤쪽·옆쪽에서 보기"],["portal_cover","덮개 열기 / 숨기기"]]
 				for e in sim.data.sandbox.entrances:
 					if e.id!=id_:items.append(["connect:"+e.id,e.name+"까지 통로 연결"])
 				return items
 			"facility":
 				var f=Sandbox.facility(sim,id_)
 				return [["facility_use",{"prison":"데려온 대상 구금 / 감옥 확인","furnace":"운반 중인 시신 처리 · 12초","stash":"의뢰 상자 은닉 · 추가 6닢","refuge":"데려온 사람 보호"}[f.type]],["facility_remove","시설 철거 · 절반 환급"]]
-			"owner":return [["stop","현재 행동 취소"],["automation","알바 고용 · 여관 성장"],["floor","가까운 입구로 층 이동"],["build_mode","비밀 입구 자리 고르기"],["drop","운반 내려놓기"],["journal","장부 · 의뢰"],["system","저장 · 화면 설정"]]
+			"owner":return [["stop","현재 행동 취소"],["automation","알바 고용 · 여관 성장"],["floor","가까운 입구로 층 이동"],["dig_tools","구멍·통로 파기"],["drop","운반 내려놓기"],["journal","장부 · 의뢰"],["system","저장 · 화면 설정"]]
 			"room":
 				var level=int(sim.data.tycoon.rooms[id_]) if Tycoon.active(sim) else 0
 				return [["room_chat","묵는 손님과 이야기"],["upgrade_room","객실 개선 · %d닢 / 숙박비 +2닢" %(8+level*6),level<3],["clean","정리하기"],["automation","알바 고용 · 자동화"]]
@@ -1385,7 +1399,7 @@ func context_items(kind_: String,id_: String) -> Array:
 		if sim.data.campaign.ledger_found:items.push_front(["guard_evidence","이 반입 허가를 확인해보시죠."])
 		return items
 	if kind_=="staff_talk":return [["automation","접수·청소 알바 고용"],["delegate","식사는 계속 맡아주세요."],["takeover","내가 직접 서빙할게요."],["ally_story","손님들 사이에 무슨 일이 있나요?"]]
-	if Campaign.active(sim) and kind_=="counter":return [["automation","알바 고용 · 주방 개선"],["journal","오늘 매출과 지출"],["recruit","마라와 이야기하기"],["private_entry","주인 전용 창고로 이동"],["system","저장 · 화면 설정"]]
+	if Campaign.active(sim) and kind_=="counter":return [["automation","알바 고용 · 주방 개선"],["dig_tools","구멍·통로 파기"],["view_tools","뒤쪽·옆쪽에서 보기"],["journal","오늘 매출과 지출"],["recruit","마라와 이야기하기"],["private_entry","주인 전용 창고로 이동"],["system","저장 · 화면 설정"]]
 	if sim.data.paused: return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
 	match kind_:
 		"person":
@@ -1419,7 +1433,7 @@ func context_items(kind_: String,id_: String) -> Array:
 			if sim.data.player.floor==1 and (not sim.gentle_opening() or sim.data.served>=3): items.append(["cell","구금칸 설치 / 구금"])
 			items.append(["system","저장 · 화면 설정"])
 			return items
-		"system": return [["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
+		"system": return [["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
 	return []
 
 func travel_to_floor(target: int) -> void:
@@ -1471,7 +1485,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		"load": load_game(); return
 		"fullscreen": DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if DisplayServer.window_get_mode()!=DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_WINDOWED); return
 		"stop":
-			if Sandbox.active(sim):sim.data.sandbox.tunnel_plan=[]
+			if Sandbox.active(sim):stop_digging()
 			pending_context_action.clear(); sim.data.booking_request={}; sim.cancel_work(); sim.data.service_target=""; auto_floor_goal.clear(); return
 		"floor": auto_floor_goal.clear(); sim.queue_floor(); return
 		"gallery": auto_floor_goal.clear(); sim.queue_gallery(); return
@@ -1809,6 +1823,14 @@ func sandbox_tap(point: Vector2) -> bool:
 
 func sandbox_action(kind_: String,id_: String,action: String) -> bool:
 	match action:
+		"dig_tools":object_context.open("dig_tools");return true
+		"place_shaft":set_dig_mode("shaft");return true
+		"place_tunnel":set_dig_mode("tunnel");return true
+		"stop_dig":stop_digging();return true
+		"view_tools":object_context.open("view_tools");return true
+		"view_front","view_back","view_left","view_right":
+			view_angle={"view_front":0.0,"view_back":PI,"view_left":PI/2,"view_right":-PI/2}[action];set_layer("all");return true
+	match action:
 		"automation":object_context.open("automation");return true
 		"hire_reception":Tycoon.hire(sim,"reception");return true
 		"hire_cleaning":Tycoon.hire(sim,"cleaning");return true
@@ -1821,8 +1843,8 @@ func sandbox_action(kind_: String,id_: String,action: String) -> bool:
 	if action.begins_with("connect:"):Sandbox.connect_tunnel(sim,id_,action.trim_prefix("connect:"));return true
 	if action.begins_with("build_") and action!="build_mode":Sandbox.build(sim,action.trim_prefix("build_"),build_cell);return true
 	match action:
-		"build_mode":entrance_placing=true;sim.note("마당이나 1층 바닥을 눌러 비밀 입구 위치를 고르세요.");return true
-		"make_entrance":Sandbox.create_entrance(sim,build_point);return true
+		"build_mode":set_dig_mode("shaft");return true
+		"make_entrance":Excavation.shaft(sim,build_point);return true
 		"walk_here":sim.queue_move(build_point);return true
 		"walk_below":sim.queue_move(Vector2(build_cell));return true
 		"portal_use":Sandbox.use_entrance(sim,id_);return true
@@ -1924,3 +1946,43 @@ func sync_tycoon_workers(dt: float) -> void:
 		var room_: Dictionary=sim.data.rooms[n]
 		tycoon_room_marks[n].text="%s호 · %s%s" %[n,"청소 필요" if room_.dirty else ("이용 중" if room_.guest!="" else "빈방")," · 개선 %d" %int(sim.data.tycoon.rooms[n]) if int(sim.data.tycoon.rooms[n])>0 else ""]
 		tycoon_room_marks[n].modulate=Color("c6a06b") if room_.dirty else (Color("a9bd89") if room_.guest=="" else Color("d4d6cf"))
+
+func camera_arm() -> Vector3:return CAMERA_ARM.rotated(Vector3.UP,view_angle)
+
+func set_dig_mode(value: String) -> void:
+	object_context.close()
+	dig_mode=value;set_layer("all")
+	if dig_cancel==null:
+		dig_cancel=Button.new();dig_cancel.text="취소";dig_cancel.position=Vector2(580,121);dig_cancel.size=Vector2(115,60);dig_cancel.add_theme_font_override("font",ui_font);dig_cancel.add_theme_font_size_override("font_size",24);journal.root.add_child(dig_cancel);dig_cancel.pressed.connect(func():dig_mode="";dig_cancel.hide())
+	dig_cancel.show()
+	sim.note("지상의 빈 바닥을 한 번 누르면 입구를 자동으로 만듭니다." if value=="shaft" else "지하에서 원하는 목적지를 한 번 누르세요. 그곳까지 자동으로 이어 팝니다.")
+
+func apply_dig_point(point: Vector2) -> void:
+	var plane_y=0.08 if dig_mode=="shaft" else Sandbox.OFFSET.y+0.08
+	var hit: Variant=Plane(Vector3.UP,plane_y).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
+	if hit==null:return
+	var okay=false
+	if dig_mode=="shaft":okay=Excavation.shaft(sim,Vector2(hit.x,hit.z))
+	else:
+		var local: Vector3=hit-Sandbox.OFFSET;okay=Excavation.dig_to(sim,Vector2i(roundi(local.x),roundi(local.z)))
+	if okay:dig_mode="";dig_cancel.hide();route_count=-1
+
+func stop_digging() -> void:
+	dig_mode=""
+	if dig_cancel!=null:dig_cancel.hide()
+	sim.data.sandbox.tunnel_plan=[];sim.data.sandbox.pending_exit={};sim.data.sandbox.erase("pending_tunnel");sim.data.sandbox.erase("pending_from_upper");sim.data.sandbox.erase("pending_shaft");sim.cancel_work()
+
+func sync_dig_visual() -> void:
+	if dig_board==null:
+		dig_board=MeshInstance3D.new();var plane=BoxMesh.new();plane.size=Vector3(36,0.04,22);dig_board.mesh=plane
+		var mat=material(Color(0.12,0.23,0.25,0.5));mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;dig_board.material_override=mat;add_child(dig_board);dig_board.position=world_point(Vector2(8,0),1,-0.18)
+		dig_route=MeshInstance3D.new();add_child(dig_route)
+	dig_board.visible=dig_mode=="tunnel"
+	var plan: Array=sim.data.sandbox.get("tunnel_plan",[])
+	if route_count==plan.size():return
+	route_count=plan.size();dig_route.visible=route_count>0
+	if plan.is_empty():return
+	var line=ImmediateMesh.new();var mat=material(Color("d5be76"));mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	line.surface_begin(Mesh.PRIMITIVE_LINE_STRIP,mat);line.surface_add_vertex(world_point(sim.data.player.pos,1,0.3))
+	for cell in plan:line.surface_add_vertex(world_point(Vector2(cell),1,0.3))
+	line.surface_end();dig_route.mesh=line

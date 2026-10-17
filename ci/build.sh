@@ -29,7 +29,6 @@ python3 ci/mobile_shell.py build/web/index.html build/web/sideview/index.html
 tavern_project="$PWD/prototypes/tavern"
 python3 -m pip install --quiet -r "$tavern_project/requirements-assets.txt"
 python3 "$tavern_project/tools/build_assets.py"
-cp assets/fonts/InnKorean.otf "$tavern_project/assets/ui/font/InnKorean.otf"
 cp assets/fonts/OFL.txt "$tavern_project/assets/ui/font/OFL.txt"
 mkdir -p build/web/tavern build/windows/tavern/licenses
 godot --headless --path "$tavern_project" --editor --import

@@ -10,7 +10,7 @@ python -m pip install -r requirements-assets.txt
 python tools/build_assets.py
 ```
 
-한국어 글꼴은 상위 프로젝트 assets/fonts/InnKorean.otf를 assets/ui/font/InnKorean.otf로 복사합니다. OFL.txt도 함께 복사합니다. 이후 Godot 4.7.2에서 project.godot를 열어 실행합니다. GitHub Actions에서는 복원과 내보내기를 자동으로 수행합니다.
+한국어 글꼴은 assets/ui/font/InnKorean.otf로 포함했습니다. 글꼴 OFL.txt는 상위 프로젝트 assets/fonts/OFL.txt를 복사합니다. 이후 Godot 4.7.2에서 project.godot를 열어 실행합니다. GitHub Actions에서는 복원과 내보내기를 자동으로 수행합니다.
 
 ## 조작
 - 빈 바닥 클릭: 가구를 피해 이동. 새 지점을 누르면 현재 주인 작업을 취소하고 이동합니다.

@@ -51,7 +51,9 @@ static func build(h) -> void:
 				h.terrain.add_child(rock)
 				rock.position=base+n*0.12+Vector3(0,0.12,0)
 				rock.scale=Vector3(1.1+rough(base.z,base.x),0.6,0.8)
-	h.earth_mesh(v,colors)
+	if not v.is_empty():h.earth_mesh(v,colors)
+	if h.sim.data.has("sandbox"):
+		h.earth_edges=edge;h.dig_cursor=h.box(Vector3(0.9,0.025,0.9),Vector3(99,0.07,99),Color("bda05c"));h.world_root=h.surface;h.last_cell_count=h.sim.data.cells.size();return
 	# Braced portal at the entry and a second one across the connecting tunnel.
 	for x in [-2.5,1.3]:h.box(Vector3(0.16,2.1,0.16),Vector3(x,1.05,-2.2),Color("624b31"))
 	h.box(Vector3(4,0.2,0.2),Vector3(-0.6,2.1,-2.2),Color("745737"))

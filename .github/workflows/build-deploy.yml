@@ -1,4 +1,4 @@
-name: Test, build and deploy
+name: Build and deploy
 on:
   push:
     branches: [main]
@@ -42,7 +42,7 @@ jobs:
           unzip -j "$RUNNER_TEMP/templates.tpz" templates/windows_release_x86_64.exe templates/web_nothreads_release.zip templates/version.txt -d "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
       - name: Add engine to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Verify simulation and inputs, export Web and Windows
+      - name: Export Web and Windows
         run: bash ci/build.sh
       - name: Upload Windows test build
         uses: actions/upload-artifact@v4

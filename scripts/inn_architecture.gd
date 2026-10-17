@@ -18,11 +18,16 @@ static func build(h) -> void:
 			if x in [-4,-3] and z in [2,3]:continue
 			h.model("town","planks",Vector3(x+0.5,0.01,z+0.5),Vector3(1,0.06,1))
 	# Rear half-timber wall; camera-facing walls are low sections.
-	h.box(Vector3(20,2.9,0.2),Vector3(0,1.5,-6),plaster,true)
+	for pair in [[-8.0,4.0],[0.0,8.0],[8.0,4.0]]:
+		h.box(Vector3(pair[1],2.9,0.2),Vector3(pair[0],1.5,-6),plaster,true)
+	h.world_label("뒤편 샛문",Vector3(-5,0.3,-5.6),h.surface).pixel_size=0.008
+	h.world_label("뒷마당 우회로",Vector3(5,0.3,-6.6),h.surface).pixel_size=0.008
 	for x in range(-10,11,4):h.box(Vector3(0.2,3.2,0.25),Vector3(x,1.55,-6),timber)
 	h.box(Vector3(0.2,2.9,12),Vector3(-10,1.5,0),plaster,true)
 	for z in [-5,-1,3,6]:h.box(Vector3(0.22,3,0.22),Vector3(-10,1.5,z),timber)
-	h.box(Vector3(0.16,0.45,12),Vector3(10,0.22,0),stone,true)
+	for pair in [[-4.25,3.5],[0.0,2.0],[4.75,2.5]]:
+		h.box(Vector3(0.16,0.45,pair[1]),Vector3(10,0.22,pair[0]),stone,true)
+	h.world_label("마당 쪽문",Vector3(10,0.3,2.8),h.surface).pixel_size=0.009
 	for x in [-5.5,5.5]:h.box(Vector3(9,0.45,0.2),Vector3(x,0.22,6),stone,true)
 	# Preserve the two existing ground-floor guest rooms and path targets.
 	for z in range(-6,6):

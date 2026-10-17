@@ -1,4 +1,5 @@
 extends RefCounted
+const Sandbox=preload("res://scripts/inn_sandbox.gd")
 ## Three connected days. All decisions and outcomes are part of the saved simulation.
 static func active(sim) -> bool:
 	return sim.data.get("campaign",{}).get("active",false)
@@ -6,6 +7,7 @@ static func active(sim) -> bool:
 static func start(sim) -> void:
 	sim.start_gentle_opening()
 	sim.data.campaign={"active":true,"day":1,"next_dawn":480.0,"intro":true,"summary":false,"ending":"","deal":"waiting","cargo":false,"guard_day":0,"guard_done":0,"worker":"","broker":"","reputation":0,"talks":0,"bookings":0,"start_money":24,"start_served":0,"history":[],"rumors":[],"fugitive":"","protected":false,"ledger_found":false,"evidence_used":false,"collector":"","tax_paid":false}
+	Sandbox.start(sim)
 	sim.note("국경이 닫힌 지 사흘. 여관의 열쇠까지 빼앗길 수는 없다.")
 
 static func special(sim,role: String,name_: String,line: String) -> String:
@@ -28,7 +30,7 @@ static func tick(sim) -> void:
 		sim.note("홀에 일자리를 찾는 사람이 들어왔다.")
 	if sim.data.ops.inspector.state=="waiting" and int(c.get("wait_day",0))<int(c.day):
 		c.wait_day=c.day;sim.data.ops.inspector.remaining=75
-	var elapsed=sim.data.clock-(float(c.day)-1)*480
+	var elapsed=(sim.data.clock-(float(c.day)-1)*Sandbox.DAY)*480.0/Sandbox.DAY
 	if elapsed>=180 and c.day==1 and c.broker=="":
 		c.broker=special(sim,"broker","회색 망토","오늘 밤만 상자 하나 맡아주시오. 열어보지만 않으면 돼.")
 		sim.note("회색 망토가 문 앞에서 주인을 찾는다.")
@@ -46,7 +48,7 @@ static func tick(sim) -> void:
 	if sim.data.clock>=float(c.next_dawn): settle(sim)
 
 static func rent(day: int) -> int:
-	return [16,24,36][clampi(day-1,0,2)]
+	return [8,12,16][clampi(day-1,0,2)]
 
 static func settle(sim) -> void:
 	var c: Dictionary=sim.data.campaign
@@ -63,7 +65,7 @@ static func settle(sim) -> void:
 static func next_day(sim) -> void:
 	var c: Dictionary=sim.data.campaign
 	if not c.summary or c.ending!="":return
-	c.day+=1; c.next_dawn+=480; c.summary=false; c.start_money=sim.data.money; c.start_served=sim.data.served
+	c.day+=1; c.next_dawn+=Sandbox.DAY; c.summary=false; c.start_money=sim.data.money; c.start_served=sim.data.served
 	sim.data.paused=false
 	sim.note("%d일차. 빈방을 정리하고 다시 손님을 맞는다." %c.day)
 
@@ -73,6 +75,12 @@ static func goal(sim) -> String:
 	if sim.data.ops.inspector.state=="waiting":return "순찰대가 주인의 설명을 기다립니다"
 	if c.deal=="waiting" and c.broker!="":return "회색 망토가 은밀한 제안을 기다립니다"
 	if int(c.day)==2 and c.fugitive!="" and not c.protected and sim.data.people[c.fugitive].state not in ["gone","leaving"]:return "부상 입은 전령을 도울지 결정하세요"
+	if Sandbox.active(sim):
+		var job: Dictionary=sim.data.sandbox.job
+		if job.state=="accepted":return "선택 의뢰 · 장부를 가져간 %s 생포 → 감옥 15초 · 보수 18닢" %sim.data.people[job.target].name
+		if sim.data.sandbox.entrances.is_empty():return "1층·마당 바닥을 눌러 이동 · 같은 자리를 다시 누르면 비밀 입구 공사"
+		if sim.data.sandbox.facilities.is_empty():return "지하의 열린 바닥을 눌러 감옥·은닉 창고·은신처·화로 설치"
+		return "마라는 서빙 중 · 손님에게 말을 걸거나 지하를 자유롭게 넓히세요"
 	if c.talks==0:return "도착한 손님을 눌러 인사하세요"
 	if c.bookings==0:return "손님의 요구를 듣고 객실을 제안하세요"
 	if sim.data.served==0:return "손님에게 말을 걸어 식사를 준비하세요"
@@ -105,7 +113,7 @@ static func guard_answer(sim,answer: String) -> void:
 	if answer=="guard_evidence" and c.ledger_found:
 		c.evidence_used=true;c.reputation+=3;sim.note("반입 허가를 확인한 경비가 상자를 돌려놓았다. 이전 주인의 장부가 여관을 지켰다.")
 	elif answer=="guard_pay":sim.data.money-=8; sim.note("경비가 돈을 챙겼다. 이번에는 더 묻지 않는다.")
-	elif answer=="guard_lie" and hidden and sim.data.excavation.hatch_open:
+	elif answer=="guard_lie" and hidden and (sim.data.excavation.hatch_open or (Sandbox.active(sim) and sim.data.sandbox.entrances.any(func(e):return e.open))):
 		sim.charge(12,"거짓 진술 적발"); c.reputation-=2; c.cargo=false
 		sim.note("열린 지하 입구를 보고 경비가 상자를 압수했다. 벌금 12닢.")
 	elif answer=="guard_honest" and hidden:
@@ -128,4 +136,4 @@ static func pay_tax(sim) -> bool:
 static func can_rest(sim) -> bool:
 	if not active(sim):return false
 	var c: Dictionary=sim.data.campaign
-	return sim.data.staff.hired and sim.data.clock-(float(c.day)-1)*480>=360 and int(c.guard_done)>=int(c.day) and not c.summary and c.ending=="" and sim.data.work.is_empty() and sim.data.dig.is_empty()
+	return sim.data.staff.hired and sim.data.clock-(float(c.day)-1)*Sandbox.DAY>=Sandbox.DAY*0.65 and int(c.guard_done)>=int(c.day) and not c.summary and c.ending=="" and sim.data.work.is_empty() and sim.data.dig.is_empty()

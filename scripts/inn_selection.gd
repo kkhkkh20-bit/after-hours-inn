@@ -16,8 +16,10 @@ static func body(host,screen: Vector2,pos: Vector2,floor_: int,kind: String,id: 
 	var radius: float=maxf(10.0,projected_height*0.20)
 	var closest: Vector2=Geometry2D.get_closest_point_to_segment(screen,foot,head)
 	var distance: float=screen.distance_to(closest)
-	if distance>maxf(44,radius):return {}
-	return {"kind":kind,"id":id,"distance":distance,"direct":distance<=radius,"point":head.lerp(foot,0.5),"depth":host.camera.global_position.distance_to(at)}
+	var name_rect=Rect2(head-Vector2(65,14),Vector2(130,34))
+	var on_name=name_rect.has_point(screen)
+	if distance>maxf(48,radius) and not on_name:return {}
+	return {"kind":kind,"id":id,"distance":minf(distance,screen.distance_to(head)) if on_name else distance,"direct":distance<=radius or on_name,"point":head.lerp(foot,0.5),"depth":host.camera.global_position.distance_to(at)}
 
 static func candidates(host,screen: Vector2) -> Array:
 	var result: Array=[]
@@ -26,6 +28,11 @@ static func candidates(host,screen: Vector2) -> Array:
 		if p.state=="gone":continue
 		var hit=body(host,screen,p.pos,p.floor,"person",id)
 		if not hit.is_empty():result.append(hit)
+	if host.sim.Sandbox.active(host.sim) and visible_floor(host,1):
+		for f in host.sim.Prison.cells(host.sim):
+			var world: Vector3=host.world_point(f.pos+Vector2(0,1.25),1,.25)
+			var label=host.camera.unproject_position(world)
+			if not host.camera.is_position_behind(world) and Rect2(label-Vector2(85,15),Vector2(170,30)).has_point(screen):result.append({"kind":"prison","id":f.id,"distance":0.0,"direct":true,"point":label,"depth":host.camera.global_position.distance_to(world)})
 	var p: Dictionary=host.sim.data.player
 	var hit=body(host,screen,p.pos,p.floor,"owner","")
 	if not hit.is_empty():result.append(hit)
@@ -40,5 +47,5 @@ static func candidates(host,screen: Vector2) -> Array:
 	result.sort_custom(func(a,b):
 		if absf(a.distance-b.distance)>3:return a.distance<b.distance
 		return a.depth<b.depth)
-	if result.size()>1 and result[0].direct and result[0].distance+6<result[1].distance:return [result[0]]
+	if result.size()>1 and result[0].distance+6<result[1].distance:return [result[0]]
 	return result

@@ -1,6 +1,7 @@
 extends RefCounted
 const Rules=preload("res://scripts/inn_sandbox.gd")
 static func build(h) -> void:
+	h.sim.Prison.ensure(h.sim)
 	if h.sandbox_visual!=null:h.sandbox_visual.free()
 	h.sandbox_visual=Node3D.new();h.add_child(h.sandbox_visual)
 	var root: Node3D=h.sandbox_visual
@@ -22,10 +23,15 @@ static func build(h) -> void:
 		h.box(Vector3(2.4,0.08,2.4),Vector3(0,0.07,0),Color("534638"))
 		match f.type:
 			"prison":
+				node.set_meta("prison",f.id)
 				for x in [-1.1,-0.7,-0.3,0.1,0.5,0.9]:h.box(Vector3(0.06,1.6,0.06),Vector3(x,0.85,-1.1),Color("687474"))
 				for z in [-0.7,-0.2,0.3,0.8]:h.box(Vector3(0.06,1.6,0.06),Vector3(-1.1,0.85,z),Color("687474"))
 				h.box(Vector3(2.3,0.09,0.09),Vector3(0,1.6,-1.1),Color("9a9d91"))
-				h.model("furniture","bedSingle",Vector3(0.5,0.1,0),Vector3(0.65,0.35,1.5))
+				for x in [-.65,0,.65]:
+					for z in [-.45,.45]:h.box(Vector3(.48,.08,.65),Vector3(x,.12,z),Color("a68c62"))
+				var guard=h.actor(Vector3.ZERO,Color("485d64"));guard.reparent(node);guard.name="PrisonGuard";guard.position=Vector3(1.25,0,.8)
+				h.world_label("경비",Vector3(0,2,0),guard).pixel_size=.009
+
 			"stash":
 				for x in [-0.7,0.2,0.7]:
 					h.box(Vector3(0.65,0.65,0.7),Vector3(x,0.42,-0.4),Color("8b693b"));h.box(Vector3(0.08,0.7,0.75),Vector3(x,0.45,-0.4),Color("373e39"))
@@ -38,7 +44,7 @@ static func build(h) -> void:
 		h.light_at(Vector3(0,2.1,0.4),1.1)
 		var name_=Rules.TYPES[f.type].name
 		if f.occupant!="":name_+=" · 사용 중"
-		var title=h.world_label(name_,Vector3(0,0.25,1.25),node);title.pixel_size=0.01
+		var title=h.world_label(name_,Vector3(0,0.25,1.25),node);title.pixel_size=0.01;title.name="FacilityTitle"
 	for key in h.sim.data.rooms:
 		var n=int(key);var room_: Dictionary=h.sim.data.rooms[key]
 		if not room_.has("secret_bottom"):continue

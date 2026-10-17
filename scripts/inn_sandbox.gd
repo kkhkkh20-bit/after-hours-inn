@@ -104,12 +104,8 @@ static func operate(s,id: String) -> void:
 	var held: String=s.data.ops.drag
 	match f.type:
 		"prison":
-			if held=="":s.note("붙잡거나 기절시킨 대상을 데려와 감옥에 넣으세요. 구금 중에는 심문·석방할 수 있습니다.");return
-			var p: Dictionary=s.data.people[held]
-			if p.state=="dead":s.note("감옥에는 살아 있는 사람만 넣을 수 있다.");return
-			if f.occupant!="":s.note("이 감옥은 이미 사용 중이다.");return
-			p.state="captive";p.pos=f.pos;p.floor=1;p.prison=id;p.path=[];s.data.ops.drag="";f.occupant=held;s.Intrigue.release_room(s,held)
-			s.note("%s을 구금했다. 인물을 눌러 심문하거나 풀어줄 수 있다." %p.name)
+			if held=="":s.note("감옥을 눌러 수감자 생활을 관리하거나, 사람을 눌러 감옥에 가두기를 선택하세요.");return
+			s.Prison.admit(s,f,held)
 		"furnace":
 			if held=="" or s.data.people[held].state!="dead":s.note("시신을 운반해 왔을 때만 처리할 수 있다. 가동하면 12초 동안 연기와 소음이 난다.");return
 			if f.until>s.data.clock:s.note("화로가 아직 가동 중이다.");return

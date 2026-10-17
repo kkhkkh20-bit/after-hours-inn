@@ -16,6 +16,7 @@ var scroll: ScrollContainer
 var task_label: Label
 var cancel_button: Button
 var top: Control
+var detail_label: Label
 var fixed_header: HBoxContainer
 
 func label_(text_: String,size_: int) -> Label:
@@ -67,7 +68,7 @@ func setup(owner_) -> void:
 func open(type_: String,id_: String="",detail_: String="") -> void:
 	if type_ in ["person","conversation","actions","other"] and (not host.sim.data.people.has(id_) or host.sim.data.people[id_].state=="gone"):return
 	if panel.visible:close()
-	kind=type_;target=id_;detail=detail_;
+	kind=type_;target=id_;detail=detail_;detail_label=null
 	var persistent={}
 	for key in controls:
 		if str(key).begins_with("@"):persistent[key]=controls[key]
@@ -79,7 +80,7 @@ func open(type_: String,id_: String="",detail_: String="") -> void:
 	for c in column.get_children():column.remove_child(c);c.queue_free()
 	title_label.text=host.context_title(kind,target)
 	if detail!="":
-		var note=label_(detail,22);note.custom_minimum_size.x=300;note.add_theme_color_override("font_color",Color("f4dbad"));column.add_child(note)
+		var note=label_(detail,22);note.custom_minimum_size.x=300;note.add_theme_color_override("font_color",Color("f4dbad"));column.add_child(note);detail_label=note
 	for entry in host.context_items(kind,target):
 		var action=str(entry[0]);var b=button_("",column,_perform.bind(action))
 		b.disabled=entry.size()>2 and not entry[2]
@@ -111,6 +112,9 @@ func close() -> void:
 	panel.hide();kind="";target=""
 
 func refresh() -> void:
+	if panel.visible and detail_label!=null:
+		if kind=="prison":detail_label.text=host.sim.Prison.summary(host.sim,target)
+		elif kind=="inmate":detail_label.text=host.sim.Prison.inmate_summary(host.sim,target)
 	var viewport=host.get_viewport().get_visible_rect().size
 	top.position.x=maxf(0,(viewport.x-720)/2)
 	heading.text="%d일 · %s" %[int(host.sim.data.campaign.day) if host.Campaign.active(host.sim) else 1,host.view_name()] if host.Campaign.active(host.sim) else "문 닫은 뒤"
@@ -122,8 +126,8 @@ func refresh() -> void:
 	top.visible=not ((host.journal!=null and host.journal.opened) or (host.episode_ui!=null and host.episode_ui.opened))
 	var job: String=host.command_status()
 	task_label.text=job;cancel_button.visible=job!=""
-	if panel.visible and kind in ["person","conversation","actions","other"]:
-		if not host.sim.data.people.has(target) or host.sim.data.people[target].state=="gone":close()
+	if panel.visible and kind in ["person","conversation","actions","other","inmate"]:
+		if not host.sim.data.people.has(target) or host.sim.data.people[target].state=="gone" or (kind=="inmate" and host.sim.data.people[target].state!="captive"):close()
 
 func blocks(point: Vector2) -> bool:
 	return point.y<158 or (cancel_button.visible and cancel_button.get_global_rect().has_point(point)) or (panel.visible and panel.get_global_rect().has_point(point))

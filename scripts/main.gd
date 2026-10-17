@@ -585,7 +585,7 @@ func sync_view(dt: float) -> void:
 			actors[id].position=world_point(seated,0,-.28)
 			actors[id].rotation.y=0 if person.pos.y>0 else PI
 			actors[id].get_node("LeftLeg").rotation.x=-PI/2;actors[id].get_node("RightLeg").rotation.x=-PI/2
-		actors[id].rotation.z=PI/2 if person.state in ["down","dead"] else 0
+		actors[id].rotation.z=PI/2 if person.state in ["down","dead"] or (person.state=="captive" and person.get("life",{}).get("action","")=="수면") else 0
 		if person.state in ["down","dead"]:
 			actors[id].position=world_point(person.pos,person.floor,0.35)
 			actors[id].get_node("LeftLeg").rotation.x=0; actors[id].get_node("RightLeg").rotation.x=0
@@ -602,7 +602,7 @@ func sync_view(dt: float) -> void:
 		elif person.state=="waiting":labels[id].text+=" · 대기"
 		if person.state=="dead":labels[id].text+=" · 사망"
 		if person.state=="restrained":labels[id].text+=" · 붙잡힘"
-		if person.state=="captive":labels[id].text+=" · 구금"
+		if person.state=="captive":labels[id].text+=" · "+str(person.get("life",{}).get("action","구금"))
 		labels[id].modulate=Color("ffd394") if d.ops.selected==id else Color.WHITE
 	if Sandbox.active(sim):sync_sandbox_smoke()
 	if Tycoon.active(sim):sync_tycoon_workers(dt)
@@ -612,6 +612,13 @@ func sync_view(dt: float) -> void:
 	if sandbox_visual!=null:
 		for child in sandbox_visual.get_children():
 			if child.has_meta("floor"):child.visible=Selection.visible_floor(self,int(child.get_meta("floor")))
+			if child.has_meta("prison"):
+				var cell=Sandbox.facility(sim,str(child.get_meta("prison")))
+				if not cell.is_empty():
+					if child.has_node("PrisonGuard"):
+						child.get_node("PrisonGuard").visible=cell.get("guard",true)
+						child.get_node("PrisonGuard").position.z=.6+sin(d.clock*.5)*.35
+					if child.has_node("FacilityTitle"):child.get_node("FacilityTitle").text="감옥 관리 · %d/%d명" %[cell.get("members",[]).size(),cell.get("capacity",6)]
 	staff_marker.text=("마라" if Campaign.active(sim) else "직원")+" · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
 	staff_marker.modulate=Color("ffb882") if d.stealth.suspicion>=10 else Color.WHITE
 	if Sandbox.active(sim):staff_marker.text="마라 · 홀 맡는 중";staff_marker.pixel_size=0.014;hatch_lid.hide()
@@ -877,7 +884,6 @@ func world_tap(point: Vector2,captured: Variant=null) -> void:
 	var choices: Array=captured if captured!=null else selection_candidates(point)
 	if object_context.panel.visible:
 		object_context.close()
-		if choices.is_empty():return
 	if dig_mode!="":apply_dig_point(point);return
 	if not choices.is_empty():
 		request_anchor=point
@@ -1304,6 +1310,8 @@ func context_stats() -> String:
 
 func context_title(kind_: String,id_: String) -> String:
 	if kind_=="pick":return "대상 선택"
+	if kind_ in ["prison","prison_roster"]:return "감옥 생활 관리"
+	if kind_=="inmate":return sim.data.people[id_].name+" · 수감 생활"
 	if kind_=="counter_more":return "접수대 · 다른 관리"
 	if kind_=="navigation":return "층 이동"
 	if kind_=="conversation":return str(sim.data.people[id_].name)
@@ -1325,12 +1333,12 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	if kind_ in ["pick","navigation"]:return request_anchor
 	var pos: Vector2=Simulation.COUNTER; var floor_: int=sim.data.player.floor
 	match kind_:
-		"person","actions","other","conversation":
+		"person","actions","other","conversation","inmate":
 			if sim.data.people.has(id_): pos=sim.data.people[id_].pos; floor_=sim.data.people[id_].floor
 		"room": pos=Sandbox.room_point(int(id_)) if Sandbox.active(sim) else Vector2(5.6,-2.0 if id_=="1" else 2.0); floor_=Sandbox.floor_of(int(id_))
 		"ground":pos=build_point;floor_=0
 		"cellar_floor":pos=Vector2(build_cell);floor_=1
-		"facility":pos=Sandbox.facility(sim,id_).pos;floor_=1
+		"facility","prison","prison_roster":pos=Sandbox.facility(sim,id_).pos;floor_=1
 		"portal":
 			var e=Sandbox.entrance(sim,id_);pos=e.top if floor_==0 else Vector2(e.bottom)
 		"hatch": pos=Vector2.ZERO if floor_==1 else Simulation.HATCH
@@ -1352,11 +1360,19 @@ func context_items(kind_: String,id_: String) -> Array:
 		items.append(["journal","영업 장부"])
 		if items.size()<4:items.append(["dig_tools","구멍·통로 파기"])
 		return items
+	if kind_=="prison":
+		var cell=Sandbox.facility(sim,id_);sim.Prison.ensure(sim)
+		return [["prison_roster","수감자 목록 · %d명" %cell.members.size()],["care_toggle","자동 돌봄 끄기" if cell.care else "자동 돌봄 켜기"],["security_toggle","경비·잠금 해제" if cell.guard else "경비·잠금 켜기"],["prison_expand","수용 인원 +2 · 8닢",int(cell.capacity)<12]]
+	if kind_=="prison_roster":
+		sim.Prison.ensure(sim);var cell=Sandbox.facility(sim,id_);var entries=[]
+		for inmate in cell.members:entries.append(["inmate:"+inmate,sim.data.people[inmate].name+" · "+str(sim.data.people[inmate].life.action)])
+		return entries if not entries.is_empty() else [["prison_back","수감자가 없습니다 · 감옥으로"]]
+	if kind_=="inmate":return [["feed_inmate","식사 주기"],["rest_inmate","편히 쉬게 하기"],["release_inmate","석방하기"],["inmate_prison","감옥 관리"]]
 	if kind_=="pick":
 		var items=[]
 		for i in selection_options.size():
 			var c: Dictionary=selection_options[i]
-			var name_=str(sim.data.people[c.id].name) if c.kind=="person" and sim.data.people.has(c.id) else {"owner":"주인","staff":"마라 · 직원","inspector":"국경 경비"}.get(c.kind,"대상")
+			var name_=str(sim.data.people[c.id].name) if c.kind=="person" and sim.data.people.has(c.id) else {"owner":"주인","staff":"마라 · 직원","inspector":"국경 경비","prison":"감옥 관리"}.get(c.kind,"대상")
 			items.append(["pick:"+str(i),name_])
 		return items
 	if kind_=="navigation":return [["go_floor","이 층으로 이동"]]
@@ -1395,8 +1411,8 @@ func context_items(kind_: String,id_: String) -> Array:
 		"person":
 			var p: Dictionary=sim.data.people[id_]
 			if p.state=="dead": return [["room_chute","객실 비밀 통로로 지하에 보내기"],["drag","끌기 / 내려놓기"],["greet","상태 확인"]] if sim.Layout.room_of_body(sim,id_)>0 else [["drag","끌기 / 내려놓기"],["greet","상태 확인"]]
-			if p.state=="restrained": return [["sleep","잠시 기절시키기"],["kill","살해"],["drop","놓아주기"]]
-			if p.state in ["down","captive"]: return [["drag","끌기 / 석방"],["kill","살해"],["greet","상태 확인"]]
+			if p.state=="restrained": return [["imprison","감옥에 가두기 · 자동 호송"],["sleep","잠시 기절시키기"],["kill","살해"],["drop","놓아주기"]]
+			if p.state in ["down","captive"]: return [["imprison","감옥에 가두기 · 자동 호송"],["drag","끌기 / 석방"],["kill","살해"],["greet","상태 확인"]]
 			if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":
 				var items=[["admit1","1호 정리 후 안내" if sim.data.rooms["1"].dirty else ("1호 사용 중" if sim.data.rooms["1"].guest!="" else "1호로 안내"),sim.data.rooms["1"].guest==""],["admit2","2호 정리 후 안내" if sim.data.rooms["2"].dirty else ("2호 사용 중" if sim.data.rooms["2"].guest!="" else "2호로 안내"),sim.data.rooms["2"].guest==""],["greet","말 걸기"]]
 				if not sim.gentle_opening() or sim.data.served>=3: items.append(["actions","다른 행동"])
@@ -1404,7 +1420,7 @@ func context_items(kind_: String,id_: String) -> Array:
 			var items=[["service","식사 내어주기"],["greet","말 걸기"]]
 			if not sim.gentle_opening() or sim.data.served>=3: items.append(["actions","다른 행동"])
 			return items
-		"actions": return [["grab","붙잡기"],["sleep","잠시 기절시키기"],["kill","살해"],["other","다른 조치"]]
+		"actions": return [["imprison","감옥에 가두기 · 자동 호송"],["grab","붙잡기"],["sleep","잠시 기절시키기"],["kill","살해"],["other","다른 조치"]]
 		"other": return [["dismiss","내보내기"],["contract","의뢰 확인"],["protect","의뢰 거절 · 보호"]]
 		"counter":
 			if sim.gentle_opening() and sim.data.served<1: return [["journal","운영 안내"],["system","저장 · 화면 설정"]]
@@ -1437,6 +1453,18 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		var index=int(action.get_slice(":",1))
 		if index>=0 and index<selection_options.size():activate_selection(selection_options[index])
 		return
+	if action=="imprison":
+		Commands.cancel(self,true);sim.Prison.request(sim,id_);return
+	if action=="prison_roster":object_context.open("prison_roster",id_);return
+	if action=="prison_back":object_context.open("prison",id_,sim.Prison.summary(sim,id_));return
+	if action.begins_with("inmate:"):
+		var inmate=action.trim_prefix("inmate:");object_context.open("inmate",inmate,sim.Prison.inmate_summary(sim,inmate));return
+	if action=="inmate_prison":
+		var cell=str(sim.data.people[id_].get("prison",""));object_context.open("prison",cell,sim.Prison.summary(sim,cell));return
+	if action in ["feed_inmate","rest_inmate","release_inmate","care_toggle","security_toggle","prison_expand"]:
+		sim.Prison.manage(sim,id_,action)
+		if action=="release_inmate":return
+		object_context.open("inmate" if kind_=="inmate" else "prison",id_,sim.Prison.inmate_summary(sim,id_) if kind_=="inmate" else sim.Prison.summary(sim,id_));return
 	if action=="build_tools":object_context.open("build_tools");return
 	if action.begins_with("place_build:"):set_dig_mode("build:"+action.get_slice(":",1));return
 	if action=="easy_toggle":
@@ -1824,7 +1852,7 @@ func sandbox_tap(point: Vector2) -> bool:
 				object_context.open("portal",e.id);return true
 	if sim.data.player.floor==1 and Selection.visible_floor(self,1):
 		for f in sim.data.sandbox.facilities:
-			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.5)))<26:object_context.open("facility",f.id);return true
+			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.5)))<26:object_context.open("prison",f.id,sim.Prison.summary(sim,f.id)) if f.type=="prison" else object_context.open("facility",f.id);return true
 		var hit: Variant=walking_hit(point)
 		if hit!=null:
 			var cell=Vector2i(roundi(hit.x),roundi(hit.z))
@@ -1925,7 +1953,7 @@ func sandbox_objects(point: Vector2) -> bool:
 	if sim.data.player.floor==1 and Selection.visible_floor(self,1):
 		for f in sim.data.sandbox.facilities:
 			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.15)))<44:
-				object_context.open("facility",f.id);return true
+				object_context.open("prison",f.id,sim.Prison.summary(sim,f.id)) if f.type=="prison" else object_context.open("facility",f.id);return true
 	return false
 
 func sync_sandbox_smoke() -> void:
@@ -2018,8 +2046,10 @@ func activate_selection(choice: Dictionary) -> void:
 		"person":
 			if not sim.data.people.has(id_) or sim.data.people[id_].state=="gone":return
 			sim.data.ops.selected=id_
-			if sim.data.people[id_].state in ["down","dead","restrained","captive"]:object_context.open("person",id_)
+			if sim.data.people[id_].state=="captive":object_context.open("inmate",id_,sim.Prison.inmate_summary(sim,id_))
+			elif sim.data.people[id_].state in ["down","dead","restrained"]:object_context.open("person",id_)
 			else:object_context.open("conversation",id_,Dialogue.begin(sim,id_))
+		"prison":object_context.open("prison",id_,sim.Prison.summary(sim,id_))
 		"staff":object_context.open("staff_talk","","식사 운영을 맡고 있어요. 업무를 바꿀까요?")
 		"inspector":object_context.open("guard_talk","","몇 가지 확인할 일이 있소.")
 		_:object_context.open("owner")

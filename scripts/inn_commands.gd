@@ -8,6 +8,7 @@ static func reset_view(host) -> void:
 static func cancel(host,quiet: bool=false) -> void:
 	var s=host.sim
 	var paused: bool=s.data.paused;s.data.paused=false
+	if s.Sandbox.active(s):s.Prison.cancel(s)
 	if s.Tycoon.active(s):s.Tycoon.cancel_booking(s)
 	s.cancel_work();s.data.service_target="";s.data.deferred_command={}
 	for order_ in s.data.orders.values():
@@ -29,6 +30,7 @@ static func move(host,target: Vector2) -> bool:
 static func status(host) -> String:
 	var s=host.sim
 	if host.dig_mode!="":return "공사 위치 선택 중"
+	if not s.data.get("sandbox",{}).get("capture",{}).is_empty():return "감옥으로 붙잡아 호송 중"
 	if not s.data.get("sandbox",{}).get("chute_job",{}).is_empty():return "객실 비밀 통로로 옮기는 중"
 	if not s.data.get("booking_request",{}).is_empty():return "%s호 안내 중" %str(s.data.booking_request.room)
 	if s.data.get("service_target","")!="":return "식사 준비·서빙 중"

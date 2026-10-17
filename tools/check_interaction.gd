@@ -61,7 +61,7 @@ func run() -> void:
 	app.object_context.close();s.queue_move(Vector2(-4,2));var intent=str(s.data.excavation.intent)
 	app.object_context.open("owner");await process_frame
 	app.world_tap(Vector2(710,1275),[])
-	check("outside tap closes menu without replacing task",not app.object_context.panel.visible and s.data.excavation.intent==intent)
+	check("outside invalid floor tap closes menu and preserves task",not app.object_context.panel.visible and s.data.excavation.intent==intent)
 	app.object_context.open("system");await process_frame
 	check("settings retain save and load while menu pauses time",app.object_context.controls.has("save") and app.object_context.controls.has("load"))
 	app.object_context.close();s.data.paused=false
@@ -173,5 +173,49 @@ func run() -> void:
 	check("new basement facility queues on open floor",s.Sandbox.build(s,"prison",build_at))
 	s.tick(9)
 	check("new basement facility completes and charges once",s.data.sandbox.facilities.size()==facility_count+1 and int(s.data.money)==before_money-6)
+	fresh();s=app.sim
+	check("capture command accepts living target",s.Prison.request(s,"guest_1"))
+	s.tick(80)
+	var captive: Dictionary=s.data.people.guest_1
+	check("one capture command physically escorts and imprisons",captive.state=="captive" and captive.floor==1 and s.data.sandbox.get("capture",{}).is_empty())
+	var prison=s.Prison.cells(s)[0]
+	check("prison starts with six spaces and strong security",int(prison.capacity)==6 and s.Prison.security(prison)==99 and prison.care)
+	check("prisoner life tracks needs without starving",captive.has("life") and captive.life.hunger>=0 and captive.life.hunger<60 and captive.life.energy>0)
+	var actions={}
+	for step in 70:
+		s.tick(1);actions[captive.life.action]=true
+	check("prisoner cycles through multiple daily activities",actions.size()>=3 and captive.state=="captive")
+	s.spawn_guest();s.data.people.guest_2.state="down"
+	check("shared prison admits a second prisoner",s.Prison.admit(s,prison,"guest_2") and prison.members.size()==2)
+	s.data.people.guest_2.life.hunger=80;s.Prison.manage(s,"guest_2","feed_inmate")
+	check("simple feeding immediately improves hunger",s.data.people.guest_2.life.hunger==35)
+	var cash=int(s.data.money);s.Prison.manage(s,prison.id,"prison_expand")
+	check("prison expansion adds capacity and charges once",int(prison.capacity)==8 and int(s.data.money)==cash-8)
+	var serialized2=JSON.parse_string(JSON.stringify(s.snapshot()))
+	check("save restores shared prison and needs",s.restore(serialized2) and s.data.people.guest_1.state=="captive" and s.data.people.guest_2.life.hunger==35)
+	prison=s.Prison.cells(s)[0];captive=s.data.people.guest_1
+	while absi(hash(captive.id+":"+str(int(captive.life.attempts)+1)))%100==99:captive.life.attempts+=1
+	var caught=int(prison.caught);s.Prison.attempt(s,prison,captive)
+	check("secure prison stops an escape attempt",int(prison.caught)==caught+1 and captive.state=="captive")
+	prison.guard=false;prison.locked=false;s.Prison.attempt(s,prison,captive)
+	check("unsecured prison allows real escape path",captive.state=="escaping" and not captive.path.is_empty() and int(prison.escaped)==1)
+	app.set_layer("below");app.object_context.open("prison",prison.id,s.Prison.summary(s,prison.id));await process_frame
+	check("prison dashboard keeps simulation running",not s.data.paused and app.object_context.controls.has("prison_roster"))
+	app.object_context.close();app.object_context.open("inmate","guest_2",s.Prison.inmate_summary(s,"guest_2"));await process_frame
+	s.data.people.guest_2.life.hunger=77;app.object_context.refresh()
+	check("inmate needs update in the open menu",app.object_context.detail_label.text.contains("77/100"))
+	app.object_context.close();var label_at=app.camera.unproject_position(app.world_point(prison.pos+Vector2(0,1.25),1,.25))
+	check("prison sign is a direct clickable target",app.selection_candidates(label_at).any(func(c):return c.kind=="prison"))
+	fresh();s=app.sim;s.data.people.guest_1.pos=Vector2(-1.75,.25)
+	s.Prison.request(s,"guest_1");s.data.player.pos=s.data.people.guest_1.pos+Vector2(0,.5)
+	for step in 20:
+		s.tick(.1)
+		if s.data.people.guest_1.state=="restrained":break
+	app.Commands.cancel(app,true)
+	check("cancelled escort clears command and leaves target recoverable",s.data.sandbox.get("capture",{}).is_empty() and s.data.ops.drag=="" and s.data.people.guest_1.state=="down")
+	fresh();s=app.sim;app.object_context.open("owner");await process_frame
+	var target_world=Vector2(-9,5);var target_screen=app.camera.unproject_position(app.world_point(target_world,0))
+	app.world_tap(target_screen,[])
+	check("one valid ground tap closes menu and moves",not app.object_context.panel.visible and s.data.excavation.intent=="move")
 	print("FOCUSED CHECKS ",checks.filter(func(x):return x).size(),"/",checks.size())
 	quit(0 if checks.all(func(x):return x) else 1)

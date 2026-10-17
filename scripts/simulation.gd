@@ -1,6 +1,7 @@
 extends RefCounted
 ## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
 
+const Prison=preload("res://scripts/inn_prison.gd")
 const Layout=preload("res://scripts/inn_layout.gd")
 const Tycoon=preload("res://scripts/inn_tycoon.gd")
 const Sandbox=preload("res://scripts/inn_sandbox.gd")
@@ -441,7 +442,7 @@ func _step(dt: float) -> void:
 	update_work(dt)
 	Sandbox.tick(self,dt)
 	Tycoon.tick(self,dt)
-	if Sandbox.active(self):Layout.tick(self)
+	if Sandbox.active(self):Layout.tick(self);Prison.tick(self,dt)
 	update_awareness(dt)
 	update_worker(dt)
 	update_money()

@@ -1,3 +1,11 @@
+## 2D 단면 비교 시제품 · 2026-10-17
+
+[2D 세로 시제품 실행](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/) · [실제 화면·조작·구현 한계](docs/sideview-poc.md)
+
+기존 아래 3D 0.9와 별개인 비교 실험입니다. 2D 시제품은 `prototypes/sideview/project.godot`로 열며 저장도 분리합니다. 최종 미술·시점 확정판이 아닙니다.
+
+---
+
 # 0.9 — 가로형 여관 단면 플레이 초안
 
 [게임 실행](https://kkhkkh20-bit.github.io/after-hours-inn/?v=0.9) · [현재 화면과 테스트 순서](docs/landscape-v09.md)

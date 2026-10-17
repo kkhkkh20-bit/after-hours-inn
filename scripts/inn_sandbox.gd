@@ -134,6 +134,7 @@ static func operate(s,id: String) -> void:
 		"furnace":
 			if held=="" or s.data.people[held].state!="dead":s.note("시신을 운반해 왔을 때만 처리할 수 있다. 가동하면 12초 동안 연기와 소음이 난다.");return
 			if f.until>s.data.clock:s.note("화로가 아직 가동 중이다.");return
+			if s.supply_service!=null and not s.supply_service.take(s,"fuel",2):return
 			s.data.work={"type":"dispose","facility":id,"target":held,"remaining":12.0};f.until=s.data.clock+12;s.data.sandbox.smoke_until=s.data.clock+20
 			s.note("처리 화로 가동. 연기와 소리가 바깥에 새어 나간다.")
 		"stash":

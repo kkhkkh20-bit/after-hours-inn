@@ -6,13 +6,15 @@ xvfb=os.environ.get("INN_XVFB_BIN") or shutil.which("Xvfb") or "/tmp/inn-assets/
 n=random.randrange(250,850)
 capture_data=tempfile.TemporaryDirectory(prefix='inn-capture-')
 e=os.environ.copy();e['XDG_DATA_HOME']=capture_data.name;e['LD_LIBRARY_PATH']='/tmp/inn-assets/xroot/usr/lib/x86_64-linux-gnu';e['DISPLAY']='127.0.0.1:'+str(n)
-with open('/tmp/mobile180-render.log','w') as log:
+with open(os.environ.get('INN_CAPTURE_LOG','/tmp/mobile180-render.log'),'w') as log:
  x=subprocess.Popen([xvfb,':'+str(n),'-screen','0','900x1500x24','-ac','-nolisten','unix','-nolisten','local','-listen','tcp'],env=e,stdout=log,stderr=log)
  try:
   for i in range(50):
    try:
     with socket.create_connection(('127.0.0.1',6000+n),timeout=.1):break
    except OSError:time.sleep(.05)
-  p=subprocess.run([godot,'--audio-driver','Dummy','--path',str(project),'--script','tools/capture_mobile.gd','--',*sys.argv[1:]],env=e,stdout=log,stderr=log,timeout=45)
+  p=subprocess.run([godot,'--audio-driver','Dummy','--path',str(project),'--script',os.environ.get('INN_CAPTURE_SCRIPT','tools/capture_mobile.gd'),'--',*sys.argv[1:]],env=e,stdout=log,stderr=log,timeout=45)
   print('capture exit',p.returncode)
  finally:x.terminate();x.wait();capture_data.cleanup()
+
+sys.exit(p.returncode)

@@ -1,0 +1,21 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS GLoot Inventory is active
+PASS touch purchase adds a GLoot stack and charges once
+PASS automatic replenishment buys and consumes
+PASS empty stock with auto off cannot consume or charge
+PASS saved stocks rebuild real GLoot items
+PASS separate stacks do not affect food
+PASS real meal service consumes one food
+PASS Interactable signal opens the selected person's menu
+PASS disabled departed targets cannot reopen menus
+PASS click movement accepts reachable ground
+PASS upstream destination marker is visible
+PASS GroundMotion accelerates rather than teleporting
+PASS owner reaches target without overshoot
+PASS accelerated movement still traverses two upstairs legs
+PASS third floor can still reach basement
+PASS prison care consumes medicine and restores energy
+PASS furnace starts a real job using two logs
+PASS three-day simulation retains valid stocks and positions
+TEMPLATE MIX 18/18

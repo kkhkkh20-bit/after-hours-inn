@@ -42,6 +42,7 @@ func blocks(point: Vector2) -> bool:
 	return (tray.visible and tray.get_global_rect().has_point(point)) or (launch.visible and launch.get_global_rect().has_point(point))
 func _process(_delta: float) -> void:
 	if host==null:return
+	if host.supplies.inventory!=null:host.supplies.update()
 	launch.visible=not active and not host.journal.opened and not host.object_context.panel.visible
 	if active and host.dig_mode=="":close()
 	host.object_context.inn_button.visible=not active;host.object_context.owner_button.visible=not active

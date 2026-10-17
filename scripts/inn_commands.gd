@@ -29,6 +29,7 @@ static func move(host,target: Vector2) -> bool:
 	cancel(host,true)
 	host.sim.data.excavation.path=route
 	host.sim.data.excavation.intent="move"
+	host.template_interactions.destination(target)
 	if not host.inn_view:host.follow_owner(false)
 	return true
 

@@ -1,7 +1,7 @@
 config_version=5
 [application]
 config/name="After Hours - Border Inn"
-config/version="1.8.3-kenney-template"
+config/version="1.8.4-template-mix"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="AfterHoursBorderInn"
 run/main_scene="res://main.tscn"

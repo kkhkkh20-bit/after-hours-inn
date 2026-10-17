@@ -1,4 +1,6 @@
 extends RefCounted
+var supply_service
+var motion=preload("res://addons/iso_orbit/click_to_move/ground_motion.gd").new(preload("res://addons/iso_orbit/click_to_move/locomotion_settings.gd").new())
 const Upper=preload("res://scripts/inn_upper.gd")
 ## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
 
@@ -323,6 +325,7 @@ func deliver(order_id: String, holder: String) -> bool:
 	var position_: Vector2 = data.player.pos if holder=="player" else data.staff.pos
 	if (int(data.player.floor) if holder=="player" else int(data.staff.get("floor",0)))!=int(data.people[order_.guest].floor):return false
 	if position_.distance_to(data.people[order_.guest].pos)>1.2: return false
+	if supply_service!=null and not supply_service.take(self,"food"):return false
 	order_.paid = true
 	order_.status = "served"
 	order_.holder = ""
@@ -914,10 +917,18 @@ func dig_nearest() -> bool:
 
 func update_excavation(dt: float) -> void:
 	var job: Dictionary=data.excavation
-	if job.intent=="":return
+	if job.intent=="":motion.halt();return
 	if not data.work.is_empty() or not data.dig.is_empty():job.path=[];job.intent="";return
+	while not job.path.is_empty() and data.player.pos.distance_to(Vector2(job.path[0]))<.001:job.path.pop_front()
 	var walker: Dictionary={"pos":data.player.pos,"path":job.path}
-	follow(walker,dt*travel_multiplier*(1.15 if data.ops.drag!="" else (2.2 if data.player.carry!="" else 2.9)))
+	motion.settings.max_speed=travel_multiplier*(1.4 if data.ops.drag!="" else (2.8 if data.player.carry!="" else 4.0))
+	var remaining=0.0;var previous: Vector2=data.player.pos
+	for at in job.path:remaining+=previous.distance_to(at);previous=at
+	var direction=Vector3.ZERO
+	if not job.path.is_empty():
+		var heading_: Vector2=(Vector2(job.path[0])-data.player.pos).normalized();direction=Vector3(heading_.x,0,heading_.y)
+	var velocity=motion.step(direction,remaining,dt)
+	follow(walker,dt*velocity.length())
 	data.player.pos=walker.pos
 	Intrigue.sync_drag(self)
 	if walker.path.is_empty():

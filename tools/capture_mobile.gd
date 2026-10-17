@@ -35,7 +35,7 @@ func run() -> void:
 			app.object_context.close();app.cancel_everything();app.sim.data.player.floor=floor_;app.sim.data.player.pos=Vector2(8,-4.25);app.show_upper(floor_);app.camera.size=24;app.sync_view(0);app.journal.refresh();app.object_context.refresh();app.mobile_scene.update()
 			await process_frame;await process_frame;await RenderingServer.frame_post_draw
 			root.get_texture().get_image().save_png("res://docs/mobile-v181-after-floor%d.png" %floor_)
-	if tag in ["v182","v183"]:
+	if tag in ["v182","v183","v184"]:
 		app.object_context.close();app.cancel_everything();app.sim.data.player.floor=1;app.sim.data.player.pos=Vector2(16,-5);app.displayed_floor=1
 		app.set_dig_mode("build:furnace");app.sync_view(0);app.journal.refresh();app.object_context.refresh();app.mobile_scene.update()
 		await process_frame;await process_frame;await RenderingServer.frame_post_draw
@@ -57,4 +57,13 @@ func run() -> void:
 			await app.pointer_click(chosen,true);app.sync_view(0);app.mobile_scene.update();app.builder.close();app.mobile_scene.update();app.object_context.refresh();app.journal.refresh()
 			await process_frame;await process_frame;await RenderingServer.frame_post_draw
 			root.get_texture().get_image().save_png("res://docs/mobile-"+tag+"-after-placed.png")
+	if tag=="v184" and prefix=="after":
+		app.object_context.close();app.builder.close();app.cancel_everything();app.sim.data.player.floor=0;app.sim.data.player.pos=Vector2(-.25,2.25);app.displayed_floor=0;app.show_inn();app.supplies.open()
+		await process_frame;await process_frame;await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://docs/mobile-v184-after-stock.png")
+		await app.pointer_click(app.object_context.controls["stock:food"].get_global_rect().get_center(),true);app.object_context.close();app.show_inn()
+		var target=Vector2(-6.25,2.25);app.Commands.move(app,target);app._physics_process(.05)
+		await process_frame;await process_frame;await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://docs/mobile-v184-after-move.png")
+	app.free();await process_frame;await process_frame
 	quit()

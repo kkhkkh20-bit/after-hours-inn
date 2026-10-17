@@ -155,11 +155,15 @@ static func inmate_summary(s,id: String) -> String:
 
 static func manage(s,id: String,action: String) -> void:
 	ensure(s)
-	if action in ["feed_inmate","rest_inmate","release_inmate"]:
+	if action in ["feed_inmate","rest_inmate","care_inmate","release_inmate"]:
 		if not s.data.people.has(id) or s.data.people[id].state!="captive":return
 		var p: Dictionary=s.data.people[id]
 		if action=="release_inmate":s.Sandbox.release(s,id);return
 		if not p.has("life"):return
+		if action=="care_inmate":
+			if s.supply_service!=null and s.supply_service.take(s,"medicine"):p.life.energy=minf(100,p.life.energy+30);p.life.mood=minf(100,p.life.mood+10);p.life.action="회복 중"
+			return
+		if action=="feed_inmate" and s.supply_service!=null and not s.supply_service.take(s,"food"):return
 		if action=="feed_inmate":p.life.hunger=maxf(0,p.life.hunger-45);p.life.mood=minf(100,p.life.mood+5);p.life.trust=minf(100,p.life.trust+2);p.life.action="식사"
 		else:p.life.rest_until=s.data.clock+12;p.life.action="휴식"
 		return

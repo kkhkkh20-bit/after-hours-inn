@@ -2,6 +2,8 @@ extends Node3D
 const Pointer=preload("res://scripts/inn_pointer.gd")
 const Selection=preload("res://scripts/inn_selection.gd")
 const Commands=preload("res://scripts/inn_commands.gd")
+var supplies=preload("res://scripts/inn_supplies.gd").new()
+var template_interactions=preload("res://scripts/inn_template_interactions.gd").new()
 var template_camera=preload("res://scripts/inn_kenney_camera.gd").new()
 var builder=preload("res://scripts/inn_builder.gd").new()
 var mobile_scene=preload("res://scripts/inn_mobile_scene.gd").new()
@@ -361,6 +363,7 @@ func _ready() -> void:
 	mobile_scene.setup(self)
 	template_camera.configure(self);add_child(template_camera)
 	add_child(builder);builder.setup(self)
+	supplies.setup(self);sim.supply_service=supplies;template_interactions.setup(self)
 	if args.is_empty():start_campaign();comfort.offer_resume()
 	if "--capture-sandbox" in args:
 		await capture_sandbox();return
@@ -950,7 +953,7 @@ func _physics_process(delta: float) -> void:
 		if ambience!=null:ambience.volume_db=-80 if muted else -26
 	if journal!=null:journal.refresh()
 	comfort.tick(delta)
-	mobile_scene.update()
+	mobile_scene.update();supplies.update();template_interactions.update()
 
 func send_key(key: int) -> void:
 	var event:=InputEventKey.new()
@@ -1299,6 +1302,7 @@ func context_stats() -> String:
 	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.values().filter(func(p): return p.state!="gone").size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
 
 func context_title(kind_: String,id_: String) -> String:
+	if kind_=="supplies":return "여관 창고"
 	if kind_ in ["confirm","comfort","operations","recent","help","resume"]:return {"resume":"이전 영업 이어하기","confirm":"실행 확인","comfort":"조작·화면·소리","operations":"손님·객실 바로 찾기","recent":"최근 알림","help":"조작 도움말"}[kind_]
 	if kind_=="pick":return "대상 선택"
 	if kind_=="contracts":return "현상수배 게시판"
@@ -1349,6 +1353,7 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
+	if kind_=="supplies":return supplies.items()
 	if kind_ in ["confirm","comfort","operations","recent","help","resume"]:return comfort.items(kind_)
 	if kind_=="counter_more":return [["zones","넓은 지도 · 구역 보기"],["recruit","마라와 이야기"],["private_entry","주인 전용 창고로 이동"],["view_tools","화면 방향"],["system","저장·설정"]]
 	if Sandbox.active(sim) and kind_=="owner":
@@ -1388,7 +1393,7 @@ func context_items(kind_: String,id_: String) -> Array:
 		sim.Prison.ensure(sim);var cell=Sandbox.facility(sim,id_);var entries=[]
 		for inmate in cell.members:entries.append(["inmate:"+inmate,sim.data.people[inmate].name+" · "+str(sim.data.people[inmate].life.action)])
 		return entries if not entries.is_empty() else [["prison_back","수감자가 없습니다 · 감옥으로"]]
-	if kind_=="inmate":return [["questioning","심문·정보·금품 갈취"],["feed_inmate","식사 주기"],["rest_inmate","편히 쉬게 하기"],["release_inmate","석방하기"],["inmate_prison","감옥 관리"]]
+	if kind_=="inmate":return [["questioning","심문·정보·금품 갈취"],["feed_inmate","식사 주기"],["rest_inmate","편히 쉬게 하기"],["care_inmate","회복약 주기 · 약품 1개"],["release_inmate","석방하기"],["inmate_prison","감옥 관리"]]
 	if kind_=="pick":
 		var items=[]
 		for i in selection_options.size():
@@ -1522,6 +1527,10 @@ func transit_at(point: Vector2) -> Dictionary:
 	return best
 
 func context_action(kind_: String,id_: String,action: String) -> void:
+	if action.begins_with("stock:"):
+		if action=="stock:auto":supplies.ensure(sim);sim.data.supplies.auto=not sim.data.supplies.auto
+		else:supplies.buy(sim,action.get_slice(":",1))
+		supplies.open();return
 	if comfort.gate(kind_,id_,action):return
 	if comfort.act(kind_,id_,action):return
 	if kind_ in ["person","conversation","actions","other"] and (not sim.data.people.has(id_) or sim.data.people[id_].state=="gone"):
@@ -1580,7 +1589,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		var inmate=action.trim_prefix("inmate:");object_context.open("inmate",inmate,sim.Prison.inmate_summary(sim,inmate));return
 	if action=="inmate_prison":
 		var cell=str(sim.data.people[id_].get("prison",""));object_context.open("prison",cell,sim.Prison.summary(sim,cell));return
-	if action in ["feed_inmate","rest_inmate","release_inmate","care_toggle","security_toggle","prison_expand"]:
+	if action in ["feed_inmate","rest_inmate","care_inmate","release_inmate","care_toggle","security_toggle","prison_expand"]:
 		sim.Prison.manage(sim,id_,action)
 		if action=="release_inmate":return
 		object_context.open("inmate" if kind_=="inmate" else "prison",id_,sim.Prison.inmate_summary(sim,id_) if kind_=="inmate" else sim.Prison.summary(sim,id_));return
@@ -1706,7 +1715,7 @@ func input_verify() -> void:
 	set_physics_process(false)
 	var checks: Array=[]
 	var geometry_: Array=sim.obstacles.duplicate()
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.travel_multiplier=1.7
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.travel_multiplier=1.7
 	sim.data.player.pos=Vector2(-7,3.25)
 	sim.spawn_guest(); sim.data.people.guest_2.pos=Vector2(-3.75,3.25)
 	set_layer("surface"); sync_view(0)
@@ -1767,7 +1776,7 @@ func input_verify() -> void:
 	object_context.open("owner"); await click_context("resume")
 	checks.append(not sim.data.paused)
 	# Opening uses physical arrivals, no queue at the counter, and no countdown.
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid()
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid()
 	sim.start_gentle_opening()
 	checks.append(sim.data.people.guest_1.state=="arriving" and sim.data.people.guest_1.pos.x>10)
 	sim.tick(25)
@@ -1789,7 +1798,7 @@ func input_verify() -> void:
 	var guard_reached=sim.data.ops.inspector.state=="search"
 	await pointer_click(camera.unproject_position(world_point(Vector2(5.6,-2.0),0,0.55)))
 	checks.append(guard_reached and object_context.kind=="room" and object_context.target=="1")
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid()
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid()
 	sim.data.player.pos=Simulation.ENTRY; sim.data.ops.selected="guest_1"
 	object_context.open("actions","guest_1"); await click_context("grab")
 	checks.append(sim.data.work.get("action","")=="grab")
@@ -1807,20 +1816,20 @@ func input_verify() -> void:
 	checks.append(sim.restore(saved) and sim.data.people.guest_1.state=="dead")
 	sim.data.money=100; sim.data.ops.inspector.resolved=false; sim.data.ops.inspector.pos=sim.data.people.guest_1.pos; sim.data.ops.inspector.floor=0
 	checks.append(Simulation.Intrigue.discover(sim) and sim.data.money==60 and sim.data.people.guest_1.state=="dead")
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.ops.selected="guest_1"
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.ops.selected="guest_1"
 	sim.data.player.pos=Simulation.ENTRY; Simulation.Intrigue.quick_action(sim,"grab"); sim.tick(1); Simulation.Intrigue.drag_or_release(sim)
 	checks.append(sim.data.people.guest_1.state=="leaving" and sim.data.ops.drag=="")
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.ops.selected="guest_1"
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.ops.selected="guest_1"
 	sim.data.player.pos=Simulation.ENTRY; Simulation.Intrigue.quick_action(sim,"sleep"); sim.tick(2); sim.tick(46)
 	checks.append(sim.data.people.guest_1.state in ["leaving","gone"])
 	# Both rooms must survive checkout -> cleaning -> a different guest's booking.
 	for number in [1,2]:
-		sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
+		sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
 		sim.data.player.pos=Simulation.ENTRY; sim.assign_room(number,"guest_1"); sim.tick(110)
 		checks.append(sim.data.rooms[str(number)].guest=="" and sim.data.rooms[str(number)].dirty)
 		sim.spawn_guest(); checks.append(sim.request_room(number,"guest_2")); sim.tick(30)
 		checks.append(sim.data.rooms[str(number)].guest=="guest_2" and not sim.data.rooms[str(number)].dirty)
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.start_gentle_opening()
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.start_gentle_opening()
 	checks.append(sim.calendar_text().begins_with("1일차 08:00"))
 	sim.data.people.guest_1.pos=Simulation.ENTRY; sim.data.player.pos=Simulation.ENTRY; sim.assign_room(1,"guest_1")
 	checks.append(sim.data.people.guest_1.checkout==480)
@@ -1831,7 +1840,7 @@ func input_verify() -> void:
 	sim.data.clock=240; checks.append(sim.calendar_text().contains("20:00") and sim.calendar_text().ends_with("밤"))
 	sim.data.clock=320; checks.append(sim.calendar_text().begins_with("2일차 00:00"))
 	# Capture the person at pointer down; release still targets that moving person.
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
 	sim.data.player.pos=Vector2(-7.25,3.25); set_layer("all"); sync_view(0); object_context.close()
 	var tap=camera.unproject_position(world_point(sim.data.people.guest_1.pos,0,1.7))
 	var press=InputEventMouseButton.new(); press.position=tap; press.button_index=MOUSE_BUTTON_LEFT; press.pressed=true; get_viewport().push_input(press,true)
@@ -1843,7 +1852,7 @@ func input_verify() -> void:
 	var menu_at=object_context.panel.position; sim.data.people.guest_1.pos+=Vector2(2,0); object_context.refresh()
 	checks.append(object_context.panel.position==menu_at)
 	# Owner downstairs can see, select and serve the guest upstairs via actual stairs.
-	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
+	sim=Simulation.new();sim.supply_service=supplies; sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
 	sim.data.player.pos=Simulation.ENTRY; sim.assign_room(1,"guest_1"); sim.tick(20)
 	sim.data.player.floor=1; sim.data.player.pos=Vector2.ZERO; pending_context_action={}; set_layer("all"); sync_view(0); object_context.close()
 	await pointer_click(camera.unproject_position(world_point(sim.data.people.guest_1.pos,0,1.5)),true)
@@ -2149,6 +2158,9 @@ func selection_candidates(point: Vector2) -> Array:
 	return Selection.candidates(self,point)
 
 func activate_selection(choice: Dictionary) -> void:
+	template_interactions.dispatch(choice)
+
+func _activate_selection_now(choice: Dictionary) -> void:
 	var kind_=str(choice.kind);var id_=str(choice.id)
 	match kind_:
 		"person":
@@ -2186,3 +2198,6 @@ func show_upper(floor_: int) -> void:
 	set_layer("attic" if floor_==3 else "rooms")
 	camera.size=24;camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus);template_camera.capture()
 	sync_view(0);mobile_scene.update();journal.refresh()
+
+func _exit_tree() -> void:
+	if supplies!=null:supplies.shutdown()

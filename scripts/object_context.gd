@@ -135,14 +135,14 @@ func reflow_live(old_position: Vector2,expected_kind: String,expected_target: St
 
 func place() -> void:
 	var viewport=host.get_viewport().get_visible_rect().size
-	var width=minf(350,viewport.x*.70)
+	var width=minf(620,viewport.x-24) if kind=="supplies" else minf(350,viewport.x*.70)
 	column.custom_minimum_size.x=width-32
 	var header_height=maxf(88,fixed_header.get_combined_minimum_size().y)+42
 	var wanted=column.get_combined_minimum_size().y+header_height
 	panel.size=Vector2(width,minf(wanted,maxf(280,viewport.y-400)))
 	scroll.custom_minimum_size=Vector2(width-32,minf(wanted-header_height,maxf(180,viewport.y-400-header_height)))
-	var x=anchor.x+34
-	if x+width>viewport.x-12:x=anchor.x-width-34
+	var x=(viewport.x-width)/2 if kind=="supplies" else anchor.x+34
+	if kind!="supplies" and x+width>viewport.x-12:x=anchor.x-width-34
 	panel.position=Vector2(clampf(x,12,maxf(12,viewport.x-width-12)),clampf(anchor.y-panel.size.y*.40,390,maxf(170,viewport.y-panel.size.y-16)))
 
 func _perform(action: String) -> void:

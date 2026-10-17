@@ -1,0 +1,11 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+TOUCH PASS warehouse opens from a real screen touch
+TOUCH PASS touch purchase changes the live inventory
+TOUCH PASS ground touch chooses a walking destination
+TOUCH PASS live simulation reaches touched destination
+TOUCH PASS third-floor touch physically reaches the attic
+TOUCH PASS basement touch completes the return journey
+TOUCH PASS build tray opens from a screen touch
+TOUCH PASS touching a valid floor installs one structure
+TOUCH PASS a second touch cannot double-place or double-charge
+LIVE TOUCH 9/9

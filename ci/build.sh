@@ -4,6 +4,8 @@ web_name="game-${GITHUB_SHA:-local}"
 mkdir -p build/web build/windows/licenses
 touch build/.gdignore
 godot --headless --editor --import
+godot --headless --audio-driver Dummy --script tools/check_template_mix.gd
+godot --headless --audio-driver Dummy --script tools/check_building.gd
 godot --headless --export-release "Web" "build/web/$web_name.html"
 mv "build/web/$web_name.html" build/web/index.html
 godot --headless --export-release "Windows Desktop" build/windows/AfterHours.exe
@@ -16,6 +18,12 @@ cp third_party/kenney_city_builder/UPSTREAM.md build/windows/licenses/kenney-cit
 mkdir -p build/web/licenses
 cp third_party/kenney_city_builder/LICENSE.md build/web/licenses/kenney-city-builder-MIT.txt
 cp third_party/kenney_city_builder/UPSTREAM.md build/web/licenses/kenney-city-builder-source.md
+for addon in gloot iso_orbit interaction_system; do
+  cp "addons/$addon/LICENSE" "build/windows/licenses/$addon-MIT.txt"
+  cp "addons/$addon/LICENSE" "build/web/licenses/$addon-MIT.txt"
+  cp "addons/$addon/UPSTREAM.md" "build/windows/licenses/$addon-source.md"
+  cp "addons/$addon/UPSTREAM.md" "build/web/licenses/$addon-source.md"
+done
 cp README.md build/windows/README.md
 touch build/web/.nojekyll
 printf '%s\n' "${GITHUB_SHA:-local}" > build/web/version.txt

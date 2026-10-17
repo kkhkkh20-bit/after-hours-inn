@@ -1,7 +1,7 @@
 config_version=5
 [application]
 config/name="After Hours - Border Inn"
-config/version="1.8.1-three-storey-inn"
+config/version="1.8.2-direct-building"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="AfterHoursBorderInn"
 run/main_scene="res://main.tscn"

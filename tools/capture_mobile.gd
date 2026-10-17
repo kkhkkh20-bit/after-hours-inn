@@ -35,4 +35,25 @@ func run() -> void:
 			app.object_context.close();app.cancel_everything();app.sim.data.player.floor=floor_;app.sim.data.player.pos=Vector2(8,-4.25);app.show_upper(floor_);app.camera.size=24;app.sync_view(0);app.journal.refresh();app.object_context.refresh();app.mobile_scene.update()
 			await process_frame;await process_frame;await RenderingServer.frame_post_draw
 			root.get_texture().get_image().save_png("res://docs/mobile-v181-after-floor%d.png" %floor_)
+	if tag=="v182":
+		app.object_context.close();app.cancel_everything();app.sim.data.player.floor=1;app.sim.data.player.pos=Vector2(16,-5);app.displayed_floor=1
+		app.set_dig_mode("build:furnace");app.sync_view(0);app.journal.refresh();app.object_context.refresh();app.mobile_scene.update()
+		await process_frame;await process_frame;await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png("res://docs/mobile-v182-"+prefix+"-build.png")
+		if prefix=="after":
+			var chosen=Vector2.ZERO;var best=INF
+			for x in range(5,26):
+				for y in range(-12,4):
+					var c=Vector2i(x,y)
+					if app.Sandbox.placement_error(app.sim,"furnace",c)!="":continue
+					var screen=app.camera.unproject_position(app.world_point(Vector2(c),1,.08))
+					if screen.x<80 or screen.x>640 or screen.y<450 or screen.y>930:continue
+					var distance=screen.distance_to(Vector2(350,720))
+					if distance<best:best=distance;chosen=screen
+			app.builder.preview(chosen);app.mobile_scene.update()
+			await process_frame;await process_frame;await RenderingServer.frame_post_draw
+			root.get_texture().get_image().save_png("res://docs/mobile-v182-after-preview.png")
+			await app.pointer_click(chosen,true);app.sync_view(0);app.mobile_scene.update();app.builder.close();app.mobile_scene.update();app.object_context.refresh();app.journal.refresh()
+			await process_frame;await process_frame;await RenderingServer.frame_post_draw
+			root.get_texture().get_image().save_png("res://docs/mobile-v182-after-placed.png")
 	quit()

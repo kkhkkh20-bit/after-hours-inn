@@ -45,6 +45,7 @@ func setup(owner_) -> void:
 	var bar=HBoxContainer.new();bar.position=Vector2(20,56);bar.add_theme_constant_override("separation",8);top.add_child(bar)
 	for item in [["1층","surface"],["2층","rooms"],["3층","attic"],["지하","below"],["정지","pause"],["1배","speed"],["설정","system"]]:
 		var value=str(item[1]);var b=button_(str(item[0]),bar,func():
+			if host.builder.active:host.builder.close()
 			var was_paused: bool=host.sim.data.paused
 			close()
 			if value=="system":open("system")
@@ -57,8 +58,8 @@ func setup(owner_) -> void:
 		if value in ["surface","rooms","attic","below","all"]:controls["@view:"+value]=b
 		if value=="pause":controls["@pause"]=b
 		if value=="speed":controls["@speed"]=b
-	inn_button=button_("여관 보기",top,func():host.show_inn(),88);inn_button.position=Vector2(20,156);inn_button.size.x=210;controls["@inn"]=inn_button
-	owner_button=button_("주인 찾기",top,func():host.frame_owner(),88);owner_button.position=Vector2(244,156);owner_button.size.x=210;controls["@owner"]=owner_button
+	inn_button=button_("여관 보기",top,func():host.builder.close();host.show_inn(),88);inn_button.position=Vector2(20,156);inn_button.size.x=210;controls["@inn"]=inn_button
+	owner_button=button_("주인 찾기",top,func():host.builder.close();host.frame_owner(),88);owner_button.position=Vector2(244,156);owner_button.size.x=210;controls["@owner"]=owner_button
 	task_label=label_("",19);task_label.position=Vector2(24,336);task_label.size=Vector2(490,34);top.add_child(task_label)
 	cancel_button=button_("취소",top,func():close();host.context_action("owner","","stop"),88);cancel_button.position=Vector2(468,156);cancel_button.size.x=232;cancel_button.hide()
 	panel=PanelContainer.new();root.add_child(panel);panel.mouse_filter=Control.MOUSE_FILTER_STOP

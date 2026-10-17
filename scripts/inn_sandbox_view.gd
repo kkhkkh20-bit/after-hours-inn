@@ -17,34 +17,17 @@ static func build(h) -> void:
 				h.light_at(Vector3(0,2.1,0.3),1.4)
 				for x in [-0.4,0.4]:h.box(Vector3(0.07,1.6,0.07),Vector3(x,0.8,-0.3),Color("a98b58"))
 				for y in range(5):h.box(Vector3(0.8,0.07,0.07),Vector3(0,y*0.3+0.2,-0.3),Color("c9ac6a"))
-			var title=h.world_label(e.name+(" · 올라가기" if floor_==1 else " · 내려가기"),Vector3(0,0.35,0.9),node);title.pixel_size=0.009
+			var title=h.world_label(e.name+(" · 올라가기" if floor_==1 else " · 내려가기"),Vector3(0,0.35,0.9),node);title.pixel_size=0.009;title.set_meta("builder_label",floor_==1)
 	for f in h.sim.data.sandbox.facilities:
 		var node=Node3D.new();root.add_child(node);node.set_meta("floor",1);node.position=h.world_point(f.pos,1);h.world_root=node
-		h.box(Vector3(2.4,0.08,2.4),Vector3(0,0.07,0),Color("534638"))
-		match f.type:
-			"prison":
-				node.set_meta("prison",f.id)
-				for x in [-1.1,-0.7,-0.3,0.1,0.5,0.9]:h.box(Vector3(0.06,1.6,0.06),Vector3(x,0.85,-1.1),Color("687474"))
-				for z in [-0.7,-0.2,0.3,0.8]:h.box(Vector3(0.06,1.6,0.06),Vector3(-1.1,0.85,z),Color("687474"))
-				h.box(Vector3(2.3,0.09,0.09),Vector3(0,1.6,-1.1),Color("9a9d91"))
-				for x in [-.65,0,.65]:
-					for z in [-.45,.45]:h.box(Vector3(.48,.08,.65),Vector3(x,.12,z),Color("a68c62"))
-				var guard=h.actor(Vector3.ZERO,Color("485d64"));guard.reparent(node);guard.name="PrisonGuard";guard.position=Vector3(1.25,0,.8)
-				h.world_label("경비",Vector3(0,2,0),guard).pixel_size=.009
-
-			"stash":
-				for x in [-0.7,0.2,0.7]:
-					h.box(Vector3(0.65,0.65,0.7),Vector3(x,0.42,-0.4),Color("8b693b"));h.box(Vector3(0.08,0.7,0.75),Vector3(x,0.45,-0.4),Color("373e39"))
-			"furnace":
-				for x in [-0.8,0.8]:h.box(Vector3(0.4,1.3,1.3),Vector3(x,0.7,-0.4),Color("535653"))
-				h.box(Vector3(2,0.4,1.5),Vector3(0,1.45,-0.4),Color("66685c"));h.box(Vector3(0.6,2.4,0.6),Vector3(0,2.3,-0.9),Color("454c4b"))
-				h.box(Vector3(1.1,0.4,0.6),Vector3(0,0.4,-0.3),Color("e69043"))
-			"refuge":
-				h.model("furniture","bedSingle",Vector3(-0.45,0.1,0),Vector3(0.8,0.6,1.7));h.box(Vector3(0.6,0.6,0.6),Vector3(0.7,0.35,-0.6),Color("91774a"))
+		preload("res://scripts/inn_facility_art.gd").build(h,f.type)
+		if f.type=="prison":
+			node.set_meta("prison",f.id)
+			var guard=h.actor(Vector3.ZERO,Color("485d64"));guard.reparent(node);guard.name="PrisonGuard";guard.position=Vector3(1.5,0,1.5)
 		h.light_at(Vector3(0,2.1,0.4),1.1)
 		var name_=Rules.TYPES[f.type].name
 		if f.occupant!="":name_+=" · 사용 중"
-		var title=h.world_label(name_,Vector3(0,0.25,1.25),node);title.pixel_size=0.01;title.name="FacilityTitle"
+		var title=h.world_label(name_,Vector3(0,0.25,1.25),node);title.pixel_size=0.01;title.name="FacilityTitle";title.set_meta("builder_label",true)
 	for key in h.sim.data.rooms:
 		var n=int(key);var room_: Dictionary=h.sim.data.rooms[key]
 		if not room_.has("secret_bottom"):continue

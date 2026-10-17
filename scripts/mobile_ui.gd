@@ -9,7 +9,7 @@ func setup(owner_) -> void:
 func refresh() -> void:
 	pass
 func blocks_point(point: Vector2) -> bool:
-	return (host.object_context.blocks(point) or (host.mobile_scene.host!=null and host.mobile_scene.blocks(point))) if host.object_context!=null else point.y<152
+	return (host.builder.blocks(point) or host.object_context.blocks(point) or (host.mobile_scene.host!=null and host.mobile_scene.blocks(point))) if host.object_context!=null else point.y<152
 func open_sheet(name_: String) -> void:
 	host.object_context.open("system" if name_=="메뉴" else "counter")
 func close_sheet() -> void:

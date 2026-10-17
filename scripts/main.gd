@@ -2,6 +2,7 @@ extends Node3D
 const Pointer=preload("res://scripts/inn_pointer.gd")
 const Selection=preload("res://scripts/inn_selection.gd")
 const Commands=preload("res://scripts/inn_commands.gd")
+var builder=preload("res://scripts/inn_builder.gd").new()
 var mobile_scene=preload("res://scripts/inn_mobile_scene.gd").new()
 var inn_view=false
 var world_hints: Array[Label3D]=[]
@@ -357,6 +358,7 @@ func _ready() -> void:
 	journal=preload("res://scripts/inn_journal.gd").new();add_child(journal);journal.setup(self)
 	comfort.setup(self)
 	mobile_scene.setup(self)
+	add_child(builder);builder.setup(self)
 	if args.is_empty():start_campaign();comfort.offer_resume()
 	if "--capture-sandbox" in args:
 		await capture_sandbox();return
@@ -665,7 +667,7 @@ func focus_position() -> Vector3:
 	if inn_view:return Vector3(-2,0,1)
 	if overview and Sandbox.active(sim):
 		if view_layer=="all":return Vector3(5,-.5,7)
-		if view_layer=="below":return Sandbox.OFFSET+Vector3(10,0,-5)
+		if view_layer=="below":return Sandbox.OFFSET+Vector3(sim.data.player.pos.x if sim.data.player.floor==1 else 16,0,sim.data.player.pos.y if sim.data.player.floor==1 else -5)
 		if view_layer=="rooms":return Vector3(0,3.2,-3.5)
 		if view_layer=="attic":return Vector3(0,6.4,-5.5)
 		return Vector3(3.0,.8,.7)
@@ -675,7 +677,7 @@ func focus_position() -> Vector3:
 func set_layer(value: String) -> void:
 	if object_context!=null:object_context.close()
 	inn_view=false;view_layer=value;overview=true;camera_offset=Vector2.ZERO
-	camera.size={"all":68.0,"below":48.0,"rooms":24.0,"attic":24.0,"surface":44.0}.get(value,31.0)
+	camera.size={"all":68.0,"below":24.0,"rooms":24.0,"attic":24.0,"surface":44.0}.get(value,31.0)
 	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
 
@@ -797,6 +799,7 @@ func pan_camera(relative: Vector2) -> void:
 	camera_offset=camera_offset.limit_length(70)
 
 func _input(event: InputEvent) -> void:
+	if builder.active and (event is InputEventMouseMotion or event is InputEventScreenTouch or event is InputEventScreenDrag):builder.preview(event.position)
 	var modal=(episode_ui!=null and episode_ui.opened) or (journal!=null and journal.opened)
 	var point=Vector2.ZERO
 	if event is InputEventMouse or event is InputEventScreenTouch or event is InputEventScreenDrag:point=event.position
@@ -1582,7 +1585,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		sim.Prison.manage(sim,id_,action)
 		if action=="release_inmate":return
 		object_context.open("inmate" if kind_=="inmate" else "prison",id_,sim.Prison.inmate_summary(sim,id_) if kind_=="inmate" else sim.Prison.summary(sim,id_));return
-	if action=="build_tools":object_context.open("build_tools");return
+	if action=="build_tools":builder.open();return
 	if action.begins_with("place_build:"):set_dig_mode("build:"+action.get_slice(":",1));return
 	if action=="easy_toggle":
 		Tycoon.set_easy(sim,not sim.data.get("tycoon",{}).get("easy",false));sim.note("쉬운 운영 설정을 변경했습니다.");return
@@ -1986,7 +1989,7 @@ func sandbox_tap(point: Vector2) -> bool:
 
 func sandbox_action(kind_: String,id_: String,action: String) -> bool:
 	match action:
-		"dig_tools":object_context.open("dig_tools");return true
+		"dig_tools":builder.open();return true
 		"place_shaft":set_dig_mode("shaft");return true
 		"place_tunnel":set_dig_mode("tunnel");return true
 		"stop_dig":stop_digging();return true
@@ -2112,29 +2115,18 @@ func sync_tycoon_workers(dt: float) -> void:
 		tycoon_room_marks[n].text="%s호 · %s%s" %[n,"예약 중" if room_.get("reserved","")!="" else ("청소 필요" if room_.dirty else ("이용 중" if room_.guest!="" else "빈방"))," · 개선 %d" %int(sim.data.tycoon.rooms[n]) if int(sim.data.tycoon.rooms[n])>0 else ""]
 		tycoon_room_marks[n].modulate=Color("c6a06b") if room_.dirty else (Color("a9bd89") if room_.guest=="" else Color("d4d6cf"))
 
-func camera_arm() -> Vector3:return Vector3(26,34,0) if inn_view else CAMERA_ARM.rotated(Vector3.UP,view_angle)
+func camera_arm() -> Vector3:
+	if builder.active or view_layer=="below":return Vector3(18,28,18)
+	return Vector3(26,34,0) if inn_view else CAMERA_ARM.rotated(Vector3.UP,view_angle)
 
 func set_dig_mode(value: String) -> void:
-	object_context.close()
-	dig_mode=value;set_layer("below" if value.begins_with("build:") else "all")
-	if dig_cancel==null:
-		dig_cancel=Button.new();dig_cancel.text="취소";dig_cancel.position=Vector2(580,121);dig_cancel.size=Vector2(115,60);dig_cancel.add_theme_font_override("font",ui_font);dig_cancel.add_theme_font_size_override("font_size",24);journal.root.add_child(dig_cancel);dig_cancel.pressed.connect(func():dig_mode="";dig_cancel.hide())
-	dig_cancel.show()
-	sim.note("열린 지하 바닥을 한 번 누르면 시설을 설치합니다." if value.begins_with("build:") else ("지상의 빈 바닥을 한 번 누르면 입구를 자동으로 만듭니다." if value=="shaft" else "지하에서 원하는 목적지를 한 번 누르세요. 그곳까지 자동으로 이어 팝니다."))
+	builder.choose(value)
 
 func apply_dig_point(point: Vector2) -> void:
-	var plane_y=0.08 if dig_mode=="shaft" else Sandbox.OFFSET.y+0.08
-	var hit: Variant=Plane(Vector3.UP,plane_y).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
-	if hit==null:return
-	var okay=false
-	if dig_mode.begins_with("build:"):
-		var local: Vector3=hit-Sandbox.OFFSET;okay=Sandbox.build(sim,dig_mode.get_slice(":",1),Vector2i(roundi(local.x),roundi(local.z)))
-	elif dig_mode=="shaft":okay=Excavation.shaft(sim,Vector2(hit.x,hit.z))
-	else:
-		var local: Vector3=hit-Sandbox.OFFSET;okay=Excavation.dig_to(sim,Vector2i(roundi(local.x),roundi(local.z)))
-	if okay:dig_mode="";dig_cancel.hide();route_count=-1
+	builder.place(point)
 
 func stop_digging() -> void:
+	builder.close()
 	dig_mode=""
 	if dig_cancel!=null:dig_cancel.hide()
 	sim.data.sandbox.tunnel_plan=[];sim.data.sandbox.pending_exit={};sim.data.sandbox.erase("pending_tunnel");sim.data.sandbox.erase("pending_from_upper");sim.data.sandbox.erase("pending_shaft");sim.cancel_work()
@@ -2144,7 +2136,7 @@ func sync_dig_visual() -> void:
 		dig_board=MeshInstance3D.new();var plane=BoxMesh.new();plane.size=Vector3(36,0.04,22);dig_board.mesh=plane
 		var mat=material(Color(0.12,0.23,0.25,0.5));mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;dig_board.material_override=mat;add_child(dig_board);dig_board.position=world_point(Vector2(8,0),1,-0.18)
 		dig_route=MeshInstance3D.new();add_child(dig_route)
-	dig_board.visible=dig_mode=="tunnel"
+	dig_board.visible=false
 	var plan: Array=sim.data.sandbox.get("tunnel_plan",[])
 	if route_count==plan.size():return
 	route_count=plan.size();dig_route.visible=route_count>0
@@ -2175,7 +2167,7 @@ func command_status() -> String:return Commands.status(self)
 func view_name() -> String:return {"surface":"식당·마당","rooms":"2층 객실","attic":"3층 객실","below":"지하","all":"전체"}.get(view_layer,"여관")
 
 func cancel_everything() -> void:
-	Commands.cancel(self);dig_mode="";comfort.confirm_job.clear()
+	Commands.cancel(self);dig_mode="";builder.close();comfort.confirm_job.clear()
 	if dig_cancel!=null:dig_cancel.hide()
 	comfort.say("이동·작업·공사 위치 선택을 취소했습니다.")
 

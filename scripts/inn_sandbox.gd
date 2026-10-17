@@ -56,13 +56,35 @@ static func facility_at(s,point: Vector2) -> Dictionary:
 	for f in s.data.sandbox.facilities:
 		if f.pos.distance_to(point)<1.45:return f
 	return {}
+static func placement_error(s,type_: String,cell: Vector2i) -> String:
+	if not TYPES.has(type_):return "시설을 선택하세요."
+	if absi(cell.x)>s.CELLAR_LIMIT.x-2 or absi(cell.y)>s.CELLAR_LIMIT.y-2:return "건설 구역 밖입니다."
+	for f in s.data.sandbox.facilities:
+		if absf(f.pos.x-cell.x)<3 and absf(f.pos.y-cell.y)<3:return "다른 시설과 겹칩니다."
+	for e in s.data.sandbox.entrances:
+		if Vector2(e.bottom).distance_to(Vector2(cell))<2.4:return "입구 앞은 비워 두세요."
+	for x in range(cell.x-1,cell.x+2):
+		for y in range(cell.y-1,cell.y+2):
+			if not s.data.cells.has(s.cell_key(Vector2i(x,y))):return "3 × 3 바닥을 먼저 파 주세요."
+	if s.data.money<int(TYPES[type_].cost):return "공사비가 부족합니다."
+	return ""
 static func build(s,type_: String,cell: Vector2i) -> bool:
-	if s.data.player.floor!=1 or not TYPES.has(type_):return false
-	if not facility_at(s,Vector2(cell)).is_empty():s.note("다른 시설과 조금 떨어진 자리를 고르세요.");return false
-	if not s.data.cells.has(s.cell_key(cell)):s.note("열린 바닥을 눌러 시설을 설치하세요.");return false
-	if s.data.money<int(TYPES[type_].cost):s.note("시설 공사비가 부족하다.");return false
-	if not s.queue_move(Vector2(cell)):return false
-	s.data.sandbox.route={"kind":type_,"cell":cell};s.data.excavation.intent="sandbox:build";return true
+	var error=placement_error(s,type_,cell)
+	if error!="":s.note(error);return false
+	s.data.money-=int(TYPES[type_].cost)
+	finish(s,{"kind":type_,"cell":cell})
+	return true
+static func dig_cell(s,cell: Vector2i) -> bool:
+	if absi(cell.x)>s.CELLAR_LIMIT.x-1 or absi(cell.y)>s.CELLAR_LIMIT.y-1:return false
+	var key=s.cell_key(cell)
+	if s.data.cells.has(key):return false
+	var adjacent=false
+	for d in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+		if s.data.cells.has(s.cell_key(cell+d)):adjacent=true
+	if not adjacent:s.note("열린 바닥 옆 흙을 눌러 한 칸씩 넓히세요.");return false
+	s.data.cells[key]=true;s.data.sandbox.revision+=1
+	s.note("한 칸 굴착 완료 · 계속 눌러 넓히세요.")
+	return true
 static func perform(s,action: String,id: String) -> void:
 	if action=="sandbox:portal":
 		transit(s,id)

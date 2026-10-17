@@ -78,5 +78,11 @@ func run() -> void:
 	check("JSON save restores active reservation",s.restore(serialized) and s.data.rooms["2"].reserved=="guest_1" and s.data.booking_request.room==2)
 	var balance=int(s.data.money);var malformed=s.snapshot();malformed.state.player="bad"
 	check("malformed save leaves current progress untouched",not s.restore(malformed) and int(s.data.money)==balance)
+	app.object_context.close();s.data.paused=false
+	app.object_context.open("conversation","guest_1",app.Dialogue.begin(s,"guest_1"));await process_frame;await process_frame
+	var pause_button: Button=app.object_context.controls["@pause"];center=pause_button.get_global_rect().get_center()
+	down=InputEventMouseButton.new();down.position=center;down.button_index=MOUSE_BUTTON_LEFT;down.pressed=true;root.push_input(down,true);await process_frame
+	up=InputEventMouseButton.new();up.position=center;up.button_index=MOUSE_BUTTON_LEFT;up.pressed=false;root.push_input(up,true);await process_frame
+	check("resume button during a paused conversation really resumes",not s.data.paused and not app.object_context.panel.visible)
 	print("FOCUSED CHECKS ",checks.filter(func(x):return x).size(),"/",checks.size())
 	quit(0 if checks.all(func(x):return x) else 1)

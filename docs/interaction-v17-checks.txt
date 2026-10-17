@@ -23,4 +23,5 @@ PASS real GUI click opens room choices without world movement
 PASS real GUI booking click creates one reservation
 PASS JSON save restores active reservation
 PASS malformed save leaves current progress untouched
-FOCUSED CHECKS 23/23
+PASS resume button during a paused conversation really resumes
+FOCUSED CHECKS 24/24

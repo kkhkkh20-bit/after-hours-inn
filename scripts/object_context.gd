@@ -41,9 +41,10 @@ func setup(owner_) -> void:
 	var bar=HBoxContainer.new();bar.position=Vector2(20,56);bar.add_theme_constant_override("separation",8);top.add_child(bar)
 	for item in [["식당","surface"],["객실","rooms"],["지하","below"],["전체","all"],["정지","pause"],["1배","speed"],["설정","system"]]:
 		var value=str(item[1]);var b=button_(str(item[0]),bar,func():
+			var was_paused: bool=host.sim.data.paused
 			close()
 			if value=="system":open("system")
-			elif value=="pause":host.sim.data.paused=not host.sim.data.paused
+			elif value=="pause":host.sim.data.paused=not was_paused
 			elif value=="speed":host.sim.data.speed=2 if host.sim.data.speed==1 else 1
 			else:host.set_layer(value))
 		b.custom_minimum_size.x=88

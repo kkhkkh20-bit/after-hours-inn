@@ -1329,7 +1329,7 @@ func context_items(kind_: String,id_: String) -> Array:
 		var items=[]
 		if command_status()!="":items.append(["stop","현재 작업 취소"])
 		if sim.data.ops.drag!="" or sim.data.player.carry!="":items.append(["drop","운반 내려놓기"])
-		items.append(["automation","알바 고용·여관 개선"])
+		items.append(["private_entry","비밀 창고로 이동"])
 		items.append(["journal","영업 장부"])
 		if items.size()<4:items.append(["dig_tools","구멍·통로 파기"])
 		return items
@@ -1345,14 +1345,15 @@ func context_items(kind_: String,id_: String) -> Array:
 	if kind_=="view_tools":return [["view_front","앞에서 보기"],["view_back","뒤에서 보기"],["view_left","왼쪽에서 보기"],["view_right","오른쪽에서 보기"]]
 	if kind_=="automation":
 		var t: Dictionary=sim.data.tycoon
-		return [["hire_reception","접수 알바 · 10닢 / 일당 2닢",not t.reception],["hire_cleaning","청소 알바 · 10닢 / 일당 2닢",not t.cleaning],["upgrade_kitchen","주방 개선 · %d닢 / 식사값·속도 상승" %(12+int(t.kitchen)*8),int(t.kitchen)<3],["delegate","마라에게 식사 자동 운영 맡기기"]]
+		return [["hire_reception","접수 알바 · 근무 중" if t.reception else "접수 알바 · 10닢 / 일당 2닢",not t.reception],["hire_cleaning","청소 알바 · 근무 중" if t.cleaning else "청소 알바 · 10닢 / 일당 2닢",not t.cleaning],["upgrade_kitchen","주방 개선 · %d닢 / 식사값·속도 상승" %(12+int(t.kitchen)*8),int(t.kitchen)<3],["delegate","마라에게 식사 자동 운영 맡기기"]]
 	if kind_=="conversation":return Dialogue.options(sim,id_)
 	if Sandbox.active(sim):
 		match kind_:
 			"ground":return [["walk_here","여기로 이동"],["make_entrance","이곳에 구멍 파기 · 3닢"]]
 			"cellar_floor":return [["place_tunnel","통로 파기 · 목적지 지정"],["walk_below","여기로 이동"],["build_prison","감옥 · 6닢"],["build_stash","은닉 창고 · 4닢"],["build_refuge","은신처 · 6닢"],["build_furnace","처리 화로 · 10닢"],["surface_exit","이 위치에 지상 출구 공사 · 3닢"]]
 			"portal":
-				var items=[["portal_use","올라가기" if sim.data.player.floor==1 else "내려가기"],["dig_tools","구멍·통로 파기"],["view_tools","뒤쪽·옆쪽에서 보기"],["portal_cover","덮개 열기 / 숨기기"]]
+				var e_=Sandbox.entrance(sim,id_)
+				var items=[["portal_use",("올라가기" if sim.data.player.floor==1 else "내려가기")+(" · 덮개 자동 닫힘" if sim.data.get("tycoon",{}).get("easy",false) else "")],["portal_cover","덮개 숨기기 · 현재 열림" if e_.get("open",false) else "덮개 열기 · 현재 숨김"],["dig_tools","구멍·통로 파기"]]
 				for e in sim.data.sandbox.entrances:
 					if e.id!=id_:items.append(["connect:"+e.id,e.name+"까지 통로 연결"])
 				return items
@@ -1402,7 +1403,7 @@ func context_items(kind_: String,id_: String) -> Array:
 			if sim.data.player.floor==1 and (not sim.gentle_opening() or sim.data.served>=3): items.append(["cell","구금칸 설치 / 구금"])
 			items.append(["system","저장 · 화면 설정"])
 			return items
-		"system": return [["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
+		"system": return [["easy_toggle","쉬운 운영 끄기 · 고용 유지" if sim.data.get("tycoon",{}).get("easy",false) else "쉬운 운영 켜기 · 무료 직원 지원"],["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
 	return []
 
 func travel_to_floor(target: int) -> void:
@@ -1416,7 +1417,13 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		var index=int(action.get_slice(":",1))
 		if index>=0 and index<selection_options.size():activate_selection(selection_options[index])
 		return
-	if action=="go_floor":travel_to_floor(int(id_));return
+	if action=="easy_toggle":
+		Tycoon.set_easy(sim,not sim.data.get("tycoon",{}).get("easy",false));sim.note("쉬운 운영 설정을 변경했습니다.");return
+	if action=="go_floor":
+		Commands.cancel(self,true)
+		pending_context_action={"kind":"arrival","id":"","action":"floor_arrived","floor":int(id_)}
+		travel_to_floor(int(id_));return
+	if action=="floor_arrived":return
 	if action=="counter_more":object_context.open("counter_more");return
 	if action=="stop":
 		Commands.cancel(self);dig_mode=""
@@ -1818,9 +1825,9 @@ func sandbox_action(kind_: String,id_: String,action: String) -> bool:
 		"upgrade_kitchen":Tycoon.upgrade_kitchen(sim);return true
 		"upgrade_room":Tycoon.upgrade_room(sim,int(id_));return true
 		"private_entry":
-			if sim.data.player.floor==2:sim.queue_gallery();return true
-			if sim.data.player.floor==1:sim.queue_floor();return true
-			sim.queue_move(Tycoon.PRIVATE_ENTRY);return true
+			if sim.data.player.floor!=0:
+				pending_context_action={"kind":"owner","id":"","action":"private_entry","floor":0};travel_to_floor(0);return true
+			Commands.move(self,Tycoon.PRIVATE_ENTRY);return true
 	if action.begins_with("connect:"):Sandbox.connect_tunnel(sim,id_,action.trim_prefix("connect:"));return true
 	if action.begins_with("build_") and action!="build_mode":Sandbox.build(sim,action.trim_prefix("build_"),build_cell);return true
 	match action:
@@ -1883,7 +1890,7 @@ func sandbox_objects(point: Vector2) -> bool:
 		if floor_==2:continue
 		var p: Vector2=e.top if floor_==0 else Vector2(e.bottom)
 		if not Selection.visible_floor(self,floor_):continue
-		if point.distance_to(camera.unproject_position(world_point(p,floor_,0.1)))<36:
+		if point.distance_to(camera.unproject_position(world_point(p,floor_,0.1)))<44:
 			object_context.open("portal",e.id);return true
 	if sim.data.player.floor==1 and Selection.visible_floor(self,1):
 		for f in sim.data.sandbox.facilities:

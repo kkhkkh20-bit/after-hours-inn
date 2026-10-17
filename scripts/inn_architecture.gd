@@ -99,3 +99,9 @@ static func build(h) -> void:
 	h.world_label("뒤편 전용 출입로",Vector3(13.4,0.4,-6.4),h.surface).pixel_size=0.011
 	# Earth under the section, low enough not to conceal the playable cellar.
 	h.box(Vector3(20,0.18,7),Vector3(1,-4.45,4),Color("393026"))
+
+	# Painted circulation strips do not participate in collision/navigation.
+	for x in range(-1,10):h.box(Vector3(.82,.018,.48),Vector3(x+.5,.065,5),Color("8b7957"))
+	for z in range(-1,5):h.box(Vector3(.48,.018,.82),Vector3(12.75,.07,z+.5),Color("486c65"))
+	h.world_label("객실·계단",Vector3(4,.18,5.3),h.surface).pixel_size=.009
+	h.world_label("창고 통로",Vector3(13.3,.18,.3),h.surface).pixel_size=.009

@@ -7,6 +7,8 @@ func check(name_: String,value: bool) -> void:
 func fresh() -> void:
 	app.start_campaign();app.journal.close();app.sim.data.paused=false;app.sim.data.next_guest=99999
 	app.sim.data.people.guest_1.pos=Vector2(-1.75,.25);app.sim.data.people.guest_1.state="waiting";app.sim.data.people.guest_1.path=[];app.sim.data.people.guest_1.known=true
+	app.sim.data.people.guest_1.visit="stay"
+	app.sim.data.tycoon.reception=false;app.sim.data.tycoon.cleaning=false;app.sim.data.tycoon.easy=false
 	app.set_layer("surface");app.sync_view(0)
 func run() -> void:
 	app=load("res://main.tscn").instantiate();root.add_child(app)
@@ -99,5 +101,27 @@ func run() -> void:
 	check("escape from world opens settings",app.object_context.kind=="system" and app.object_context.panel.visible)
 	app.object_context.close();app.set_layer("rooms");app.object_context.refresh()
 	check("active floor remains indicated after menus",app.object_context.controls.has("@view:rooms") and app.object_context.controls["@view:rooms"].modulate!=app.object_context.controls["@view:surface"].modulate)
+	fresh();s=app.sim;app.Tycoon.set_easy(s,true)
+	check("easy mode provides all three operating jobs",s.data.tycoon.reception and s.data.tycoon.cleaning and s.data.staff.delegated)
+	check("opening settlement caps combined cost at six",app.Tycoon.settlement_cost(s,24)==6)
+	s.data.campaign.day=4
+	check("fourth day restores original settlement",app.Tycoon.settlement_cost(s,24)==24)
+	s.data.campaign.day=1;s.data.rooms["1"].dirty=true
+	var recommended=app.Tycoon.recommended_room(s,"guest_1")
+	check("recommendation prefers clean available room",recommended==2)
+	app.Dialogue.choose(s,"guest_1","recommend_room")
+	check("recommended action creates manual reservation",s.data.booking_request.get("room",0)==2 and s.data.rooms["2"].reserved=="guest_1")
+	fresh();s=app.sim;app.Tycoon.set_easy(s,true);s.data.people.guest_1.arrival=0;s.data.clock=10
+	app.Tycoon.tick(s,.1)
+	check("staff leave time to read a new guest request",s.data.people.guest_1.room==0)
+	s.data.clock=20;app.Tycoon.tick(s,.1)
+	check("staff automatically admit unattended guest",s.data.people.guest_1.room>0)
+	var entry: Dictionary=s.data.sandbox.entrances[0];s.data.player.floor=0;s.data.player.pos=entry.top;entry.open=true
+	app.Sandbox.transit(s,entry.id)
+	check("easy transit closes secret cover",s.data.player.floor==1 and not entry.open)
+	app.Sandbox.transit(s,entry.id)
+	check("covered entrance remains usable by owner",s.data.player.floor==0 and not entry.open)
+	check("service corridor reaches private entrance",not s.path_to(Vector2(-.25,2.25),app.Tycoon.PRIVATE_ENTRY).is_empty())
+	check("guest grid excludes private warehouse",s.guest_path(Vector2(-.25,2.25),app.Tycoon.PRIVATE_ENTRY).is_empty())
 	print("FOCUSED CHECKS ",checks.filter(func(x):return x).size(),"/",checks.size())
 	quit(0 if checks.all(func(x):return x) else 1)

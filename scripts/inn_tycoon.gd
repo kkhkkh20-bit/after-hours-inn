@@ -5,11 +5,12 @@ const PRIVATE_ENTRY=Vector2(12.75,-2.25)
 static func active(s) -> bool:return s.data.has("tycoon")
 static func start(s) -> void:
 	s.data.tycoon={"reception":false,"cleaning":false,"kitchen":0,"rooms":{"1":0,"2":0,"3":0,"4":0,"5":0},"sales":0,"day_sales":0,"receipt":"","receipt_until":0.0,"next_reception":0.0,"cleaner":{"pos":Vector2(-0.25,-1.25),"floor":0,"path":[],"target":"","remaining":0.0}}
+	set_easy(s,true)
 	s.data.campaign.freeplay=true
 	Sandbox.finish(s,{"kind":"entrance","point":PRIVATE_ENTRY,"cell":Sandbox.underground(PRIVATE_ENTRY)})
 	s.data.sandbox.entrances[0].name="창고 안 비밀 입구"
 	s.data.player.pos=Vector2(-0.25,2.25)
-	s.note("마라: 식사는 제가 맡을게요. 접수·청소 알바를 고용하면 여관을 비우셔도 돼요. 비밀 입구는 손님이 못 들어오는 뒤편 창고에 있어요.")
+	s.note("마라: 접수·식사·청소는 저희가 맡을게요. 손님을 눌러 직접 안내해도 돼요. 비밀 입구는 뒤편 창고에 있어요.")
 static func wage(s) -> int:return (4 if s.data.staff.hired else 0)+(2 if s.data.tycoon.reception else 0)+(2 if s.data.tycoon.cleaning else 0)
 static func income(s,amount: int,label_: String) -> void:
 	s.data.tycoon.sales+=amount;s.data.tycoon.day_sales+=amount;s.data.tycoon.receipt=label_+" +%d닢" %amount;s.data.tycoon.receipt_until=s.data.clock+3
@@ -52,7 +53,7 @@ static func tick(s,dt: float) -> void:
 		t.next_reception=s.data.clock+2.5
 		for id in s.data.people:
 			var p: Dictionary=s.data.people[id]
-			if p.state=="waiting" and p.get("role","")=="" and p.get("visit","")!="meal" and s.data.get("booking_request",{}).get("guest","")!=id:
+			if p.state=="waiting" and p.get("role","")=="" and p.get("visit","")!="meal" and s.data.get("booking_request",{}).get("guest","")!=id and (not t.get("easy",false) or s.data.clock-float(p.get("arrival",s.data.clock))>=18):
 				if check_in(s,id):s.note("토마가 %s의 숙박비를 받고 %d호로 안내했다." %[p.name,p.room])
 				break
 	if s.data.clock>=float(t.get("next_missing_check",0)):
@@ -78,6 +79,7 @@ static func tick(s,dt: float) -> void:
 		s.data.rooms[w.target].dirty=false;s.note("리아가 %s호 청소를 마쳤다. 다시 손님을 받을 수 있다." %w.target);w.target=""
 static func goal(s) -> String:
 	var t: Dictionary=s.data.tycoon
+	if t.get("easy",false):return "쉬운 운영 · 접수·식사·청소 자동 · 손님을 눌러 직접 안내도 가능"
 	if not t.reception:return "손님을 눌러 요구 확인 · 접수대에서 접수 알바 고용"
 	if not t.cleaning:return "접수·식사 자동 운영 중 · 청소 알바를 고용하면 객실도 반복 판매"
 	return "자동 운영 중 · 손님·객실·주방을 눌러 관리"
@@ -154,3 +156,24 @@ static func confirm(s,id: String) -> bool:
 		cancel_booking(s);s.note("안내하지 못했습니다. 방을 다시 선택해주세요.");return false
 	r.reserved="";s.data.booking_request={}
 	return true
+
+static func set_easy(s,enabled: bool) -> void:
+	s.data.tycoon.easy=enabled
+	if enabled:
+		s.data.tycoon.reception=true;s.data.tycoon.cleaning=true
+		s.data.staff.hired=true;s.data.staff.delegated=true;s.data.staff.ally=true
+
+static func settlement_cost(s,full_cost: int) -> int:
+	return mini(full_cost,6) if active(s) and s.data.tycoon.get("easy",false) and int(s.data.campaign.day)<=3 else full_cost
+
+static func recommended_room(s,id: String) -> int:
+	if not s.data.people.has(id):return 0
+	var best=INF;var chosen=0
+	var rival: Dictionary=s.data.people.get(s.data.people[id].get("rival",""),{})
+	for key in s.data.rooms:
+		var room_: Dictionary=s.data.rooms[key];var n=int(key)
+		if room_.guest!="" or room_.get("reserved","") not in ["",id]:continue
+		var score=float(n)*0.1+(100 if room_.dirty else 0)
+		if not rival.is_empty() and int(rival.get("room",0))>0 and Sandbox.floor_of(int(rival.room))==Sandbox.floor_of(n):score+=20.0/(1.0+Sandbox.room_point(n).distance_to(Sandbox.room_point(int(rival.room))))
+		if score<best:best=score;chosen=n
+	return chosen

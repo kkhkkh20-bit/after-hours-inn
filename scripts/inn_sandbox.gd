@@ -42,7 +42,7 @@ static func transit(s,id: String) -> void:
 	if e.is_empty():return
 	var down=s.data.player.floor==0
 	s.data.player.floor=1 if down else 0;s.data.player.pos=Vector2(e.bottom) if down else e.top
-	e.open=true;s.Intrigue.sync_drag(s);s.note("%s으로 %s." %[e.name,"내려왔다" if down else "올라왔다"])
+	e.open=not (s.data.has("tycoon") and s.data.tycoon.get("easy",false));s.data.sandbox.revision+=1;s.Intrigue.sync_drag(s);s.note("%s으로 %s." %[e.name,"내려왔다" if down else "올라왔다"])
 static func create_entrance(s,top: Vector2) -> bool:
 	if s.data.player.floor!=0 or not s.surface_walkable(top):s.note("1층이나 마당의 걸을 수 있는 바닥을 골라주세요.");return false
 	var bottom=underground(top)
@@ -208,6 +208,7 @@ static func tick(s,dt: float) -> void:
 			if p.floor in [0,2] and p.state=="staying" and not p.get("heard_work",false) and sound_at(s,p.pos,p.floor)>0.75:
 				p.heard_work=true;p.bubble="방 아래 공사 소리 좀 줄여주시겠소?";p.bubble_until=s.data.clock+6;s.note(p.name+"의 객실 가까이에서 큰 공사 소리가 났다. 소음 불편일 뿐 범죄 의심이나 신고는 아니다.")
 static func relationships(s) -> void:
+	if s.data.has("tycoon") and s.data.tycoon.get("easy",false) and int(s.data.campaign.day)<=2:return
 	var list=s.data.people.values().filter(func(p):return p.state in ["waiting","staying","dining"] and p.get("role","")=="")
 	for i in range(list.size()):
 		var a: Dictionary=list[i]

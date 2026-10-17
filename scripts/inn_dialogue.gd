@@ -51,11 +51,14 @@ static func options(sim,id: String) -> Array:
 	if p.get("role","")=="broker":return [["accept_cargo","상자를 맡겠습니다. +12닢"],["accept_hold","생포 의뢰도 있습니까? · 선택 의뢰"],["ask_story","상자에 무엇이 들었습니까?"],["refuse_cargo","우리 여관에서는 안 됩니다."]]
 	if p.get("role","")=="fugitive" and not p.get("protected",false):return [["shelter","방을 드리겠습니다. 돈은 됐어요."],["escort","함께 지하 은신처로 갑시다."],["feed_fugitive","식사라도 드시고 가세요."],["ask_story","누가 당신을 찾습니까?"],["dismiss","여기는 안 됩니다."]]
 	var result=[]
-	if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":result.append(["offer_room","객실 선택 · %d닢부터" %int(p.rate)])
+	if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":
+		var n=sim.Tycoon.recommended_room(sim,id)
+		result.append(["recommend_room","추천 %d호 안내 · %d닢" %[n,int(p.rate)+sim.Tycoon.room_bonus(sim,n)] if n>0 else "빈방 없음 · 청소·퇴실 대기",n>0])
+		result.append(["offer_room","직접 방 선택"])
 	else:
 		if p.get("visit","")=="meal" and p.state=="arriving" or sim.data.orders.values().any(func(o):return o.guest==id and o.status not in ["served","cancelled"]):result.append(["serve_meal","따뜻한 식사를 내오겠습니다."])
 	result.append(["ask_story","길에서는 별일 없었습니까?"])
-	if p.get("rival","")!="":result.append(["mediate","여기서는 싸우지 마세요."])
+	if p.get("rival","")!="" and result.size()<3:result.append(["mediate","여기서는 싸우지 마세요."])
 	if int(p.room)>0:result.append(["relocate","다른 방으로 옮겨드릴까요?"])
 	result.append(["actions","다른 행동"])
 	return result
@@ -67,6 +70,10 @@ static func choose(sim,id: String,action: String) -> String:
 		if sim.request_room(n,id):p.chosen_room=n
 		return "close"
 	match action:
+		"recommend_room":
+			var n=sim.Tycoon.recommended_room(sim,id)
+			if n>0:sim.request_room(n,id)
+			return "close"
 		"offer_room":p.dialogue_stage="rooms";return "reopen"
 		"talk_back":p.dialogue_stage="request";return "reopen"
 		"ask_story":

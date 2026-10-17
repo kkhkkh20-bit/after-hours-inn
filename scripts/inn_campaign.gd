@@ -5,6 +5,7 @@ static func active(sim) -> bool:
 	return sim.data.get("campaign",{}).get("active",false)
 
 static func start(sim) -> void:
+	sim.reset_progress()
 	sim.start_gentle_opening()
 	sim.data.campaign={"active":true,"day":1,"next_dawn":480.0,"intro":true,"summary":false,"ending":"","deal":"waiting","cargo":false,"guard_day":0,"guard_done":0,"worker":"","broker":"","reputation":0,"talks":0,"bookings":0,"start_money":24,"start_served":0,"history":[],"rumors":[],"fugitive":"","protected":false,"ledger_found":false,"evidence_used":false,"collector":"","tax_paid":false}
 	Sandbox.start(sim)
@@ -55,6 +56,7 @@ static func settle(sim) -> void:
 	var c: Dictionary=sim.data.campaign
 	if c.summary or c.ending!="":return
 	var cost=rent(int(c.day))+(preload("res://scripts/inn_tycoon.gd").wage(sim) if sim.data.has("tycoon") else (4 if sim.data.staff.hired else 0))+(8 if int(c.day)==3 and not c.tax_paid else 0)
+	if sim.data.has("tycoon"):cost=preload("res://scripts/inn_tycoon.gd").settlement_cost(sim,cost)
 	sim.charge(cost,"%d일차 임대료·급여%s" %[c.day,"·세금" if int(c.day)==3 else ""])
 	var record={"day":c.day,"income":int(sim.data.money)-int(c.start_money)+cost,"served":int(sim.data.served)-int(c.start_served),"cost":cost+(8 if int(c.day)==3 and c.tax_paid else 0),"balance":sim.data.money,"debt":sim.data.debt}
 	c.history.append(record); c.summary=true

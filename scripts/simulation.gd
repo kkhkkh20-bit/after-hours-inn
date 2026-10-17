@@ -40,6 +40,10 @@ func _init() -> void:
 	spawn_guest()
 	note("손님이 도착했다. 영업 창에서 객실을 배정하자.")
 
+func reset_progress() -> void:
+	var fresh=get_script().new()
+	data=fresh.data
+
 func note(text: String) -> void:
 	data.logs.append({"time":int(data.clock),"text":text})
 	if data.logs.size() > 30: data.logs.pop_front()

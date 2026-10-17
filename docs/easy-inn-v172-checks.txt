@@ -1,0 +1,44 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS arrival point has a real route
+PASS reading UI does not mutate missing-person timer
+PASS manual room request reserves immediately
+PASS second guest cannot steal reserved room
+PASS reservation becomes occupied exactly once
+PASS repeated confirmation cannot collect money twice
+PASS used room becomes dirty
+PASS dirty room can reserve for cleaning then reuse
+PASS cleaning then second occupancy completes
+PASS explicit cancellation releases room reservation
+PASS unreachable click does not snap across map
+PASS moving guest stays captured at press
+PASS drag release never emits a tap
+PASS UI-owned gesture never emits a world tap
+PASS pinch release never emits a tap
+PASS menu position stays fixed as guest moves
+PASS context action uses 88px logical touch height
+PASS outside tap closes menu without replacing task
+PASS settings retain save and load while menu pauses time
+PASS real GUI click opens room choices without world movement
+PASS real GUI booking click creates one reservation
+PASS JSON save restores active reservation
+PASS malformed save leaves current progress untouched
+PASS resume button during a paused conversation really resumes
+PASS upstairs route uses public corridor instead of room two
+PASS invalid destination preserves booking and route
+PASS valid destination replaces booking and releases room
+PASS escape closes selection instead of exiting
+PASS escape from world opens settings
+PASS active floor remains indicated after menus
+PASS easy mode provides all three operating jobs
+PASS opening settlement caps combined cost at six
+PASS fourth day restores original settlement
+PASS recommendation prefers clean available room
+PASS recommended action creates manual reservation
+PASS staff leave time to read a new guest request
+PASS staff automatically admit unattended guest
+PASS easy transit closes secret cover
+PASS covered entrance remains usable by owner
+PASS service corridor reaches private entrance
+PASS guest grid excludes private warehouse
+FOCUSED CHECKS 41/41

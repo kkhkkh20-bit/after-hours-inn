@@ -31,9 +31,14 @@ static func build(h) -> void:
 	for x in [-5.5,5.5]:h.box(Vector3(9,0.45,0.2),Vector3(x,0.22,6),stone,true)
 	# Preserve the two existing ground-floor guest rooms and path targets.
 	for z in range(-6,6):
-		if z in [-3,1]:continue
+		if z in [-3,1,4,5]:continue
 		h.box(Vector3(0.15,1,1),Vector3(2,0.55,z+0.5),plaster,true)
-	h.box(Vector3(8,1,0.15),Vector3(6,0.55,0),plaster,true)
+	h.box(Vector3(5,1,0.15),Vector3(4.5,0.55,0),plaster,true)
+	# Private rooms end before the public front hall and the right stair corridor.
+	# Upstairs traffic never needs to enter an occupied ground-floor room.
+	h.box(Vector3(5,0.75,0.15),Vector3(4.5,0.40,4),plaster,true)
+	h.box(Vector3(0.15,0.75,10),Vector3(7,0.40,-1),plaster,true)
+	h.world_label("객실 공용 통로",Vector3(7.9,0.2,0.5),h.surface).pixel_size=0.009
 	for z in [-2.0,2.0]:
 		h.model("furniture","bedSingle",Vector3(5.6,0.08,z),Vector3(1.1,0.75,2),0,true)
 		h.model("furniture","rugRectangle",Vector3(3.7,0.08,z),Vector3(1.4,0.025,2))

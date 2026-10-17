@@ -84,5 +84,7 @@ func run() -> void:
 	down=InputEventMouseButton.new();down.position=center;down.button_index=MOUSE_BUTTON_LEFT;down.pressed=true;root.push_input(down,true);await process_frame
 	up=InputEventMouseButton.new();up.position=center;up.button_index=MOUSE_BUTTON_LEFT;up.pressed=false;root.push_input(up,true);await process_frame
 	check("resume button during a paused conversation really resumes",not s.data.paused and not app.object_context.panel.visible)
+	var stair_route: Array=s.guest_path(Vector2(-1.75,.25),s.STAIRS)
+	check("upstairs route uses public corridor instead of room two",not stair_route.is_empty() and stair_route.all(func(point):return not Rect2(2.2,.2,4.5,3.5).has_point(point)))
 	print("FOCUSED CHECKS ",checks.filter(func(x):return x).size(),"/",checks.size())
 	quit(0 if checks.all(func(x):return x) else 1)

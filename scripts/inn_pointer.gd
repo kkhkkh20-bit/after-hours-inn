@@ -57,7 +57,8 @@ func observe(event: InputEvent, ui: bool) -> void:
 		if pinching:
 			if fingers.size()>=2:
 				var points=fingers.values();var span: float=points[0].distance_to(points[1])
-				if not blocked and pinch_span>20 and span>20:host.camera.size=clampf(host.camera.size*pinch_span/span,12,90)
+				if not blocked and pinch_span>20 and span>20:
+					host.camera.size=clampf(host.camera.size*pinch_span/span,12,90);host.comfort.zoom=host.camera.size
 				pinch_span=span
 		elif event.index==touch_id:motion(event.position)
 

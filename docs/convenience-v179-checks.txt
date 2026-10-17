@@ -1,0 +1,47 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS owner control no longer overlaps objective
+PASS notice no longer overlaps active task
+PASS local menu starts below top status lines
+PASS movement path is visible on owner floor
+PASS route preference hides path and destination
+PASS ground destination does not leak into basement view
+PASS right click cancels floor destination and build mode
+PASS selected person has a distinct location ring
+PASS selection ring disappears when menu closes
+PASS irreversible action asks with exact target
+PASS cancelling confirmation leaves guest alive
+PASS rapid repeated same action cannot toggle twice
+PASS sound zoom angle and route preferences persist
+PASS save writes a valid independent file
+PASS replacement retains previous save backup
+PASS save restores money and multi-floor journey
+PASS corrupt current file falls back to prior valid backup
+PASS sixty active seconds create separate autosave
+PASS background pause survives closing an open menu
+PASS background autosave restores deliberate pause
+PASS startup offers existing progress before running new game
+PASS operations panel exposes guest and five rooms
+PASS guest shortcut focuses correct person without issuing movement
+PASS recent log retains messages
+PASS direct action feedback is not covered by sales receipt
+CONVENIENCE CHECKS 25/25
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS upstairs button starts physical stair route
+PASS upstairs route arrives and follows owner
+PASS upstairs stair slope is a down target
+PASS single upstairs stair tap starts descent
+PASS descent returns to ground
+PASS exact entrance takes owner to basement
+PASS ladder body above foot is clickable
+PASS single ladder body tap queues ascent without menu
+PASS ladder ascent completes through chosen entrance
+PASS basement to upstairs begins with ground transfer
+PASS basement to upstairs chains both legs
+PASS upstairs to basement chains both legs
+PASS stop cancels multi-floor journey
+PASS new ground command cancels floor destination
+PASS paused travel does not silently unpause
+FLOOR TRAVEL CHECKS 15/15

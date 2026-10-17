@@ -2,6 +2,7 @@ extends Node3D
 const Pointer=preload("res://scripts/inn_pointer.gd")
 const Selection=preload("res://scripts/inn_selection.gd")
 const Commands=preload("res://scripts/inn_commands.gd")
+var comfort=preload("res://scripts/inn_comfort.gd").new()
 var pointer=Pointer.new()
 var selection_options: Array=[]
 var request_anchor=Vector2.ZERO
@@ -348,7 +349,8 @@ func _ready() -> void:
 	add_child(episode_ui); episode_ui.setup(self,episode)
 	var args := OS.get_cmdline_user_args()
 	journal=preload("res://scripts/inn_journal.gd").new();add_child(journal);journal.setup(self)
-	if args.is_empty():start_campaign()
+	comfort.setup(self)
+	if args.is_empty():start_campaign();comfort.offer_resume()
 	if "--capture-sandbox" in args:
 		await capture_sandbox();return
 	if "--demo-verify" in args:
@@ -549,7 +551,7 @@ func sync_view(dt: float) -> void:
 	footing.position=Vector3(d.player.pos.x,-.12,d.player.pos.y)
 	footing.visible=surface_shown and int(d.player.floor)==0 and not Rect2(-10,-6,20,12).has_point(d.player.pos)
 	if travel_marker!=null:
-		travel_marker.visible=not d.excavation.path.is_empty()
+		travel_marker.visible=comfort.routes and Selection.visible_floor(self,int(d.player.floor)) and not d.excavation.path.is_empty()
 		if travel_marker.visible: travel_marker.position=world_point(d.excavation.path.back(),d.player.floor,0.05)
 	var cellar_shown: bool=view_layer in ["all","below"]
 	viewed_floor=d.player.floor
@@ -789,7 +791,7 @@ func start_campaign() -> void:
 	episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false;frame_owner()
 
 func context_opened(kind_: String) -> void:
-	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk","automation","pick","room","navigation","person","actions","other","system"] and not dialogue_paused:
+	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk","automation","pick","room","navigation","person","actions","other","system","confirm","comfort","help","recent","resume"] and not dialogue_paused:
 		dialogue_previous_pause=sim.data.paused;dialogue_paused=true;sim.data.paused=true
 
 func context_closed(_kind: String) -> void:
@@ -802,25 +804,22 @@ func rest_until_dawn() -> void:
 	journal.refresh()
 
 func save_game() -> void:
-	var file:=FileAccess.open("user://inn-tycoon-v15.json" if Campaign.active(sim) else "user://inn-v03.json",FileAccess.WRITE)
-	if file==null:
-		sim.note("저장 파일을 만들 수 없다.")
-		return
-	sim.data.episode=episode.data.duplicate(true)
-	file.store_string(JSON.stringify(sim.snapshot()))
-	file.close()
-	sim.note("저장했다. 진행 중인 주문과 작업도 함께 기록했다.")
+	comfort.save("user://inn-tycoon-v15.json" if Campaign.active(sim) else "user://inn-v03.json")
 
-func load_game() -> void:
-	Commands.reset_view(self)
-	var save_path="user://inn-tycoon-v15.json" if Campaign.active(sim) else "user://inn-v03.json"
+func load_game(source: String="") -> void:
+	var save_path=source if source!="" else ("user://inn-tycoon-v15.json" if Campaign.active(sim) else "user://inn-v03.json")
+	if not FileAccess.file_exists(save_path) and FileAccess.file_exists(save_path+".bak"):save_path+=".bak"
 	if not FileAccess.file_exists(save_path):
 		sim.note("저장된 기록이 없다. 메뉴에서 먼저 저장하자.")
 		return
-	var saved: Variant=JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if not sim.restore(saved):
+	var saved: Variant=comfort.read_save(save_path)
+	var loaded=sim.restore(saved)
+	if not loaded and FileAccess.file_exists(save_path+".bak"):
+		saved=comfort.read_save(save_path+".bak");loaded=sim.restore(saved)
+	if not loaded:
 		sim.note("이 버전에서 읽을 수 없는 저장 파일이다.")
 		return
+	Commands.reset_view(self)
 	if sim.data.has("episode"):
 		episode.data=sim.data.episode.duplicate(true)
 		episode_ui.ending_shown=false
@@ -829,6 +828,7 @@ func load_game() -> void:
 		sim.data.paused=false;episode_ui.root.hide();journal.opened=false;journal.panel.hide();journal.refresh()
 	last_cell_count=-1
 	sim.note("저장한 상태로 돌아왔다.")
+	comfort.restore_meta(saved)
 	sync_view(0)
 
 func pan_camera(relative: Vector2) -> void:
@@ -849,9 +849,13 @@ func _input(event: InputEvent) -> void:
 	pointer.observe(event,modal or (mobile_ui!=null and mobile_ui.blocks_point(point)))
 	if event is InputEventMouseMotion or event is InputEventScreenDrag:pointer_position=event.position
 	if not modal and event is InputEventMagnifyGesture:
-		camera.size=clampf(camera.size/event.factor,12,90);get_viewport().set_input_as_handled()
+		camera.size=clampf(camera.size/event.factor,12,90);comfort.zoom=camera.size;comfort.remember();get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_RIGHT and event.pressed and not ((journal!=null and journal.opened) or (episode_ui!=null and episode_ui.opened)):
+		if object_context.panel.visible:object_context.close()
+		else:cancel_everything()
+		get_viewport().set_input_as_handled();return
 	if episode_ui!=null and episode_ui.opened or journal!=null and journal.opened: return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if Campaign.active(sim) and event.physical_keycode not in [KEY_ESCAPE,KEY_M,KEY_F5,KEY_F9]:return
@@ -885,8 +889,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F5:save_game()
 			KEY_F9:load_game()
 	if event is InputEventMouseButton and event.device!=-1 and event.pressed:
-		if event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(12,camera.size-2)
-		elif event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(90,camera.size+2)
+		if event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(12,camera.size-2);comfort.zoom=camera.size;comfort.remember()
+		elif event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(90,camera.size+2);comfort.zoom=camera.size;comfort.remember()
 	if (event is InputEventScreenTouch and not event.pressed) or (event is InputEventMouseButton and event.device!=-1 and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed):
 		var tap: Dictionary=pointer.take()
 		if not tap.is_empty():world_tap(tap.point,tap.candidates)
@@ -987,6 +991,7 @@ func _physics_process(delta: float) -> void:
 		last_cash=sim.data.money
 		if ambience!=null:ambience.volume_db=-80 if muted else -26
 	if journal!=null:journal.refresh()
+	comfort.tick(delta)
 
 func send_key(key: int) -> void:
 	var event:=InputEventKey.new()
@@ -1076,7 +1081,7 @@ func follow_owner(snap: bool=true) -> void:
 	if view_layer!=layer_ and object_context!=null:object_context.close()
 	view_layer=layer_;overview=false;camera_offset=Vector2.ZERO
 	if snap:
-		camera.size=24
+		camera.size=comfort.zoom
 		camera_focus=focus_position()
 		camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
@@ -1334,6 +1339,7 @@ func context_stats() -> String:
 	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.values().filter(func(p): return p.state!="gone").size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
 
 func context_title(kind_: String,id_: String) -> String:
+	if kind_ in ["confirm","comfort","operations","recent","help","resume"]:return {"resume":"이전 영업 이어하기","confirm":"실행 확인","comfort":"조작·화면·소리","operations":"손님·객실 바로 찾기","recent":"최근 알림","help":"조작 도움말"}[kind_]
 	if kind_=="pick":return "대상 선택"
 	if kind_=="contracts":return "현상수배 게시판"
 	if kind_=="intel_archive":return "정보와 단서 기록"
@@ -1383,12 +1389,14 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
+	if kind_ in ["confirm","comfort","operations","recent","help","resume"]:return comfort.items(kind_)
 	if kind_=="counter_more":return [["zones","넓은 지도 · 구역 보기"],["recruit","마라와 이야기"],["private_entry","주인 전용 창고로 이동"],["view_tools","화면 방향"],["system","저장·설정"]]
 	if Sandbox.active(sim) and kind_=="owner":
 		var items=[]
 		if command_status()!="":items.append(["stop","현재 작업 취소"])
 		if sim.data.ops.drag!="" or sim.data.player.carry!="":items.append(["drop","운반 내려놓기"])
 		items.append(["build_tools","지하 시설 설치"] if sim.data.player.floor==1 else ["private_entry","비밀 창고로 이동"])
+		items.append(["operations","손님·객실 바로 찾기"])
 		items.append(["contracts","현상수배 · 범죄 의뢰"])
 		if items.size()<4:items.append(["prison_overview","감옥 전체 관리"])
 		if items.size()<4:items.append(["dig_tools","구멍·통로 파기"])
@@ -1492,7 +1500,7 @@ func context_items(kind_: String,id_: String) -> Array:
 			if sim.data.player.floor==1 and (not sim.gentle_opening() or sim.data.served>=3): items.append(["cell","구금칸 설치 / 구금"])
 			items.append(["system","저장 · 화면 설정"])
 			return items
-		"system": return [["zones","넓은 지도 · 구역 보기"],["easy_toggle","쉬운 운영 끄기 · 고용 유지" if sim.data.get("tycoon",{}).get("easy",false) else "쉬운 운영 켜기 · 무료 직원 지원"],["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
+		"system": return [["operations","손님·객실 바로 찾기"],["comfort","조작·화면·소리"],["recent","최근 알림 다시 보기"],["load_auto","자동 저장 이어하기",FileAccess.file_exists(comfort.AUTO)],["zones","넓은 지도 · 구역 보기"],["easy_toggle","쉬운 운영 끄기 · 고용 유지" if sim.data.get("tycoon",{}).get("easy",false) else "쉬운 운영 켜기 · 무료 직원 지원"],["view_tools","앞·뒤·옆에서 보기"],["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
 	return []
 
 func floor_route_step(target: int,entry: String="") -> bool:
@@ -1544,6 +1552,8 @@ func transit_at(point: Vector2) -> Dictionary:
 	return best
 
 func context_action(kind_: String,id_: String,action: String) -> void:
+	if comfort.gate(kind_,id_,action):return
+	if comfort.act(kind_,id_,action):return
 	if kind_ in ["person","conversation","actions","other"] and (not sim.data.people.has(id_) or sim.data.people[id_].state=="gone"):
 		sim.note("그 손님은 이미 떠났습니다.");return
 	if action.begins_with("pick:"):
@@ -2195,3 +2205,12 @@ func activate_selection(choice: Dictionary) -> void:
 
 func command_status() -> String:return Commands.status(self)
 func view_name() -> String:return {"surface":"식당·마당","rooms":"객실","below":"지하","all":"전체"}.get(view_layer,"여관")
+
+func cancel_everything() -> void:
+	Commands.cancel(self);dig_mode="";comfort.confirm_job.clear()
+	if dig_cancel!=null:dig_cancel.hide()
+	comfort.say("이동·작업·공사 위치 선택을 취소했습니다.")
+
+func _notification(what: int) -> void:
+	if what==NOTIFICATION_APPLICATION_FOCUS_OUT and comfort!=null and comfort.host!=null:
+		comfort.background()

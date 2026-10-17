@@ -23,7 +23,9 @@ static func cancel(host,quiet: bool=false) -> void:
 static func move(host,target: Vector2) -> bool:
 	if host.sim.data.paused:host.sim.note("일시정지 중입니다. 상단 재개를 눌러주세요.");return false
 	var route: Array=host.sim.move_route(target)
-	if route.is_empty():return false
+	if route.is_empty():
+		if not host.sim.data.logs.is_empty():host.comfort.say(str(host.sim.data.logs.back().text))
+		return false
 	cancel(host,true)
 	host.sim.data.excavation.path=route
 	host.sim.data.excavation.intent="move"

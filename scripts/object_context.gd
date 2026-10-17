@@ -57,8 +57,8 @@ func setup(owner_) -> void:
 		if value=="pause":controls["@pause"]=b
 		if value=="speed":controls["@speed"]=b
 	owner_button=button_("주인 찾기",top,func():host.frame_owner(),56);owner_button.position=Vector2(20,164);owner_button.size.x=260;controls["@owner"]=owner_button
-	task_label=label_("",19);task_label.position=Vector2(24,236);task_label.size=Vector2(490,34);top.add_child(task_label)
-	cancel_button=button_("취소",top,func():close();host.context_action("owner","","stop"),64);cancel_button.position=Vector2(565,220);cancel_button.size.x=130;cancel_button.hide()
+	task_label=label_("",19);task_label.position=Vector2(24,286);task_label.size=Vector2(490,34);top.add_child(task_label)
+	cancel_button=button_("취소",top,func():close();host.context_action("owner","","stop"),64);cancel_button.position=Vector2(565,280);cancel_button.size.x=130;cancel_button.hide()
 	panel=PanelContainer.new();root.add_child(panel);panel.mouse_filter=Control.MOUSE_FILTER_STOP
 	var s=StyleBoxFlat.new();s.bg_color=Color("162930");s.border_color=Color("b89d6e");s.set_border_width_all(2);s.set_corner_radius_all(12);s.set_content_margin_all(14);panel.add_theme_stylebox_override("panel",s)
 	var outer=VBoxContainer.new();outer.add_theme_constant_override("separation",10);panel.add_child(outer)
@@ -106,7 +106,7 @@ func draw_actions(entries: Array) -> void:
 		controls[action]=b
 
 func sync_live_actions(force: bool=false) -> void:
-	if not panel.visible or kind not in ["contracts","questioning","prison","prison_roster","inmate","prison_overview","prison_policy","prison_settings"]:return
+	if not panel.visible or kind not in ["contracts","questioning","prison","prison_roster","inmate","prison_overview","prison_policy","prison_settings","operations","comfort"]:return
 	if not force and Time.get_ticks_msec()<next_live_refresh:return
 	next_live_refresh=Time.get_ticks_msec()+250
 	var entries: Array=host.context_items(kind,target)
@@ -115,7 +115,7 @@ func sync_live_actions(force: bool=false) -> void:
 		if child is Button:before.append(str(child.get_meta("action","")))
 	var after=entries.map(func(row):return str(row[0]))
 	if before!=after:
-		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):return
+		if host.pointer.pressed or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):return
 		var scroll_at=scroll.scroll_vertical;var old_position=panel.position
 		draw_actions(entries);scroll.scroll_vertical=scroll_at
 		call_deferred("reflow_live",old_position,kind,target)
@@ -128,7 +128,7 @@ func reflow_live(old_position: Vector2,expected_kind: String,expected_target: St
 	if not panel.visible or kind!=expected_kind or target!=expected_target:return
 	place()
 	var viewport=host.get_viewport().get_visible_rect().size
-	panel.position=Vector2(clampf(old_position.x,12,maxf(12,viewport.x-panel.size.x-12)),clampf(old_position.y,170,maxf(170,viewport.y-panel.size.y-16)))
+	panel.position=Vector2(clampf(old_position.x,12,maxf(12,viewport.x-panel.size.x-12)),clampf(old_position.y,346,maxf(170,viewport.y-panel.size.y-16)))
 
 func place() -> void:
 	var viewport=host.get_viewport().get_visible_rect().size
@@ -136,14 +136,17 @@ func place() -> void:
 	column.custom_minimum_size.x=width-32
 	var header_height=maxf(88,fixed_header.get_combined_minimum_size().y)+42
 	var wanted=column.get_combined_minimum_size().y+header_height
-	panel.size=Vector2(width,minf(wanted,maxf(280,viewport.y-300)))
-	scroll.custom_minimum_size=Vector2(width-32,minf(wanted-header_height,maxf(180,viewport.y-300-header_height)))
+	panel.size=Vector2(width,minf(wanted,maxf(280,viewport.y-360)))
+	scroll.custom_minimum_size=Vector2(width-32,minf(wanted-header_height,maxf(180,viewport.y-360-header_height)))
 	var x=anchor.x+34
 	if x+width>viewport.x-12:x=anchor.x-width-34
-	panel.position=Vector2(clampf(x,12,maxf(12,viewport.x-width-12)),clampf(anchor.y-panel.size.y*.40,170,maxf(170,viewport.y-panel.size.y-16)))
+	panel.position=Vector2(clampf(x,12,maxf(12,viewport.x-width-12)),clampf(anchor.y-panel.size.y*.40,346,maxf(170,viewport.y-panel.size.y-16)))
 
 func _perform(action: String) -> void:
 	if not controls.has(action) or controls[action].disabled:return
+	var now=Time.get_ticks_msec();var key=kind+":"+target+":"+action
+	if key==host.comfort.last_action and now-host.comfort.last_action_at<300:return
+	host.comfort.last_action=key;host.comfort.last_action_at=now
 	var k=kind;var id_=target;close();host.context_action(k,id_,action)
 
 func close() -> void:
@@ -167,7 +170,7 @@ func refresh() -> void:
 		if controls.has("@view:"+view):controls["@view:"+view].modulate=Color("f5d79b") if host.view_layer==view else Color.WHITE
 	stats.text="%d닢 · %s" %[host.sim.data.money,host.sim.calendar_text().get_slice(" · ",0).get_slice(" ",1)]
 	top.visible=not ((host.journal!=null and host.journal.opened) or (host.episode_ui!=null and host.episode_ui.opened))
-	owner_button.text=("주인 · 따라가는 중" if not host.overview else "주인에게 돌아가기")+" · "+{0:"1층",1:"지하",2:"2층"}.get(int(host.sim.data.player.floor),"")
+	owner_button.text=("주인 추적" if not host.overview else "주인 찾기")+" · "+{0:"1층",1:"지하",2:"2층"}.get(int(host.sim.data.player.floor),"")
 	var job: String=host.command_status()
 	task_label.text=job;cancel_button.visible=job!=""
 	if panel.visible and kind in ["person","conversation","actions","other","inmate","questioning"]:

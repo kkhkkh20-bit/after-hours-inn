@@ -3,7 +3,7 @@ var stamp=""
 func update_route(host) -> void:
 	var d: Dictionary=host.sim.data
 	var path: Array=d.excavation.path
-	visible=not path.is_empty() and host.Selection.visible_floor(host,d.player.floor)
+	visible=host.comfort.routes and not path.is_empty() and host.Selection.visible_floor(host,d.player.floor)
 	if not visible:return
 	var key=str(d.player.floor)+":"+str(path)+":"+str(d.player.pos.snapped(Vector2(.1,.1)))
 	if key==stamp:return

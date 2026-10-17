@@ -22,10 +22,10 @@ func label_(value: String,size_: int) -> Label:
 func setup(h) -> void:
 	host=h;layer=24
 	root=Control.new();root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(root)
-	goal=label_("",21);root.add_child(goal);goal.position=Vector2(22,163);goal.size=Vector2(675,36)
-	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,197);notice.size=Vector2(675,38)
+	goal=label_("",18);root.add_child(goal);goal.position=Vector2(300,166);goal.size=Vector2(398,56);goal.max_lines_visible=2;goal.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,226);notice.size=Vector2(675,54);notice.max_lines_visible=2;notice.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	progress=label_("",19);root.add_child(progress);progress.size=Vector2(210,40);progress.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;progress.hide()
-	panel=PanelContainer.new();root.add_child(panel);panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);panel.offset_left=30;panel.offset_right=-30;panel.offset_top=270;panel.offset_bottom=-100
+	panel=PanelContainer.new();root.add_child(panel);panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);panel.offset_left=30;panel.offset_right=-30;panel.offset_top=350;panel.offset_bottom=-100
 	var s=StyleBoxFlat.new();s.bg_color=Color("1a272b");s.border_color=Color("a48a5b");s.set_border_width_all(2);s.set_corner_radius_all(12);s.content_margin_left=26;s.content_margin_right=26;s.content_margin_top=28;s.content_margin_bottom=26;panel.add_theme_stylebox_override("panel",s)
 	var col=VBoxContainer.new();col.add_theme_constant_override("separation",20);panel.add_child(col)
 	title=label_("",31);col.add_child(title)
@@ -48,6 +48,7 @@ func choose(action: String) -> void:
 		"freeplay":host.sim.data.campaign.ending="";host.sim.data.campaign.freeplay=true;host.sim.data.campaign.summary=false;host.sim.data.campaign.day=4;host.sim.data.campaign.next_dawn=host.Sandbox.DAY*4;host.sim.data.campaign.start_money=host.sim.data.money;host.sim.data.campaign.start_served=host.sim.data.served;previous_paused=false;close()
 		"rest":close();host.rest_until_dawn()
 		"load":close();host.load_game()
+		"load_auto":close();host.load_game(host.comfort.AUTO)
 		"save":host.save_game();last_key=""
 		_:close()
 
@@ -55,6 +56,8 @@ func refresh() -> void:
 	var sim=host.sim
 	if not host.Campaign.active(sim):root.hide();return
 	root.show()
+	goal.position.x=host.object_context.top.position.x+300
+	notice.position.x=host.object_context.top.position.x+22
 	var c: Dictionary=sim.data.campaign
 	goal.text=host.Campaign.goal(sim)
 	if host.view_layer=="below" and host.sim.Contracts.current(sim).is_empty():goal.text="지상 영업 · 객실 %d/%d · 문의 %d · 주문 %d" %[sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.rooms.size(),sim.waiting().size(),sim.data.orders.values().filter(func(o):return o.status not in ["served","cancelled"]).size()]
@@ -68,6 +71,7 @@ func refresh() -> void:
 		progress.text="%s · %.1f초" %[{"cook":"식사 준비","clean":"객실 정리","quick":"행동 중","subdue":"제압 중","construction":"시설 공사","dispose":"화로 가동"}.get(job.get("type",""),"굴착 중"),maxf(0,job.get("remaining",0.0))]
 		progress.position=host.camera.unproject_position(host.world_point(sim.data.player.pos,sim.data.player.floor,2.4))-Vector2(105,20)
 	if host.Tycoon.active(sim) and sim.data.tycoon.receipt_until>sim.data.clock and not opened:notice.text=sim.data.tycoon.receipt
+	if host.comfort.feedback_until>Time.get_ticks_msec() and not opened:notice.text=host.comfort.feedback
 	if (c.summary or c.ending!="") and not opened:open("summary");return
 	if not opened:return
 	var choices=[]
@@ -75,6 +79,7 @@ func refresh() -> void:
 		title.text="문 닫은 뒤 · 여관 타이쿤"
 		body.text="전쟁 중 국경 마을의 여관 주인.\n\n손님을 받고 숙박비와 식사값을 벌어 여관을 키운다.\n\n손님 클릭 → 요구 듣기 → 돈 받고 방 안내.\n마라가 식사를 맡고, 접수·청소 알바에게 맡기면\n주인이 다른 일을 해도 여관은 계속 돌아간다.\n\n접수대에서 알바 고용·주방 개선.\n객실을 눌러 개선하면 숙박 수입이 늘어난다.\n하루는 약 3분 30초. 매일 매출·임대료·급여를 결산한다.\n사흘에 끝나지 않고 영업을 이어간다.\n\n비밀 입구는 손님 출입이 막힌 뒤편 전용 창고 안.\n입구를 내려가 감옥·은신처·창고·화로를 짓거나\n구멍·통로 파기에서 목적지를 찍으면 자동으로 판다.\n화면 설정에서 앞·뒤·옆 방향을 바꿔 볼 수 있다.\n일반 창고나 깊은 공사는 범죄 의심 사유가 아니다.\n비밀 의뢰를 받는 것은 당신의 선택이다."
 		choices=[["begin","여관 문을 연다"]]
+		if FileAccess.file_exists(host.comfort.AUTO):choices.push_front(["load_auto","자동 저장한 영업 이어서 하기"])
 		if FileAccess.file_exists("user://inn-tycoon-v15.json"):choices.push_front(["load","저장한 영업 이어서 하기"])
 	elif c.summary or c.ending!="":
 		title.text=c.ending if c.ending!="" else "%d일차 · 새벽 결산" %c.day

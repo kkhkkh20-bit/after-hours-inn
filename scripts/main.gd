@@ -799,7 +799,7 @@ func _input(event: InputEvent) -> void:
 			pinch_span=span; get_viewport().set_input_as_handled(); return
 	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
 		pressed_person=pick_person(event.position) if not mobile_ui.blocks_point(event.position) else ""
-		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<26 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
+		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<12 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
 		if pressed_owner:pressed_person=""
 		mouse_origin=event.position
 		mouse_dragged=false
@@ -811,7 +811,7 @@ func _input(event: InputEvent) -> void:
 			if mouse_dragged:pan_camera(event.relative)
 	if event is InputEventScreenTouch and event.pressed:
 		pressed_person=pick_person(event.position) if not mobile_ui.blocks_point(event.position) else ""
-		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<26 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
+		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<12 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
 		if pressed_owner:pressed_person=""
 		touch_origin=event.position
 		touch_dragged=false
@@ -866,6 +866,7 @@ func world_tap(point: Vector2) -> void:
 	elif sim.data.work.get("type","")=="quick":sim.cancel_work()
 	if (view_layer=="surface" and sim.data.player.floor==1) or (view_layer=="below" and sim.data.player.floor!=1):return
 	pointer_position=point
+	if Sandbox.active(sim) and sandbox_ground_request(point):pressed_owner=false;pressed_person="";return
 	if Sandbox.active(sim):sim.data.sandbox.tunnel_plan=[]
 	var inspector: Dictionary=sim.data.ops.inspector
 	if inspector.state not in ["idle","scheduled"] and inspector.floor==sim.data.player.floor and point.distance_to(camera.unproject_position(world_point(inspector.pos,inspector.floor,0.9)))<30:
@@ -890,7 +891,7 @@ func world_tap(point: Vector2) -> void:
 			var rp=Sandbox.room_point(number) if Sandbox.active(sim) else Vector2(5.6,-2.0 if number==1 else 2.0)
 			if point.distance_to(camera.unproject_position(world_point(rp,Sandbox.floor_of(number),0.55)))<24:
 				object_context.open("room",str(number)); return
-		if sim.data.staff.hired and point.distance_to(camera.unproject_position(world_point(sim.data.staff.pos,0,0.9)))<28:
+		if sim.data.staff.hired and point.distance_to(camera.unproject_position(world_point(sim.data.staff.pos,int(sim.data.staff.get("floor",0)),0.9)))<28:
 			if Campaign.active(sim):context_action("staff","","talk_staff")
 			else:object_context.open("staff")
 			return
@@ -912,7 +913,7 @@ func world_tap(point: Vector2) -> void:
 			return
 	if sim.data.player.floor==0 and point.distance_to(camera.unproject_position(Vector3(8,0.3,4.5)))<50:
 		object_context.open("stairs"); return
-	if actor_hit_distance(point,sim.data.player.pos,sim.data.player.floor)<26:
+	if actor_hit_distance(point,sim.data.player.pos,sim.data.player.floor)<12:
 		object_context.open("owner"); return
 	# Upstairs walking can be requested directly, without an external floor button.
 	if sim.data.player.floor==0 and view_layer!="below":
@@ -942,7 +943,7 @@ func _physics_process(delta: float) -> void:
 		if pending_chat!="" and sim.data.excavation.intent=="" and sim.data.work.is_empty():
 			var id=pending_chat; pending_chat=""
 			if id=="@staff":
-				if sim.data.player.floor==0 and sim.data.player.pos.distance_to(sim.data.staff.pos)<1.35:object_context.open("staff_talk","","홀은 제가 볼게요. 주인님 비밀도 지킬 테니 걱정 마세요. 손님들끼리 다투면 알려드릴게요. 방 청소도 도울게요.")
+				if sim.data.player.floor==int(sim.data.staff.get("floor",0)) and sim.data.player.pos.distance_to(sim.data.staff.pos)<1.35:object_context.open("staff_talk","","홀은 제가 볼게요. 주인님 비밀도 지킬 테니 걱정 마세요. 손님들끼리 다투면 알려드릴게요. 방 청소도 도울게요.")
 				else:pending_chat="@staff";sim.queue_command("listen_staff")
 			elif id=="@guard" and sim.near_counter():object_context.open("guard_talk","","몇 가지 확인하겠소. 이 여관 아래에는 무엇을 보관하고 있소?")
 			elif sim.data.people.has(id) and Simulation.Intrigue.close(sim,id):
@@ -1345,7 +1346,7 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 		"stairs": pos=Simulation.STAIRS
 		"soil": pos=Vector2(context_soil)
 		"lamp": pos=Vector2(-0.35,-1)
-		"staff","staff_talk": pos=sim.data.staff.pos; floor_=0
+		"staff","staff_talk":pos=sim.data.staff.pos;floor_=int(sim.data.staff.get("floor",0))
 		"owner": pos=sim.data.player.pos
 		"inspector","guard_talk": pos=sim.data.ops.inspector.pos; floor_=sim.data.ops.inspector.floor
 	return camera.unproject_position(world_point(pos,floor_,0.9))
@@ -1440,7 +1441,10 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 			if id=="" or not sim.data.people.has(id) or sim.data.people[id].state in ["gone","leaving"]:sim.data.campaign.worker=Campaign.special(sim,"worker","마라","일할 사람을 구하신다고 들었어요.");sim.note("일할 사람이 마당에서 들어온다.")
 			else:context_action("person",id,"greet")
 			return
-		"talk_staff":sim.cancel_work();pending_chat="@staff";sim.queue_command("listen_staff");return
+		"talk_staff":
+			if sim.data.player.floor!=int(sim.data.staff.get("floor",0)):
+				pending_context_action={"kind":"staff","id":"","action":"talk_staff","floor":int(sim.data.staff.get("floor",0))};travel_to_floor(int(sim.data.staff.get("floor",0)));return
+			sim.cancel_work();pending_chat="@staff";sim.queue_command("listen_staff");return
 		"delegate":sim.data.staff.delegated=true;sim.note("마라에게 서빙을 맡겼다.");return
 		"takeover":sim.data.staff.delegated=false;sim.note("마라는 하던 주문을 마치고 쉰다.");return
 		"talk_guard":sim.cancel_work();pending_chat="@guard";sim.queue_command("listen_guard");return
@@ -1870,3 +1874,13 @@ func sync_sandbox_smoke() -> void:
 	var top=Sandbox.above(f.pos);smoke_visual.position=Vector3(top.x,1.0,top.y)
 	for i in range(smoke_visual.get_child_count()):
 		var phase=fmod(sim.data.clock*0.7+i*0.6,3.0);smoke_visual.get_child(i).position=Vector3(phase*0.2,phase,0);smoke_visual.get_child(i).scale=Vector3.ONE*(0.5+phase*0.3)
+
+func sandbox_ground_request(point: Vector2) -> bool:
+	if sim.data.player.floor!=0:return false
+	var hit: Variant=walking_hit(point)
+	if hit==null:return false
+	var pos=Vector2(hit.x,hit.z)
+	if not sim.surface_walkable(pos):return false
+	if entrance_placing or (pos.distance_to(last_ground_tap)<1.2 and Time.get_ticks_msec()-last_ground_time<900):
+		entrance_placing=false;last_ground_time=0;build_point=pos;object_context.open("ground");return true
+	return false

@@ -166,7 +166,7 @@ func start_gentle_opening() -> void:
 	note("손님을 누르고 방을 골라주세요. 주인이 알아서 다가갑니다.")
 
 func spawn_guest() -> void:
-	if waiting().filter(func(id): return data.people[id].get("role","") not in ["worker","broker"]).size() >= (1 if gentle_opening() and data.served<1 else 2): return
+	if waiting().filter(func(id): return data.people[id].get("role","") not in ["worker","broker"]).size() >= (4 if Sandbox.active(self) else (1 if gentle_opening() and data.served<1 else 2)): return
 
 	var natural: bool=data.get("opening",{}).get("natural",false)
 	var meal_only=natural and (int(data.serial)+1)%3==2

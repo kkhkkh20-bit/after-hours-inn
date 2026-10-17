@@ -9,7 +9,7 @@ func setup(h) -> void:
 	host=h;layer=CanvasLayer.new();layer.layer=23;host.add_child(layer)
 	root=Control.new();root.mouse_filter=Control.MOUSE_FILTER_IGNORE;root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);layer.add_child(root)
 	for key in ["arrival","front","reception","dining"]:
-		var b=Button.new();b.custom_minimum_size=Vector2(166,64);b.size=Vector2(166,64);b.focus_mode=Control.FOCUS_NONE;b.add_theme_font_override("font",host.episode_font());b.add_theme_font_size_override("font_size",20)
+		var b=Button.new();b.custom_minimum_size=Vector2(166,88);b.size=Vector2(166,88);b.focus_mode=Control.FOCUS_NONE;b.add_theme_font_override("font",host.episode_font());b.add_theme_font_size_override("font_size",20)
 		var style=StyleBoxFlat.new();style.bg_color=Color("243d3bf2");style.border_color=Color("b8a478");style.set_border_width_all(2);style.set_corner_radius_all(10);style.set_content_margin_all(10);b.add_theme_stylebox_override("normal",style)
 		b.pressed.connect(activate.bind(key));root.add_child(b);pins[key]=b
 func activate(key: String) -> void:
@@ -41,7 +41,7 @@ func update() -> void:
 		var viewport=host.get_viewport().get_visible_rect().size
 		for key in pins:
 			var pos=host.camera.unproject_position(host.world_point(points[key],0,1))
-			pins[key].position=Vector2(clampf(pos.x-83,12,viewport.x-178),clampf(pos.y-32,328,viewport.y-90))
+			pins[key].position=Vector2(clampf(pos.x-83,12,viewport.x-178),clampf(pos.y-44,392,viewport.y-102))
 	# Facility prose is available on selection; the map is not covered by labels.
 	if host.view_layer=="surface":
 		for label in host.world_hints:

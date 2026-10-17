@@ -5,6 +5,7 @@ PASS inn overview does not chase owner while operating
 PASS all important zones have touch controls
 PASS gate and front door project inside portrait viewport
 PASS zone targets do not overlap
+PASS mobile controls retain finger-sized touch height
 PASS mobile cancel control is always present
 PASS cancel becomes available during physical floor travel
 PASS one touch cancels floor travel with no right click
@@ -18,7 +19,7 @@ PASS hidden person labels do not keep invisible name hit areas
 PASS owner follow is still available by explicit choice
 PASS ground floor control returns to inn overview
 PASS touch controls stay separated from status text
-MOBILE INN CHECKS 18/18
+MOBILE INN CHECKS 19/19
 
 Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
 

@@ -20,6 +20,7 @@ func run() -> void:
 		for j in range(i+1,buttons.size()):
 			if buttons[i].get_global_rect().intersects(buttons[j].get_global_rect()):separated=false
 	check("zone targets do not overlap",separated)
+	check("mobile controls retain finger-sized touch height",app.object_context.cancel_button.get_combined_minimum_size().y>=88 and app.mobile_scene.pins.reception.get_combined_minimum_size().y>=88)
 	check("mobile cancel control is always present",app.object_context.cancel_button.visible and app.object_context.cancel_button.disabled)
 	s.data.player.pos=Vector2(-.25,2.25);app.request_floor(2);app.object_context.refresh();await process_frame
 	check("cancel becomes available during physical floor travel",not app.object_context.cancel_button.disabled)

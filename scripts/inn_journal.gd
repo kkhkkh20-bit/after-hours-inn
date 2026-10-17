@@ -22,8 +22,8 @@ func label_(value: String,size_: int) -> Label:
 func setup(h) -> void:
 	host=h;layer=24
 	root=Control.new();root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(root)
-	goal=label_("",18);root.add_child(goal);goal.position=Vector2(22,200);goal.size=Vector2(675,32);goal.max_lines_visible=2;goal.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
-	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,236);notice.size=Vector2(675,42);notice.max_lines_visible=2;notice.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	goal=label_("",18);root.add_child(goal);goal.position=Vector2(22,254);goal.size=Vector2(675,32);goal.max_lines_visible=2;goal.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,290);notice.size=Vector2(675,42);notice.max_lines_visible=2;notice.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 	progress=label_("",19);root.add_child(progress);progress.size=Vector2(210,40);progress.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;progress.hide()
 	panel=PanelContainer.new();root.add_child(panel);panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);panel.offset_left=30;panel.offset_right=-30;panel.offset_top=350;panel.offset_bottom=-100
 	var s=StyleBoxFlat.new();s.bg_color=Color("1a272b");s.border_color=Color("a48a5b");s.set_border_width_all(2);s.set_corner_radius_all(12);s.content_margin_left=26;s.content_margin_right=26;s.content_margin_top=28;s.content_margin_bottom=26;panel.add_theme_stylebox_override("panel",s)

@@ -252,6 +252,35 @@ static func run(obstacles: Array) -> int:
 	canceled.queue_floor()
 	canceled.move_player(Vector2(-0.1,0))
 	expect(canceled.data.excavation.intent=="","Manual walking cancels automated approach",results)
+	var gallery=fresh(obstacles)
+	expect(gallery.queue_gallery(),"Stair command approaches actual inn stairs",results)
+	gallery.tick(15)
+	expect(gallery.data.player.floor==2 and Sim.floor_height(gallery.data.player.pos,2)==3.2,"Stairs climb continuously onto the gallery",results)
+	expect(not gallery.walkable(Vector2(0,0),2),"Open hall void cannot be crossed as an upstairs floor",results)
+	expect(gallery.queue_move(Vector2(-5.25,-4.25)),"L-shaped gallery has a connected route",results)
+	gallery.tick(8)
+	expect(gallery.data.player.pos.distance_to(Vector2(-5.25,-4.25))<0.01,"Owner walks along real upper deck",results)
+	var upper_save=JSON.parse_string(JSON.stringify(gallery.snapshot()))
+	var upper_loaded=fresh(obstacles)
+	expect(upper_loaded.restore(upper_save) and upper_loaded.data.player.floor==2,"Upper-floor save restores actual level",results)
+	expect(not gallery.queue_command("subdue","guest_1"),"Seeing the hall never allows remote cross-floor actions",results)
+	expect(gallery.queue_floor(),"Floor button follows stairs back down",results)
+	gallery.tick(15)
+	expect(gallery.data.player.floor==0 and gallery.data.player.pos==Sim.STAIRS,"Owner returns to the same physical stair foot",results)
+	expect(Sim.floor_height(Vector2(8,3),2)==1.6,"Intermediate stair height follows the rendered slope",results)
+	var recovering=fresh(obstacles)
+	var upper_guest: Dictionary=recovering.data.people.guest_1
+	upper_guest.floor=2
+	upper_guest.pos=Vector2(-5.25,-4.25)
+	upper_guest.state="down"
+	upper_guest.wake_at=0
+	recovering.tick(0.2)
+	expect(upper_guest.state=="escaping" and not upper_guest.path.is_empty(),"Recovered upstairs victim uses the gallery route",results)
+	var upper_path_valid:=true
+	for point in upper_guest.path:upper_path_valid=upper_path_valid and Sim.gallery_walkable(point)
+	expect(upper_path_valid,"Escape path remains on the deck or stairs",results)
+	recovering.tick(30)
+	expect(upper_guest.floor==0 and upper_guest.state=="gone" and recovering.data.ops.reports==1,"Recovered victim descends physical stairs before exiting and reporting",results)
 	var failures:=0
 	for result in results:
 		if not result[0]:failures+=1

@@ -104,7 +104,7 @@ func setup(owner_) -> void:
 	var top:=VBoxContainer.new()
 	header.add_child(top)
 	var top_row:=row(top)
-	top_row.add_child(text_node("문 닫은 뒤  0.7",28))
+	top_row.add_child(text_node("문 닫은 뒤  0.8",28))
 	pause_button=make_button(top_row,"정지",func():host.sim.data.paused=not host.sim.data.paused,"pause")
 	pause_button.custom_minimum_size.x=100
 	pause_button.size_flags_horizontal=Control.SIZE_SHRINK_END
@@ -228,12 +228,12 @@ func open_sheet(name_: String) -> void:
 func refresh() -> void:
 	var d: Dictionary=host.sim.data
 	var minutes:=int(420+d.clock*6)
-	hud.text="%d일 %02d:%02d · %d닢 · 미납 %d · %s" % [minutes/1440+1,(minutes%1440)/60,minutes%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층"]
+	hud.text="%d일 %02d:%02d · %d닢 · 미납 %d · %s" % [minutes/1440+1,(minutes%1440)/60,minutes%60,d.money,d.debt,{0:"1층",1:"지하",2:"2층"}.get(d.player.floor,"1층")]
 	pause_button.text="계속" if d.paused else "정지"
 	speed_button.text="%d배" % d.speed
 	var busy: bool=not d.work.is_empty() or not d.dig.is_empty()
 	var moving: bool=d.excavation.intent!=""
-	floor_button.text="위층으로 올라가기" if d.player.floor==1 else "지하로 내려가기"
+	floor_button.text="1층으로 내려가기" if d.player.floor==2 else ("1층으로 올라가기" if d.player.floor==1 else "지하로 내려가기")
 	floor_button.disabled=busy or d.paused
 	stop_button.text="이동 / 작업 중단" if busy or moving else "선택 해제"
 	var id: String=host.Simulation.Intrigue.selected(host.sim)
@@ -243,6 +243,9 @@ func refresh() -> void:
 	primary_action=func():host.sim.queue_move(host.Simulation.COUNTER)
 	secondary.text="영업 관리"
 	secondary_action=open_sheet.bind("영업")
+	if d.player.floor==0:
+		secondary.text="2층으로 올라가기"
+		secondary_action=func():host.sim.queue_gallery()
 	target.text="바닥 탭: 이동 / 끌기: 화면 보기"
 	if d.ops.drag!="":
 		target.text="운반 중 · "+str(d.people[d.ops.drag].name)
@@ -268,6 +271,10 @@ func refresh() -> void:
 			primary_action=func():host.sim.queue_command("drag",id)
 			secondary.text="선택 해제"
 			secondary_action=func():host.sim.data.ops.selected=""
+	elif d.player.floor==2:
+		target.text="2층 복도 · 난간 아래로 1층 홀이 보인다"
+		primary.text="반대편 복도로 이동"
+		primary_action=func():host.sim.queue_move(Vector2(-5.25,-4.25))
 	elif d.player.floor==1:
 		target.text="%s · 내구도 %d / 24" % ["삽" if d.stealth.quiet else "곡괭이",int(d.excavation.durability)]
 		primary.text="가까운 흙벽 파기"

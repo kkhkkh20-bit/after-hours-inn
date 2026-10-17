@@ -12,6 +12,8 @@ var camera_offset:=Vector2.ZERO
 var camera: Camera3D
 var surface: Node3D
 var basement: Node3D
+var gallery: Node3D
+var gallery_deck: Node3D
 var terrain: Node3D
 var world_root: Node3D
 var actors_root: Node3D
@@ -30,6 +32,7 @@ var hover_cell := Vector2i(99,99)
 var capturing := false
 var camera_focus := Vector3.ZERO
 var earth_edges: Dictionary = {}
+var earth_faces: Array = []
 var viewed_floor := 0
 var surface_zoom := 18.0
 var basement_zoom := 12.0
@@ -218,7 +221,7 @@ func build_surface() -> void:
 		model("town", "lantern", pos, Vector3(0.25, 1.8, 0.25))
 		light_at(pos + Vector3(0, 1.9, 0), 0.9)
 	model("town", "cart", Vector3(-10, -0.33, 2), Vector3(1.7, 1.3, 3.0), 0.5)
-	model("town", "stairs-wood", Vector3(8.6, -0.33, -1), Vector3(1.3, 0.7, 1.8))
+
 	for pos in [Vector3(-11, -0.33, -6), Vector3(8, -0.33, -7), Vector3(11, -0.33, 4), Vector3(-10, -0.33, 7)]:
 		model("town", "tree", pos, Vector3(2.5, 5, 2.5))
 	for x in range(-9, 11, 2):
@@ -251,6 +254,7 @@ func _ready() -> void:
 	sun.light_energy = 0.35
 	sun.shadow_enabled = true
 	build_surface()
+	build_gallery()
 	box(Vector3(1,0.03,1),Vector3(-3.25,0.09,2.75),Color("243632"))
 	world_label("지하 입구 · 탭",Vector3(-3.25,0.4,2.75),surface)
 	build_excavation_visuals()
@@ -289,6 +293,22 @@ func _ready() -> void:
 		get_tree().quit(result)
 	elif "--input-verify" in args:
 		await input_verify()
+	elif "--capture-gallery" in args:
+		capturing=true
+		sim.data.player.pos=Simulation.COUNTER
+		sim.assign_room(1)
+		sim.toggle_staff()
+		sim.queue_gallery()
+		sim.tick(18)
+		sim.queue_move(Vector2(3.25,-4.25))
+		sim.tick(5)
+		sync_view(0)
+		frame_owner()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://docs/v08-gallery.png")
+		get_tree().quit()
 	elif "--capture-excavation" in args:
 		capturing=true
 		sim.queue_floor()
@@ -299,7 +319,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
-		get_viewport().get_texture().get_image().save_png("res://docs/v07-excavation.png")
+		get_viewport().get_texture().get_image().save_png("res://docs/v08-excavation.png")
 		get_tree().quit()
 	elif "--capture-service" in args or "--capture" in args or "--capture-basement" in args or "--capture-stealth" in args or "--capture-operation" in args or "--capture-prison" in args:
 		capturing = true
@@ -357,7 +377,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
-		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v07-surface.png")
+		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v08-surface.png")
 		if "--capture-service" in args:output="res://docs/v07-service.png"
 		if "--capture-operation" in args:output="res://docs/v05-operation.png"
 		if "--capture-prison" in args:output="res://docs/v05-prison.png"
@@ -412,17 +432,20 @@ func sync_actor(visual: Node3D, pos: Vector2, dt: float) -> void:
 
 func sync_view(dt: float) -> void:
 	var d: Dictionary=sim.data
-	var upstairs: bool=d.player.floor==0
+	var upstairs: bool=d.player.floor!=1
 	if viewed_floor!=d.player.floor:
-		if viewed_floor==0: surface_zoom=camera.size
+		if viewed_floor!=1: surface_zoom=camera.size
 		else: basement_zoom=camera.size
-		camera.size=surface_zoom if upstairs else basement_zoom
+		camera.size=(24.0 if d.player.floor==2 else surface_zoom) if upstairs else basement_zoom
 		viewed_floor=d.player.floor
 	surface.visible=upstairs
+	gallery.visible=upstairs
+	gallery_deck.visible=true
 	basement.visible=not upstairs
 	staff_visual.visible=upstairs and d.staff.hired
 	collector_visual.visible=upstairs and d.collector
 	sync_actor(player,d.player.pos,dt)
+	player.position.y+=Simulation.floor_height(d.player.pos,d.player.floor)
 	sync_actor(staff_visual,d.staff.pos,dt)
 	staff_visual.rotation.y=atan2(-d.staff.facing.x,-d.staff.facing.y)
 	collector_visual.position=Vector3(-0.2,0.08,-1.5)
@@ -443,13 +466,14 @@ func sync_view(dt: float) -> void:
 		if not actors.has(id):
 			actors[id]=actor(Vector3.ZERO,Color("667f8c") if int(id.get_slice("_",1))%2 else Color("77534d"))
 			labels[id]=world_label(person.name,Vector3(0,1.95,0),actors[id])
-		actors[id].visible=person.floor==d.player.floor and person.state!="gone"
+		actors[id].visible=(person.floor==d.player.floor or (d.player.floor==2 and person.floor==0)) and person.state!="gone"
 		sync_actor(actors[id],person.pos,dt)
+		actors[id].position.y+=Simulation.floor_height(person.pos,person.floor)
 		actors[id].rotation.z=PI/2 if person.state=="down" else 0
-		if person.state=="down":actors[id].position.y=0.35
+		if person.state=="down":actors[id].position.y=0.35+Simulation.floor_height(person.pos,person.floor)
 		# Labels remain upright even when the body is lying on its side.
 		labels[id].global_rotation=Vector3.ZERO
-		labels[id].global_position=Vector3(person.pos.x,0.95 if person.state=="down" else 2.03,person.pos.y)
+		labels[id].global_position=Vector3(person.pos.x,(0.95 if person.state=="down" else 2.03)+Simulation.floor_height(person.pos,person.floor),person.pos.y)
 		labels[id].text=str(person.name)
 		labels[id].pixel_size=0.0045 if person.floor==1 else 0.007
 		if person.state=="waiting":labels[id].text+=" · 대기"
@@ -463,28 +487,141 @@ func sync_view(dt: float) -> void:
 	if vision_clock>=0.12 or dt==0:
 		vision_clock=0
 		refresh_vision()
-	tool_pivot.visible=not upstairs and d.ops.drag==""
+	tool_pivot.visible=d.player.floor==1 and d.ops.drag==""
 	tool_pivot.rotation.x=sin(d.clock*13)*0.85-0.3 if not d.dig.is_empty() else -0.2
 	pick_head.visible=not d.stealth.quiet
 	shovel_head.visible=d.stealth.quiet
 	hatch_lid.rotation.x=-1.25 if d.excavation.hatch_open else 0
 	refresh_ui()
 
+func focus_position() -> Vector3:
+	var pos: Vector2=sim.data.player.pos
+	if sim.data.player.floor==2:
+		# Keep the open hall in view rather than filling a portrait screen with a railing.
+		return Vector3(pos.x*0.4,Simulation.floor_height(pos,2)*0.45,pos.y*0.4)
+	return Vector3(pos.x,0,pos.y)
+
+func walking_hit(point: Vector2) -> Variant:
+	var origin:=camera.project_ray_origin(point)
+	var ray:=camera.project_ray_normal(point)
+	if sim.data.player.floor!=2:return Plane(Vector3.UP,0.08).intersects_ray(origin,ray)
+	var deck: Variant=Plane(Vector3.UP,3.28).intersects_ray(origin,ray)
+	if deck!=null and Simulation.gallery_walkable(Vector2(deck.x,deck.z)) and deck.z<=1:return deck
+	# y + .8z = 4.08 is the actual stair slope, not an upper-floor horizontal plane.
+	var stairs: Variant=Plane(Vector3(0,1,0.8).normalized(),4.08/Vector3(0,1,0.8).length()).intersects_ray(origin,ray)
+	if stairs!=null and stairs.x>=7 and stairs.x<9 and stairs.z>=1 and stairs.z<=5.2:return stairs
+	return null
+
+func build_gallery() -> void:
+	gallery=Node3D.new()
+	add_child(gallery)
+	gallery_deck=Node3D.new()
+	gallery.add_child(gallery_deck)
+	world_root=gallery_deck
+	var wood:=Color("67513b")
+	# L-shaped gallery: a real void over the dining hall, not a full opaque second map.
+	box(Vector3(18,0.18,2),Vector3(0,3.1,-4.5),wood)
+	box(Vector3(2,0.18,4.5),Vector3(8,3.1,-1.25),wood)
+	for x in range(-9,9):
+		for z in [-5,-4]:model("town","planks",Vector3(x+0.5,3.2,z+0.5),Vector3(1,0.04,1))
+	for z in range(-3,1):
+		for x in [7,8]:model("town","planks",Vector3(x+0.5,3.2,z+0.5),Vector3(1,0.04,1))
+	world_root=gallery
+	box(Vector3(18.2,1.5,0.16),Vector3(0,3.95,-5.5),Color("5c4a37"))
+	for x in [-9,-5,-1,3,7,9]:box(Vector3(0.13,1.6,0.2),Vector3(x,4,-5.5),Color("3b3026"))
+	# Two long timber beams and slim rails keep the silhouette architectural.
+	for z in [-5.5,-3.5]:
+		box(Vector3(18.2,0.2,0.2),Vector3(0,3.0,z),Color("3b3026"))
+	for x in [-9,-5,-1,3,7]:
+		box(Vector3(0.16,3.1,0.16),Vector3(x,1.55,-3.5),Color("443526"))
+		box(Vector3(0.09,1,0.09),Vector3(x,3.7,-3.5),Color("8c7150"))
+	box(Vector3(16,0.09,0.09),Vector3(-1,4.17,-3.5),Color("94764f"))
+	for z in [-3.5,-2,-0.5,1]:
+		box(Vector3(0.09,1,0.09),Vector3(7,3.7,z),Color("8c7150"))
+	box(Vector3(0.09,0.09,4.5),Vector3(7,4.17,-1.25),Color("94764f"))
+	for i in range(16):
+		var z:=4.875-i*0.25
+		var y: float=(i+1)*0.2
+		box(Vector3(1.9,0.12,0.26),Vector3(8,y-0.06,z),Color("806345"))
+		for x in [7.05,8.95]:
+			if i%4==0:box(Vector3(0.075,0.8,0.075),Vector3(x,y+0.35,z),Color("68513a"))
+	for x in [7.05,8.95]:
+		var rail:=box(Vector3(0.07,0.07,5.12),Vector3(x,2.3,3),Color("94764f"))
+		rail.rotation.x=atan(0.8)
+	for x in [-4,4]:
+		model("town","lantern",Vector3(x,3.2,-5.2),Vector3(0.18,1.3,0.18))
+		light_at(Vector3(x,4.5,-4.5),1.0)
+	world_label("2층 계단 · 탭",Vector3(8,0.6,5.25),gallery)
+	var label:=world_label("1층 홀",Vector3(-2,0.16,0),gallery)
+	label.pixel_size=0.005
+	world_root=surface
+
+func earth_mesh(vertices: PackedVector3Array, colors: PackedColorArray) -> void:
+	var arrays:=[]
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices
+	arrays[Mesh.ARRAY_COLOR]=colors
+	var normals:=PackedVector3Array()
+	for i in range(0,vertices.size(),3):
+		var normal: Vector3=(vertices[i+1]-vertices[i]).cross(vertices[i+2]-vertices[i]).normalized()
+		for j in range(3):normals.append(normal)
+	arrays[Mesh.ARRAY_NORMAL]=normals
+	var mesh:=ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	var visual:=MeshInstance3D.new()
+	visual.mesh=mesh
+	var mat:=material(Color.WHITE)
+	mat.vertex_color_use_as_albedo=true
+	mat.cull_mode=BaseMaterial3D.CULL_DISABLED
+	mat.emission_enabled=true
+	mat.emission=Color("5c4a35")
+	mat.emission_energy_multiplier=0.6
+	visual.material_override=mat
+	terrain.add_child(visual)
+
 func rebuild_basement() -> void:
 	for child in terrain.get_children():child.free()
 	world_root=terrain
 	var edge: Dictionary={}
+	earth_faces=[]
+	var vertices:=PackedVector3Array()
+	var colors:=PackedColorArray()
 	for key in sim.data.cells:
 		var cell: Vector2i=Simulation.parse_cell(key)
-		box(Vector3(0.98,0.12,0.98),Vector3(cell.x,-0.02,cell.y),Color("51483a"))
+		# Adjacent triangles meet exactly; no tile gaps or freestanding earth cubes.
+		var c:=Color("655641").lightened(float(posmod(cell.x*17+cell.y*31,7))*0.003)
+		var center:=Vector3(cell.x,0.04,cell.y)
+		for offset in [Vector2(-0.5,-0.5),Vector2(0.5,-0.5),Vector2(0.5,0.5),Vector2(-0.5,0.5)]:
+			var next:=Vector2(-offset.y,offset.x)
+			for point in [center,center+Vector3(next.x,0,next.y),center+Vector3(offset.x,0,offset.y)]:
+				vertices.append(point);colors.append(c)
 		for shift in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
 			var neighbor: Vector2i=cell+shift
-			if not sim.data.cells.has(Simulation.cell_key(neighbor)):edge[Simulation.cell_key(neighbor)]=true
-	for key in edge:
-		var cell: Vector2i=Simulation.parse_cell(key)
-		box(Vector3(0.97,0.9,0.97),Vector3(cell.x,0.45,cell.y),Color("65543e"))
+			if sim.data.cells.has(Simulation.cell_key(neighbor)):continue
+			edge[Simulation.cell_key(neighbor)]=true
+			var normal:=Vector3(shift.x,0,shift.y)
+			var tangent:=Vector3(-shift.y,0,shift.x)*0.5
+			var base:=center+normal*0.5
+			var a:=base-tangent
+			var b:=base+tangent
+			# Front-facing edges are cut low, like the inn's cutaway walls.
+			var height:=0.48 if shift.x+shift.y>0 else 1.8
+			var ah:=height+float(posmod(roundi(a.x*2)*13+roundi(a.z*2)*7,5))*0.035
+			var bh:=height+float(posmod(roundi(b.x*2)*13+roundi(b.z*2)*7,5))*0.035
+			var top_a:=a+Vector3(0,ah,0)+normal*0.13
+			var top_b:=b+Vector3(0,bh,0)+normal*0.13
+			var bounds:=AABB(a,Vector3.ZERO).expand(b).expand(top_a+normal*0.32).expand(top_b+normal*0.32).grow(0.06)
+			earth_faces.append({"cell":neighbor,"bounds":bounds})
+			var wall_color:=Color("6f5b43") if height>1 else Color("463c31")
+			for point in [b,a,top_b,top_b,a,top_a,top_b,top_a,top_b+normal*0.32,top_b+normal*0.32,top_a,top_a+normal*0.32]:
+				vertices.append(point);colors.append(wall_color)
+	earth_mesh(vertices,colors)
+	# A ladder, braced timbers and a warm lamp make this a cellar beneath an inn.
+	for x in [-2.5,1.3]:box(Vector3(0.13,1.9,0.13),Vector3(x,0.95,-2.2),Color("57452f"))
+	box(Vector3(3.95,0.16,0.18),Vector3(-0.6,1.85,-2.2),Color("6e5637"))
+	light_at(Vector3(-1,1.8,-1),0.8)
 	earth_edges=edge
-	dig_cursor=box(Vector3(0.97,0.04,0.97),Vector3(99,0.94,99),Color("c09b4d"))
+	dig_cursor=box(Vector3(0.92,0.025,0.92),Vector3(99,0.07,99),Color("bda05c"))
 	world_root=surface
 	last_cell_count=sim.data.cells.size()
 
@@ -587,7 +724,10 @@ func world_tap(point: Vector2) -> void:
 		if soil!=Vector2i(99,99):
 			sim.queue_dig(soil)
 			return
-	var hit: Variant=Plane(Vector3.UP,0.08).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
+	if sim.data.player.floor==0 and point.distance_to(camera.unproject_position(Vector3(8,0.3,4.5)))<50:
+		sim.queue_gallery()
+		return
+	var hit: Variant=walking_hit(point)
 	if hit!=null:
 		sim.data.ops.selected=""
 		sim.queue_move(Vector2(hit.x,hit.z))
@@ -606,9 +746,9 @@ func _physics_process(delta: float) -> void:
 		hover_cell=soil_at(pointer_position)
 		if dig_cursor!=null:
 			dig_cursor.visible=earth_edges.has(Simulation.cell_key(hover_cell))
-			dig_cursor.position=Vector3(hover_cell.x,0.94,hover_cell.y)
+			dig_cursor.position=Vector3(hover_cell.x,0.07,hover_cell.y)
 	if sim.data.excavation.intent!="":camera_offset=camera_offset.lerp(Vector2.ZERO,minf(1,delta*3))
-	var focus_target:=Vector3(sim.data.player.pos.x+camera_offset.x,0,sim.data.player.pos.y+camera_offset.y)
+	var focus_target:=focus_position()+Vector3(camera_offset.x,0,camera_offset.y)
 	camera_focus=camera_focus.lerp(focus_target,minf(1,delta*4))
 	camera.position=camera_focus+Vector3(16,18,21)
 	camera.look_at(camera_focus)
@@ -697,7 +837,7 @@ func touch_control(key: String) -> void:
 	sync_view(0)
 
 func frame_owner() -> void:
-	camera_focus=Vector3(sim.data.player.pos.x,0,sim.data.player.pos.y)
+	camera_focus=focus_position()
 	camera.position=camera_focus+Vector3(16,18,21)
 	camera.look_at(camera_focus)
 	sync_view(0)
@@ -841,6 +981,35 @@ func input_verify() -> void:
 	sim.data.ops.contract.state="offered"
 	await click_control("load")
 	checks.append(sim.data.ops.contract.state=="paid" and sim.data.ops.built)
+	await click_control("close")
+	sim=Simulation.new()
+	sim.obstacles.assign(geometry)
+	sim.rebuild_grid()
+	sim.queue_floor()
+	sim.tick(5)
+	frame_owner()
+	await pointer_click(camera.unproject_position(Vector3(-3.5,0.9,0)),true)
+	checks.append(sim.data.excavation.intent=="dig" and sim.data.excavation.cell=="-4,0")
+	sim.tick(8)
+	checks.append(sim.data.cells.has("-4,0"))
+	sim=Simulation.new()
+	sim.obstacles.assign(geometry)
+	sim.rebuild_grid()
+	frame_owner()
+	await click_control("secondary")
+	sim.tick(15)
+	frame_owner()
+	checks.append(sim.data.player.floor==2 and Simulation.floor_height(sim.data.player.pos,2)==3.2)
+	checks.append(surface.visible and actors.guest_1.visible and gallery_deck.visible)
+	var upstairs_target:=Vector2(3.25,-4.25)
+	await pointer_click(camera.unproject_position(Vector3(upstairs_target.x,3.28,upstairs_target.y)),true)
+	sim.tick(4)
+	checks.append(sim.data.player.pos.distance_to(upstairs_target)<0.1)
+	checks.append(pick_person(camera.unproject_position(Vector3(sim.data.people.guest_1.pos.x,0.65,sim.data.people.guest_1.pos.y)))=="")
+	await click_control("floor")
+	sim.tick(12)
+	sync_view(0)
+	checks.append(sim.data.player.floor==0 and player.position.y<0.1)
 	var failed:=0
 	for i in range(checks.size()):
 		if not checks[i]:failed+=1;print("POINTER FAIL: ",i)
@@ -988,11 +1157,10 @@ func soil_at(screen: Vector2) -> Vector2i:
 	var direction:=camera.project_ray_normal(screen)
 	var nearest:=INF
 	var chosen:=Vector2i(99,99)
-	for key in earth_edges:
-		var cell:=Simulation.parse_cell(key)
-		var bounds:=AABB(Vector3(cell.x-0.485,0,cell.y-0.485),Vector3(0.97,0.9,0.97))
+	for face in earth_faces:
+		var bounds: AABB=face.bounds
 		var hit: Variant=bounds.intersects_ray(origin,direction)
 		if hit!=null:
 			var distance: float=origin.distance_squared_to(hit)
-			if distance<nearest:nearest=distance;chosen=cell
+			if distance<nearest:nearest=distance;chosen=face.cell
 	return chosen

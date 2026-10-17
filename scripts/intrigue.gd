@@ -138,9 +138,9 @@ static func flee(sim, id: String) -> void:
 	clear_orders(sim,id)
 	release_room(sim,id)
 	if sim.data.ops.drag==id:sim.data.ops.drag=""
-	person.state="escaping" if person.floor==1 else "leaving"
+	person.state="escaping" if person.floor!=0 else "leaving"
 	person.report_pending=true
-	person.path=basement_route(sim,person.pos,Vector2.ZERO) if person.floor==1 else sim.path_to(person.pos,sim.ENTRY)
+	person.path=sim.gallery_route(person.pos,sim.STAIRS) if person.floor==2 else (basement_route(sim,person.pos,Vector2.ZERO) if person.floor==1 else sim.path_to(person.pos,sim.ENTRY))
 
 static func sees(sim, watcher: Dictionary, point: Vector2, floor_: int, cone: bool=true) -> bool:
 	if int(watcher.get("floor",0))!=floor_:return false
@@ -149,7 +149,7 @@ static func sees(sim, watcher: Dictionary, point: Vector2, floor_: int, cone: bo
 	if cone and delta.length()>0.1 and watcher.facing.dot(delta.normalized())<cos(deg_to_rad(65)):return false
 	if floor_==0:return sim.sight_end(watcher.pos,delta.normalized()).distance_to(watcher.pos)+0.11>=delta.length()
 	for step in range(1,ceili(delta.length()*10)):
-		if not sim.walkable(watcher.pos+delta.normalized()*float(step)*0.1,1):return false
+		if not sim.walkable(watcher.pos+delta.normalized()*float(step)*0.1,floor_):return false
 	return true
 
 static func witness(sim, id: String, _kind: String) -> void:
@@ -349,8 +349,8 @@ static func tick(sim, dt: float) -> void:
 		elif person.state=="escaping":
 			sim.follow(person,dt*1.4)
 			if person.path.is_empty():
+				person.pos=sim.STAIRS if person.floor==2 else sim.HATCH
 				person.floor=0
-				person.pos=sim.HATCH
 				person.state="leaving"
 				person.path=sim.path_to(person.pos,sim.ENTRY)
 		if person.state=="gone" and person.report_pending:

@@ -5,6 +5,7 @@ const Intrigue = preload("res://scripts/intrigue.gd")
 const COUNTER := Vector2(-1.75, -1.75)
 const ENTRY := Vector2(0.25, 3.25)
 const HATCH := Vector2(-3.25, 2.75)
+const STAIRS := Vector2(8.0, 5.0)
 const SAVE_VERSION := 3
 var obstacles: Array[Rect2] = []
 var grid := AStarGrid2D.new()
@@ -53,9 +54,47 @@ func surface_walkable(pos: Vector2) -> bool:
 
 func walkable(pos: Vector2, floor_: int) -> bool:
 	if floor_ == 0: return surface_walkable(pos)
+	if floor_ == 2: return gallery_walkable(pos)
 	# Sample the actor footprint, so shoulders cannot cross unopened earth.
 	for shift in [Vector2.ZERO,Vector2(0.19,0),Vector2(-0.19,0),Vector2(0,0.19),Vector2(0,-0.19)]:
 		if not data.cells.has(cell_key(Vector2i(roundi(pos.x+shift.x),roundi(pos.y+shift.y)))): return false
+	return true
+
+# The gallery and its stair share a continuous walking surface, above the hall.
+static func gallery_walkable(pos: Vector2) -> bool:
+	return Rect2(-9.0,-5.5,18.0,2.0).has_point(pos) or Rect2(7.0,-5.5,2.0,11.0).has_point(pos)
+
+static func floor_height(pos: Vector2, floor_: int) -> float:
+	if floor_ != 2:return 0.0
+	return clampf((5.0-pos.y)/4.0,0.0,1.0)*3.2
+
+func gallery_route(from: Vector2, to: Vector2) -> Array:
+	var upstairs:=AStarGrid2D.new()
+	upstairs.region=Rect2i(0,0,40,24)
+	upstairs.cell_size=Vector2(0.5,0.5)
+	upstairs.offset=Vector2(-9.75,-5.75)
+	upstairs.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_NEVER
+	upstairs.update()
+	for x in range(40):
+		for y in range(24):
+			var id:=Vector2i(x,y)
+			upstairs.set_point_solid(id,not gallery_walkable(upstairs.get_point_position(id)))
+	var a:=Vector2i(floori((from.x+10)/0.5),floori((from.y+6)/0.5))
+	var b:=Vector2i(floori((to.x+10)/0.5),floori((to.y+6)/0.5))
+	if not upstairs.is_in_boundsv(a) or not upstairs.is_in_boundsv(b):return []
+	if upstairs.is_point_solid(a) or upstairs.is_point_solid(b):return []
+	return Array(upstairs.get_point_path(a,b))
+
+func queue_gallery() -> bool:
+	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
+	if data.player.floor==1:note("먼저 지하에서 올라오자.");return false
+	data.excavation.intent=""
+	data.excavation.path=[]
+	var route: Array=gallery_route(data.player.pos,STAIRS) if data.player.floor==2 else path_to(data.player.pos,STAIRS)
+	if route.is_empty():return false
+	data.excavation.path=route
+	data.excavation.intent="gallery_down" if data.player.floor==2 else "gallery_up"
+	data.ops.selected=""
 	return true
 
 func path_to(from: Vector2, to: Vector2) -> Array:
@@ -652,6 +691,7 @@ func excavation_defaults() -> Dictionary:
 	return {"durability":24,"path":[],"intent":"","cell":"","hatch_open":false,"target":""}
 
 func queue_floor() -> bool:
+	if data.player.floor==2:return queue_gallery()
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
 	data.excavation.path=[]
 	data.excavation.intent=""
@@ -706,7 +746,18 @@ func update_excavation(dt: float) -> void:
 	if walker.path.is_empty():
 		var action: String=job.intent
 		job.intent=""
-		if action=="floor":change_floor()
+		if action=="gallery_up":
+			data.player.floor=2
+			data.player.pos=STAIRS
+			Intrigue.sync_drag(self)
+			queue_move(Vector2(8,-4.25))
+			note("계단을 따라 2층으로 올라간다. 난간 너머가 1층 홀이다.")
+		elif action=="gallery_down":
+			data.player.floor=0
+			data.player.pos=STAIRS
+			Intrigue.sync_drag(self)
+			note("계단을 내려와 1층 홀로 돌아왔다.")
+		elif action=="floor":change_floor()
 		elif action=="dig":start_dig(parse_cell(job.cell))
 		elif action.begins_with("command:"):perform_command(action.trim_prefix("command:"),str(job.get("target","")))
 
@@ -732,11 +783,13 @@ func queue_move(target: Vector2) -> bool:
 		for x in range(grid.region.size.x):
 			for y in range(grid.region.size.y):
 				var id:=Vector2i(x,y)
-				if grid.is_point_solid(id):continue
 				var point:=grid.get_point_position(id)
+				if data.player.floor==2:
+					if not gallery_walkable(point):continue
+				elif grid.is_point_solid(id):continue
 				var delta:=point.distance_squared_to(target)
 				if delta<distance:distance=delta;closest=point
-	var route: Array=path_to(data.player.pos,closest) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,closest)
+	var route: Array=gallery_route(data.player.pos,closest) if data.player.floor==2 else (path_to(data.player.pos,closest) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,closest))
 	if route.is_empty():note("그곳까지 이어지는 통로가 없다.");return false
 	data.excavation.path=route
 	data.excavation.intent="move"
@@ -753,7 +806,7 @@ func queue_command(command: String, id: String="") -> bool:
 		if data.player.floor!=1:note("구금칸은 지하에서 사용할 수 있다.");return false
 		target=data.ops.cell if data.ops.built else data.player.pos
 	elif command in ["clean1","clean2"]:target=room_target(1 if command=="clean1" else 2)
-	elif data.player.floor!=0:note("먼저 위층으로 올라가야 한다.");return false
+	elif data.player.floor!=0:note("먼저 1층 접수대로 돌아가야 한다.");return false
 	data.excavation.target=id
 	if data.player.pos.distance_to(target)<0.85:
 		data.excavation.intent=""

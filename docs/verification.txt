@@ -1,4 +1,7 @@
-1.2 inn cycle — Linux Godot 4.7.2
+1.3 three connected nights — Godot 4.7.2
+DEMO STORY CHECKS: 22 checks, 0 failures
+DEMO PLAYTHROUGH: talk -> listen -> room -> meal -> hire -> real visitors -> broker -> guards -> three paid dawns -> ending -> save/load passed; meals=32 balance=77 ending=다시 켜진 등불
+DEMO PLAYTHROUGH: talk -> listen -> room -> meal -> hire -> real visitors -> broker -> guards -> three paid dawns -> ending -> save/load passed; meals=32 balance=89 ending=국경의 은신처
 3D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed
 EPISODE CHECKS: 23 checks, 0 failures
 Simulation verification: 146 checks, 0 failures
@@ -9,4 +12,5 @@ SIDEVIEW RULE CHECKS: 31 checks; 0 failures
 SANDBOX TERRAIN CHECKS: 17 checks; 0 failures
 2D LOCAL RECEPTION CHECKS: 0 failures
 PHYSICS + TAP NAVIGATION CHECKS: 0 failures
-Web + Windows exports: exit 0. Native 3D cutaway screenshot verified. Physical mobile / Windows runtime: not tested.
+Web + Windows exports: exit 0. Four native screenshots rendered, including actual three-day ending.
+Physical mobile / Windows runtime: not tested. Sales performance / external playtest: not verified.

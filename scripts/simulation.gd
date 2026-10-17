@@ -140,6 +140,7 @@ func calendar_text() -> String:
 func request_room(number: int,id: String) -> bool:
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():note("현재 작업을 마치거나 주인을 눌러 취소하자.");return false
 	if not data.people.has(id) or data.rooms[str(number)].guest!="":return false
+	if preload("res://scripts/inn_campaign.gd").active(self) and not data.people[id].get("known",false):note("먼저 손님에게 말을 걸어 원하는 것을 듣자.");return false
 	if data.rooms[str(number)].dirty:
 		data.booking_request={"room":number,"guest":id}
 		note("%d호를 정리한 뒤 손님을 안내한다." %number)
@@ -164,7 +165,7 @@ func start_gentle_opening() -> void:
 	note("손님을 누르고 방을 골라주세요. 주인이 알아서 다가갑니다.")
 
 func spawn_guest() -> void:
-	if waiting().size() >= (1 if gentle_opening() and data.served<1 else 2): return
+	if waiting().filter(func(id): return data.people[id].get("role","") not in ["worker","broker"]).size() >= (1 if gentle_opening() and data.served<1 else 2): return
 
 	var natural: bool=data.get("opening",{}).get("natural",false)
 	var meal_only=natural and (int(data.serial)+1)%3==2
@@ -223,6 +224,12 @@ func assign_room(number: int, guest_id: String="") -> bool:
 	person.state = "entering"
 	person.path = path
 	person.checkout = (floorf(data.clock/480.0)+1)*480.0 if data.get("opening",{}).get("natural",false) else data.clock+105.0
+	if preload("res://scripts/inn_campaign.gd").active(self):
+		data.campaign.bookings+=1
+		if person.get("known",false):
+			var preferred=1 if person.get("role","")=="fugitive" or (int(id.get_slice("_",1))-1)%4 in [0,2] else 2
+			data.campaign.reputation+=1 if number==preferred else -1
+			if number==preferred and int(person.rate)>0:data.money+=2;note("방이 마음에 든 손님이 2닢을 더 건넸다.")
 	data.money += int(person.rate)
 	note("%s → %d호. 숙박비 %d닢을 받았다." % [person.name,number,person.rate])
 	return true
@@ -571,6 +578,7 @@ func start_dig(cell: Vector2i) -> bool:
 	return true
 
 func update_money() -> void:
+	if preload("res://scripts/inn_campaign.gd").active(self):return
 	var minute := int(480+data.clock*3) if data.get("opening",{}).get("natural",false) else int(420+data.clock*6)
 	if minute>=data.dues.wage:
 		data.dues.wage+=1440
@@ -620,6 +628,7 @@ func snapshot() -> Dictionary:
 func restore(saved: Variant) -> bool:
 	if not saved is Dictionary or saved.get("version",0)!=SAVE_VERSION or not saved.get("state") is Dictionary: return false
 	var candidate: Dictionary=decode(saved.state)
+	if data.has("campaign") and not candidate.has("campaign"):candidate.campaign={"active":false}
 	if data.has("booking_request") and not candidate.has("booking_request"):candidate.booking_request={}
 	if data.has("opening") and not candidate.has("opening"): candidate.opening={"active":false,"natural":false}
 	if data.has("service_target") and not candidate.has("service_target"): candidate.service_target=""
@@ -885,7 +894,7 @@ func queue_command(command: String, id: String="") -> bool:
 	elif command=="lamp":
 		if data.player.floor!=1:return false
 		target=Vector2(-1,-1)
-	elif command=="explain":target=data.staff.pos
+	elif command in ["explain","listen_staff"]:target=data.staff.pos
 	elif command in ["cell","build"]:
 		if data.player.floor!=1:note("구금칸은 지하에서 사용할 수 있다.");return false
 		target=data.ops.cell if data.ops.built else data.player.pos
@@ -957,12 +966,15 @@ func basement_lit(point: Vector2) -> bool:
 	return true
 
 func request_direct_service(id: String) -> bool:
+	if data.people.has(id) and data.people[id].get("visit","")=="meal" and data.people[id].state=="arriving":
+		data.service_target=id;note("손님이 자리를 잡으면 식사를 내온다.");return true
 	if not can_receive(id) or data.player.floor!=0: note("먼저 손님에게 방을 배정하자."); return false
 	data.service_target=id
 	return true
 
 func update_direct_service() -> void:
 	var id: String=data.get("service_target","")
+	if data.people.has(id) and data.people[id].get("visit","")=="meal" and data.people[id].state=="arriving":return
 	if id=="" or data.paused: return
 	if not can_receive(id) or data.player.floor!=0: data.service_target=""; return
 	if not data.work.is_empty() or data.excavation.intent!="": return

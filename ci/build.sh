@@ -6,6 +6,9 @@ godot --headless --editor --import
 cmp scripts/object_context.gd prototypes/sideview/object_context.gd
 cmp scripts/episode.gd prototypes/sideview/episode.gd
 cmp scripts/episode_ui.gd prototypes/sideview/episode_ui.gd
+godot --headless -- --demo-verify
+timeout 120 godot --headless -- --demo-playthrough
+timeout 120 godot --headless -- --demo-shadow
 timeout 45 godot --headless -- --episode-playthrough
 godot --headless -- --episode-verify
 godot --headless -- --verify
@@ -15,6 +18,7 @@ godot --headless --export-release "Windows Desktop" build/windows/AfterHours.exe
 cp assets/furniture/License.txt build/windows/licenses/furniture-CC0.txt
 cp assets/town/License.txt build/windows/licenses/town-CC0.txt
 cp assets/fonts/OFL.txt build/windows/licenses/font-OFL.txt
+cp assets/audio/LICENSE.txt build/windows/licenses/audio-original.txt
 cp README.md build/windows/README.md
 touch build/web/.nojekyll
 printf '%s\n' "${GITHUB_SHA:-local}" > build/web/version.txt

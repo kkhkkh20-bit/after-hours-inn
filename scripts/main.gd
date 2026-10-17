@@ -1,4 +1,14 @@
 extends Node3D
+const Campaign=preload("res://scripts/inn_campaign.gd")
+const Dialogue=preload("res://scripts/inn_dialogue.gd")
+var journal
+var dialogue_paused=false
+var dialogue_previous_pause=false
+var buried_hint: Label3D
+var cargo_visual: MeshInstance3D
+var ambience: AudioStreamPlayer
+var room_chime: AudioStreamPlayer
+var last_cash=24
 const Simulation = preload("res://scripts/simulation.gd")
 var sim = Simulation.new()
 var pressed_person=""
@@ -196,7 +206,7 @@ func actor(pos: Vector3, color: Color) -> CharacterBody3D:
 	for side in [-1,1]:
 		var arm:=MeshInstance3D.new()
 		var sleeve:=CylinderMesh.new();sleeve.top_radius=0.065;sleeve.bottom_radius=0.07;sleeve.height=0.6;sleeve.radial_segments=6
-		arm.mesh=sleeve;arm.material_override=material(color.darkened(0.12));arm.position=Vector3(side*0.28,0.93,0);arm.rotation.z=side*0.17;body.add_child(arm)
+		arm.name="LeftArm" if side<0 else "RightArm";arm.mesh=sleeve;arm.material_override=material(color.darkened(0.12));arm.position=Vector3(side*0.28,0.93,0);arm.rotation.z=side*0.17;body.add_child(arm)
 	for x in [-0.13, 0.13]:
 		var leg := MeshInstance3D.new()
 		var leg_mesh := BoxMesh.new()
@@ -302,8 +312,14 @@ func _ready() -> void:
 	episode_ui=preload("res://scripts/episode_ui.gd").new()
 	add_child(episode_ui); episode_ui.setup(self,episode)
 	var args := OS.get_cmdline_user_args()
-	if args.is_empty():
-		sim.start_gentle_opening(); episode.data.briefed=true; episode_ui.refresh()
+	journal=preload("res://scripts/inn_journal.gd").new();add_child(journal);journal.setup(self)
+	if args.is_empty():start_campaign()
+	if "--demo-verify" in args:
+		set_physics_process(false);get_tree().quit(preload("res://scripts/demo_tests.gd").new().run(sim.obstacles));return
+	if "--demo-playthrough" in args or "--demo-shadow" in args or "--capture-demo-ending" in args:
+		await demo_playthrough();return
+	if "--capture-demo" in args or "--capture-demo-talk" in args or "--capture-demo-intro" in args:
+		await capture_demo("--capture-demo-talk" in args);return
 	if "--capture-context" in args or "--capture-context-clean" in args or "--capture-actions" in args or "--capture-cycle" in args:
 		await capture_context("--capture-context" in args); return
 	if "--capture-episode" in args or "--capture-episode-cellar" in args:
@@ -475,9 +491,11 @@ func sync_actor(visual: Node3D, pos: Vector2, dt: float, floor_: int=0) -> void:
 	if moving and dt>0:
 		var diff:=pos-before
 		visual.rotation.y=lerp_angle(visual.rotation.y,atan2(-diff.x,-diff.y),minf(1.0,dt*12.0))
-	var swing:=sin(sim.data.clock*10)*0.45 if moving else 0.0
+	var swing:=sin(sim.data.clock*10)*0.40 if moving else 0.0
 	visual.get_node("LeftLeg").rotation.x=swing
 	visual.get_node("RightLeg").rotation.x=-swing
+	if visual.has_node("LeftArm"):
+		visual.get_node("LeftArm").rotation.x=-swing*0.65;visual.get_node("RightArm").rotation.x=swing*0.65
 
 func sync_view(dt: float) -> void:
 	var d: Dictionary=sim.data
@@ -499,6 +517,11 @@ func sync_view(dt: float) -> void:
 	sync_actor(staff_visual,d.staff.pos,dt)
 	staff_visual.rotation.y=atan2(-d.staff.facing.x,-d.staff.facing.y)
 	collector_visual.position=Vector3(-0.2,0.08,-1.5)
+	if cargo_visual==null:
+		world_root=basement;cargo_visual=box(Vector3(0.8,0.6,0.65),Vector3(1,0.4,1),Color("76523a"));world_root=surface
+	cargo_visual.visible=Campaign.active(sim) and d.campaign.get("cargo",false) and cellar_shown
+	if buried_hint==null:buried_hint=world_label("낡은 자국",Vector3(2,1.1,0),basement)
+	buried_hint.visible=Campaign.active(sim) and cellar_shown and d.campaign.rumors.size()>0 and not d.campaign.ledger_found
 	var inspection: Dictionary=d.ops.inspector
 	inspector_visual.visible=inspection.state not in ["idle","scheduled"] and (cellar_shown if inspection.floor==1 else surface_shown)
 	sync_actor(inspector_visual,inspection.pos,dt,inspection.floor)
@@ -528,13 +551,15 @@ func sync_view(dt: float) -> void:
 		labels[id].global_position=world_point(person.pos,person.floor,0.95 if person.state in ["down","dead"] else 2.03)
 		labels[id].text=str(person.name)
 		labels[id].pixel_size=0.0045 if person.floor==1 else 0.007
-		if person.state=="waiting":labels[id].text+=" · 대기"
+		if Campaign.active(sim) and person.state in ["waiting","arriving","dining"]:
+			labels[id].text+=" · 말 걸기" if not person.get("known",false) else (" · 식사" if person.get("visit","")=="meal" else "")
+		elif person.state=="waiting":labels[id].text+=" · 대기"
 		if person.state=="dead":labels[id].text+=" · 사망"
 		if person.state=="restrained":labels[id].text+=" · 붙잡힘"
 		if person.state=="captive":labels[id].text+=" · 구금"
 		labels[id].modulate=Color("ffd394") if d.ops.selected==id else Color.WHITE
 	if last_cell_count!=d.cells.size():rebuild_basement()
-	staff_marker.text="직원 · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
+	staff_marker.text=("마라" if Campaign.active(sim) else "직원")+" · 확인 중" if d.stealth.phase!="idle" else ("직원 · 업무 거부" if d.clock<d.stealth.refuse_until else "직원")
 	staff_marker.modulate=Color("ffb882") if d.stealth.suspicion>=10 else Color.WHITE
 	vision_mesh.visible=surface_shown and d.staff.hired and show_vision
 	vision_clock+=dt
@@ -562,7 +587,7 @@ func set_layer(value: String) -> void:
 	view_layer=value
 	overview=true
 	camera_offset=Vector2.ZERO
-	camera.size=25.0 if value!="below" else 13.5
+	camera.size=(22.8 if Campaign.active(sim) else 25.0) if value!="below" else 13.5
 	camera_focus=(Vector3(0,-0.2,0.5) if value=="all" else Vector3(0,1.3,-0.4)) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
 	camera.position=camera_focus+CAMERA_ARM
 	camera.look_at(camera_focus)
@@ -669,8 +694,30 @@ func earth_mesh(vertices: PackedVector3Array, colors: PackedColorArray) -> void:
 func rebuild_basement() -> void:
 	preload("res://scripts/cellar_terrain.gd").build(self)
 
+func start_campaign() -> void:
+	if DisplayServer.get_name()!="headless":
+		if ambience==null:
+			ambience=AudioStreamPlayer.new();ambience.stream=preload("res://assets/audio/inn-wind.wav");ambience.volume_db=-26;add_child(ambience)
+			ambience.stream.loop_mode=AudioStreamWAV.LOOP_FORWARD;ambience.stream.loop_begin=0;ambience.stream.loop_end=128000
+			room_chime=AudioStreamPlayer.new();room_chime.stream=preload("res://assets/audio/inn-chime.wav");room_chime.volume_db=-19;add_child(room_chime)
+		ambience.play()
+	Campaign.start(sim);episode.data.briefed=true;episode_ui.root.hide();journal.open("intro");set_layer("all")
+
+func context_opened(kind_: String) -> void:
+	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk"] and not dialogue_paused:
+		dialogue_previous_pause=sim.data.paused;dialogue_paused=true;sim.data.paused=true
+
+func context_closed(_kind: String) -> void:
+	if dialogue_paused:sim.data.paused=dialogue_previous_pause;dialogue_paused=false
+
+func rest_until_dawn() -> void:
+	if not Campaign.can_rest(sim):return
+	while not sim.data.campaign.summary and sim.data.campaign.ending=="":
+		sim.tick(0.5);Campaign.tick(sim)
+	journal.refresh()
+
 func save_game() -> void:
-	var file:=FileAccess.open("user://inn-v03.json",FileAccess.WRITE)
+	var file:=FileAccess.open("user://inn-campaign-v13.json" if Campaign.active(sim) else "user://inn-v03.json",FileAccess.WRITE)
 	if file==null:
 		sim.note("저장 파일을 만들 수 없다.")
 		return
@@ -680,16 +727,19 @@ func save_game() -> void:
 	sim.note("저장했다. 진행 중인 주문과 작업도 함께 기록했다.")
 
 func load_game() -> void:
-	if not FileAccess.file_exists("user://inn-v03.json"):
+	var save_path="user://inn-campaign-v13.json" if Campaign.active(sim) else "user://inn-v03.json"
+	if not FileAccess.file_exists(save_path):
 		sim.note("저장된 기록이 없다. 메뉴에서 먼저 저장하자.")
 		return
-	var saved: Variant=JSON.parse_string(FileAccess.get_file_as_string("user://inn-v03.json"))
+	var saved: Variant=JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if not sim.restore(saved):
 		sim.note("이 버전에서 읽을 수 없는 저장 파일이다.")
 		return
 	if sim.data.has("episode"):
 		episode.data=sim.data.episode.duplicate(true)
 		episode_ui.ending_shown=false
+	if Campaign.active(sim):
+		sim.data.paused=false;episode_ui.root.hide();journal.opened=false;journal.panel.hide();journal.refresh()
 	last_cell_count=-1
 	sim.note("저장한 상태로 돌아왔다.")
 	sync_view(0)
@@ -702,7 +752,7 @@ func pan_camera(relative: Vector2) -> void:
 	camera_offset=camera_offset.limit_length(18)
 
 func _input(event: InputEvent) -> void:
-	if episode_ui!=null and episode_ui.opened: return
+	if episode_ui!=null and episode_ui.opened or journal!=null and journal.opened: return
 	if event is InputEventMagnifyGesture:
 		camera.size=clampf(camera.size/event.factor,9,40); get_viewport().set_input_as_handled(); return
 	if event is InputEventScreenTouch:
@@ -746,8 +796,9 @@ func _input(event: InputEvent) -> void:
 		if touch_dragged and not touch_blocked:pan_camera(event.relative)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if episode_ui!=null and episode_ui.opened: return
+	if episode_ui!=null and episode_ui.opened or journal!=null and journal.opened: return
 	if event is InputEventKey and event.pressed and not event.echo:
+		if Campaign.active(sim) and event.physical_keycode not in [KEY_ESCAPE,KEY_M,KEY_F5,KEY_F9]:return
 		match event.physical_keycode:
 			KEY_ESCAPE:
 				if OS.has_feature("web"):sim.data.paused=not sim.data.paused
@@ -790,20 +841,29 @@ func world_tap(point: Vector2) -> void:
 	pointer_position=point
 	var inspector: Dictionary=sim.data.ops.inspector
 	if inspector.state not in ["idle","scheduled"] and inspector.floor==sim.data.player.floor and point.distance_to(camera.unproject_position(world_point(inspector.pos,inspector.floor,0.9)))<30:
-		pressed_owner=false; object_context.open("inspector"); return
+		pressed_owner=false
+		if Campaign.active(sim):
+			if inspector.state=="waiting":context_action("inspector","","talk_guard")
+			else:sim.note("경비가 현장을 살피고 있다. 지금은 설명을 듣지 않는다.")
+		else:object_context.open("inspector")
+		return
 	if pressed_owner:
 		pressed_owner=false; object_context.open("owner"); return
 	var target_id: String=pressed_person if pressed_person!="" and sim.data.people.has(pressed_person) and sim.data.people[pressed_person].state!="gone" else pick_person(point)
 	pressed_person=""
 	if target_id!="":
 		sim.data.excavation.path=[]; sim.data.excavation.intent=""; sim.data.ops.selected=target_id
-		object_context.open("person",target_id); return
+		if Campaign.active(sim):context_action("person",target_id,"greet")
+		else:object_context.open("person",target_id)
+		return
 	if view_layer!="below":
 		for number in [1,2]:
 			if point.distance_to(camera.unproject_position(world_point(Vector2(5.6,-2.0 if number==1 else 2.0),0,0.55)))<30:
 				object_context.open("room",str(number)); return
 		if sim.data.staff.hired and point.distance_to(camera.unproject_position(world_point(sim.data.staff.pos,0,0.9)))<28:
-			object_context.open("staff"); return
+			if Campaign.active(sim):context_action("staff","","talk_staff")
+			else:object_context.open("staff")
+			return
 	if view_layer!="below" and point.distance_to(camera.unproject_position(world_point(Simulation.COUNTER,0,0.8)))<34:
 		object_context.open("counter"); return
 	if point.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<32 and sim.data.player.floor==0:
@@ -844,9 +904,16 @@ func _physics_process(delta: float) -> void:
 		sim.move_player((right*direction.x+down*direction.y)*delta*speed_*sim.data.speed*sim.travel_multiplier)
 		sim.tick(delta*sim.data.speed)
 		if not sim.gentle_opening(): episode.tick(delta*sim.data.speed,episode_facts())
+		Campaign.tick(sim)
 		if pending_chat!="" and sim.data.excavation.intent=="" and sim.data.work.is_empty():
 			var id=pending_chat; pending_chat=""
-			if sim.data.people.has(id) and Simulation.Intrigue.close(sim,id): object_context.open("person",id,str(sim.data.people[id].trait))
+			if id=="@staff":
+				if sim.data.player.floor==0 and sim.data.player.pos.distance_to(sim.data.staff.pos)<1.35:object_context.open("staff_talk","","손님 식사는 제가 맡고 있어요. 주인님은 다른 일을 보셔도 됩니다. 아래층에서 이상한 소리가 나면 불러볼게요.")
+				else:pending_chat="@staff";sim.queue_command("listen_staff")
+			elif id=="@guard" and sim.near_counter():object_context.open("guard_talk","","몇 가지 확인하겠소. 이 여관 아래에는 무엇을 보관하고 있소?")
+			elif sim.data.people.has(id) and Simulation.Intrigue.close(sim,id):
+				if Campaign.active(sim):object_context.open("conversation",id,Dialogue.begin(sim,id))
+				else:object_context.open("person",id,str(sim.data.people[id].trait))
 		update_stealth_audio(delta)
 	if sim.data.player.floor!=displayed_floor:
 		displayed_floor=sim.data.player.floor
@@ -871,6 +938,11 @@ func _physics_process(delta: float) -> void:
 	camera.look_at(camera_focus)
 	sync_view(delta)
 	episode_ui.refresh()
+	if Campaign.active(sim):
+		if room_chime!=null and sim.data.money>last_cash and not muted:room_chime.play()
+		last_cash=sim.data.money
+		if ambience!=null:ambience.volume_db=-80 if muted else -26
+	if journal!=null:journal.refresh()
 
 func send_key(key: int) -> void:
 	var event:=InputEventKey.new()
@@ -1204,12 +1276,16 @@ func verify_episode_playthrough(capture: bool=false) -> int:
 	return 0
 
 func context_heading() -> String:
-	return sim.calendar_text()
+	return "길목 여관 · 영업%d일 · %s" %[sim.data.campaign.day,sim.calendar_text().split(" ",true,1)[1]] if Campaign.active(sim) else sim.calendar_text()
 
 func context_stats() -> String:
+	if Campaign.active(sim):return "%d닢 · 새벽 납부 %d · 평판 %d · 신고 %d" %[sim.data.money,Campaign.rent(int(sim.data.campaign.day))+(4 if sim.data.staff.hired else 0)+(8 if int(sim.data.campaign.day)==3 and not sim.data.campaign.tax_paid else 0),sim.data.campaign.reputation,sim.data.ops.reports]
 	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.values().filter(func(p): return p.state!="gone").size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
 
 func context_title(kind_: String,id_: String) -> String:
+	if kind_=="conversation":return str(sim.data.people[id_].name)
+	if kind_=="guard_talk":return "국경 순찰대"
+	if kind_=="staff_talk":return "마라 · 직원"
 	if kind_=="person": return str(sim.data.people[id_].name)+(" · 식사" if sim.data.people[id_].get("visit","")=="meal" else "")
 	if kind_=="room": return room_text(int(id_))
 	return {"counter":"접수대 · 장부","hatch":"지하 입구","stairs":"계단","soil":"흙벽","lamp":"지하 등불","staff":"직원","owner":"여관 주인","system":"여관 설정","actions":"손님에게 할 행동","inspector":"국경 경비"}.get(kind_,"여관")
@@ -1217,19 +1293,26 @@ func context_title(kind_: String,id_: String) -> String:
 func context_anchor(kind_: String,id_: String) -> Vector2:
 	var pos: Vector2=Simulation.COUNTER; var floor_: int=sim.data.player.floor
 	match kind_:
-		"person","actions","other":
+		"person","actions","other","conversation":
 			if sim.data.people.has(id_): pos=sim.data.people[id_].pos; floor_=sim.data.people[id_].floor
 		"room": pos=Vector2(5.6,-2.0 if id_=="1" else 2.0); floor_=0
 		"hatch": pos=Vector2.ZERO if floor_==1 else Simulation.HATCH
 		"stairs": pos=Simulation.STAIRS
 		"soil": pos=Vector2(context_soil)
 		"lamp": pos=Vector2(-0.35,-1)
-		"staff": pos=sim.data.staff.pos; floor_=0
+		"staff","staff_talk": pos=sim.data.staff.pos; floor_=0
 		"owner": pos=sim.data.player.pos
-		"inspector": pos=sim.data.ops.inspector.pos; floor_=sim.data.ops.inspector.floor
+		"inspector","guard_talk": pos=sim.data.ops.inspector.pos; floor_=sim.data.ops.inspector.floor
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
+	if kind_=="conversation":return Dialogue.options(sim,id_)
+	if kind_=="guard_talk":
+		var items=[["guard_honest","장부를 보여드리겠습니다."],["guard_lie","식재료 창고뿐입니다."],["guard_pay","수고비를 받으시죠. · 8닢"]]
+		if sim.data.campaign.ledger_found:items.push_front(["guard_evidence","이 반입 허가를 확인해보시죠."])
+		return items
+	if kind_=="staff_talk":return [["delegate","서빙을 계속 맡아주세요."],["takeover","내가 서빙할 테니 쉬세요."],["explain","아래층 소리에 대해 이야기한다"]]
+	if Campaign.active(sim) and kind_=="counter":return [["journal","오늘의 장부와 지출"],["recruit","직원 구하기" if not sim.data.staff.hired else "마라와 이야기하기"],["repair","굴착 도구 수리 · 2닢"],["system","저장 · 화면 설정"]]
 	if sim.data.paused: return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
 	match kind_:
 		"person":
@@ -1271,6 +1354,12 @@ func travel_to_floor(target: int) -> void:
 	else:sim.queue_floor()
 
 func context_action(kind_: String,id_: String,action: String) -> void:
+	if kind_=="conversation":
+		var result=Dialogue.choose(sim,id_,action)
+		if result=="reopen":object_context.open("conversation",id_,Dialogue.line(sim,id_));return
+		if result=="close":return
+	if action.begins_with("guard_"):
+		Campaign.guard_answer(sim,action);return
 	var target_floor=sim.data.player.floor
 	if kind_ in ["person","actions","other"] and sim.data.people.has(id_):target_floor=sim.data.people[id_].floor
 	elif kind_ in ["room","counter","staff","inspector"]:target_floor=0
@@ -1280,7 +1369,20 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 	match action:
 		"resume": sim.data.paused=false; return
 		"pause": sim.data.paused=true; return
-		"journal": episode_ui.open(); return
+		"journal":
+			if Campaign.active(sim):journal.open()
+			else:episode_ui.open()
+			return
+		"recruit":
+			if sim.data.staff.hired:context_action("staff","","talk_staff");return
+			var id: String=sim.data.campaign.worker
+			if id=="" or not sim.data.people.has(id) or sim.data.people[id].state in ["gone","leaving"]:sim.data.campaign.worker=Campaign.special(sim,"worker","마라","일할 사람을 구하신다고 들었어요.");sim.note("일할 사람이 마당에서 들어온다.")
+			else:context_action("person",id,"greet")
+			return
+		"talk_staff":sim.cancel_work();pending_chat="@staff";sim.queue_command("listen_staff");return
+		"delegate":sim.data.staff.delegated=true;sim.note("마라에게 서빙을 맡겼다.");return
+		"takeover":sim.data.staff.delegated=false;sim.note("마라는 하던 주문을 마치고 쉰다.");return
+		"talk_guard":sim.cancel_work();pending_chat="@guard";sim.queue_command("listen_guard");return
 		"system": object_context.open("system"); return
 		"actions","other": object_context.open(action,id_); return
 		"overview": set_layer("all"); return
@@ -1299,10 +1401,14 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		"clean": sim.queue_command("clean"+id_); return
 		"assign":
 			var selected: String=sim.data.ops.selected
-			if selected=="" or not sim.data.people.has(selected): sim.note("먼저 배정할 손님을 선택하자."); return
+			if selected=="" or not sim.data.people.has(selected): sim.note("먼저 손님에게 말을 걸어 원하는 것을 듣자."); return
+			if Campaign.active(sim) and not sim.data.people[selected].get("known",false):context_action("person",selected,"greet");return
 			sim.request_room(int(id_),selected); return
 	if action in ["admit1","admit2"]: sim.request_room(1 if action=="admit1" else 2,id_); return
-	if action=="greet": pending_chat=id_
+	if action=="farewell":return
+	if action=="greet":
+		if Campaign.active(sim):sim.cancel_work();sim.data.service_target="";sim.data.booking_request={}
+		pending_chat=id_
 	if kind_ in ["person","actions","other"]: sim.data.ops.selected=id_
 	sim.queue_command(action,id_)
 
@@ -1511,4 +1617,78 @@ func capture_context(show_menu: bool) -> void:
 	if "--capture-cycle" in OS.get_cmdline_user_args():
 		get_viewport().get_texture().get_image().save_png("res://docs/cycle-3d-overview.png"); get_tree().quit(); return
 	get_viewport().get_texture().get_image().save_png("res://docs/context-3d-"+("actions" if "--capture-actions" in OS.get_cmdline_user_args() else ("guest" if show_menu else "inn"))+".png")
+	get_tree().quit()
+
+func demo_advance(seconds: float) -> void:
+	for i in range(ceili(seconds/0.1)):
+		if sim.data.paused:break
+		sim.tick(0.1);_physics_process(0)
+
+func demo_talk(id: String) -> void:
+	object_context.close()
+	await pointer_click(camera.unproject_position(world_point(sim.data.people[id].pos,sim.data.people[id].floor,1.5)),true)
+	for i in range(400):
+		if object_context.kind=="conversation" and object_context.target==id:break
+		sim.tick(0.1);_physics_process(0)
+	await get_tree().process_frame
+
+func demo_playthrough() -> void:
+	get_window().size=Vector2i(540,1020);await get_tree().process_frame;set_physics_process(false)
+	start_campaign();journal.choose("begin");set_layer("all");sync_view(0)
+	await demo_talk("guest_1")
+	assert(object_context.kind=="conversation" and sim.data.people.guest_1.known and not object_context.controls.has("admit1"))
+	assert(sim.data.paused and object_context.detail.contains("조용한"))
+	await click_context("offer_room");assert(object_context.controls.has("book1"))
+	await click_context("book1");demo_advance(25)
+	assert(sim.data.rooms["1"].guest=="guest_1")
+	await demo_talk("guest_1");await click_context("serve_meal");demo_advance(25)
+	assert(sim.data.served>=1)
+	var worker: String=sim.data.campaign.worker
+	await demo_talk(worker);await click_context("hire_worker")
+	assert(sim.data.staff.hired and sim.data.staff.delegated)
+	var shadow="--demo-shadow" in OS.get_cmdline_user_args()
+	var safety=0
+	while sim.data.campaign.ending=="" and safety<7000:
+		safety+=1
+		if sim.data.campaign.summary:
+			journal.choose("continue");continue
+		var acted=false
+		for id in sim.data.people.keys():
+			var p: Dictionary=sim.data.people[id]
+			if p.state not in ["waiting","arriving"] or p.get("known",false) or p.get("role","")=="worker":continue
+			if p.get("role","")=="broker":
+				await demo_talk(id);await click_context("accept_cargo" if shadow else "refuse_cargo");acted=true;break
+			if p.get("role","")=="fugitive":
+				await demo_talk(id);await click_context("feed_fugitive");acted=true;break
+			if p.get("visit","")=="stay" and sim.data.rooms.values().any(func(r):return r.guest==""):
+				await demo_talk(id);await click_context("offer_room")
+				await click_context("book1" if sim.data.rooms["1"].guest=="" else "book2");demo_advance(25);acted=true;break
+		if sim.data.ops.inspector.state=="waiting":
+			object_context.close();context_action("inspector","","talk_guard")
+			for i in range(400):
+				if object_context.kind=="guard_talk":break
+				sim.tick(0.1);_physics_process(0)
+			await click_context("guard_lie" if shadow else "guard_honest");acted=true
+		if not acted:demo_advance(0.5)
+	var expected_ending="국경의 은신처" if shadow else "다시 켜진 등불"
+	assert(sim.data.campaign.ending==expected_ending)
+	assert(sim.data.campaign.history.size()==3 and sim.data.served>=3 and journal.opened)
+	var final_money=sim.data.money;save_game();sim.data.money=999;load_game()
+	assert(sim.data.money==final_money and sim.data.campaign.ending==expected_ending)
+	print("DEMO PLAYTHROUGH: talk -> listen -> room -> meal -> hire -> real visitors -> broker -> guards -> three paid dawns -> ending -> save/load passed; meals=",sim.data.served," balance=",sim.data.money," ending=",expected_ending)
+	if ambience!=null:ambience.stop();room_chime.stop()
+	if "--capture-demo-ending" in OS.get_cmdline_user_args():
+		await get_tree().process_frame;await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://docs/demo-ending.png")
+	await get_tree().process_frame
+	get_tree().quit()
+
+func capture_demo(talking: bool) -> void:
+	set_physics_process(false);capturing=true;Campaign.start(sim);episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false
+	sim.data.player.pos=Vector2(-3.75,2.5);sim.data.people.guest_1.pos=Vector2(-4.75,2.5);sim.data.people.guest_1.state="waiting"
+	set_layer("all");sync_view(0);journal.refresh()
+	if talking:object_context.open("conversation","guest_1",Dialogue.begin(sim,"guest_1"))
+	if "--capture-demo-intro" in OS.get_cmdline_user_args():sim.data.campaign.intro=true;journal.open("intro")
+	await get_tree().process_frame;await get_tree().process_frame;await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/demo-"+("intro" if "--capture-demo-intro" in OS.get_cmdline_user_args() else ("talk" if talking else "inn"))+".png")
 	get_tree().quit()

@@ -73,7 +73,7 @@ func refresh() -> void:
 	var choices=[]
 	if c.intro:
 		title.text="문 닫은 뒤 · 여관 타이쿤"
-		body.text="전쟁 중 국경 마을의 여관 주인.\n\n손님을 받고 숙박비와 식사값을 벌어 여관을 키운다.\n\n손님 클릭 → 요구 듣기 → 돈 받고 방 안내.\n마라가 식사를 맡고, 접수·청소 알바를 고용하면\n주인이 다른 일을 해도 여관은 계속 돌아간다.\n\n접수대에서 알바 고용·주방 개선.\n객실을 눌러 개선하면 숙박 수입이 늘어난다.\n하루는 약 3분 30초. 매일 매출·임대료·급여를 결산한다.\n사흘에 끝나지 않고 영업을 이어간다.\n\n비밀 입구는 손님 출입이 막힌 뒤편 전용 창고 안.\n입구를 내려가 감옥·은신처·창고·화로를 짓거나\n구멍·통로 파기에서 목적지를 찍으면 자동으로 판다.\n화면 설정에서 앞·뒤·옆 방향을 바꿔 볼 수 있다.\n일반 창고나 깊은 공사는 범죄 의심 사유가 아니다.\n비밀 의뢰를 받는 것은 당신의 선택이다."
+		body.text="전쟁 중 국경 마을의 여관 주인.\n\n손님을 받고 숙박비와 식사값을 벌어 여관을 키운다.\n\n손님 클릭 → 요구 듣기 → 돈 받고 방 안내.\n마라가 식사를 맡고, 접수·청소 알바에게 맡기면\n주인이 다른 일을 해도 여관은 계속 돌아간다.\n\n접수대에서 알바 고용·주방 개선.\n객실을 눌러 개선하면 숙박 수입이 늘어난다.\n하루는 약 3분 30초. 매일 매출·임대료·급여를 결산한다.\n사흘에 끝나지 않고 영업을 이어간다.\n\n비밀 입구는 손님 출입이 막힌 뒤편 전용 창고 안.\n입구를 내려가 감옥·은신처·창고·화로를 짓거나\n구멍·통로 파기에서 목적지를 찍으면 자동으로 판다.\n화면 설정에서 앞·뒤·옆 방향을 바꿔 볼 수 있다.\n일반 창고나 깊은 공사는 범죄 의심 사유가 아니다.\n비밀 의뢰를 받는 것은 당신의 선택이다."
 		choices=[["begin","여관 문을 연다"]]
 		if FileAccess.file_exists("user://inn-tycoon-v15.json"):choices.push_front(["load","저장한 영업 이어서 하기"])
 	elif c.summary or c.ending!="":
@@ -88,7 +88,8 @@ func refresh() -> void:
 		body.text=host.Campaign.goal(sim)+"\n\n보유 %d닢 · 미납 %d닢\n식사 제공 %d회 · 객실 안내 %d회\n평판 %d · 신고 %d회\n\n오늘 임대료 %d닢%s%s\n영업은 08시부터 다음 날 08시까지, 약 3분 30초.\n새벽에 하루를 결산한다.\n\n사람을 누르면 요구가 표시된다. 행동을 고르면 필요한 곳으로 이동한다.\n요구를 들은 뒤 방과 식사를 제안할 수 있다.\n마라는 내 편이다. 기본으로 서빙을 맡기고 지하 일을 할 수 있다.\n\n지하에서도 지상의 영업을 볼 수 있다.\n흙벽은 한 번 눌러 파고, 열린 바닥에는 시설을 짓는다.\n입구는 마당·건물 아래 여러 곳에 만들 수 있다.\n\n선택 의뢰: 회색 망토와 생포 의뢰를 이야기한다.\n누구를 가두고 왜 가두는지는 목표에 표시된다." %[sim.data.money,sim.data.debt,sim.data.served,c.bookings,c.reputation,sim.data.ops.reports,host.Campaign.rent(int(c.day))," · 일당 4닢" if sim.data.staff.hired else ""," · 세금 8닢" if int(c.day)==3 and not c.tax_paid else ""]
 		choices=[["save","현재 상태 저장"],["close","장부를 닫는다"]]
 		if host.Tycoon.active(sim):
-			body.text="오늘 매출 %d닢 · 누적 매출 %d닢\n객실 이용 %d/5 · 식사 제공 %d회\n\n임대료 %d닢 · 알바 일당 %d닢\n\n접수: %s / 청소: %s / 식사: 마라\n\n정상 영업으로 돈을 벌어 객실·주방을 개선하세요.\n비밀 의뢰와 지하는 선택입니다.\n전용 창고에는 일반 손님이 들어오지 않습니다." %[sim.data.tycoon.day_sales,sim.data.tycoon.sales,sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.served,host.Campaign.rent(int(c.day)),host.Tycoon.wage(sim),"자동" if sim.data.tycoon.reception else "주인","자동" if sim.data.tycoon.cleaning else "주인"]
+			body.text="오늘 매출 %d닢 · 누적 매출 %d닢\n객실 이용 %d/5 · 식사 제공 %d회\n\n기본 임대료 %d닢 · 알바 일당 %d닢\n\n접수: %s / 청소: %s / 식사: 마라\n\n정상 영업으로 돈을 벌어 객실·주방을 개선하세요.\n비밀 의뢰와 지하는 선택입니다.\n전용 창고에는 일반 손님이 들어오지 않습니다." %[sim.data.tycoon.day_sales,sim.data.tycoon.sales,sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.served,host.Campaign.rent(int(c.day)),host.Tycoon.wage(sim),"자동" if sim.data.tycoon.reception else "주인","자동" if sim.data.tycoon.cleaning else "주인"]
+			body.text+="\n\n오늘 결산 예정 %d닢%s" %[host.Campaign.daily_cost(sim)," · 첫 3일 지원 적용" if sim.data.tycoon.get("easy",false) and int(c.day)<=3 else ""]
 		if host.Campaign.can_rest(sim):choices.push_front(["rest","마라에게 맡기고 새벽까지 쉰다"])
 	var key=JSON.stringify(choices)
 	if key!=last_key:

@@ -1281,7 +1281,7 @@ func context_heading() -> String:
 
 func context_stats() -> String:
 	if Tycoon.active(sim):return "%d닢 · 객실 %d/5 · 오늘 매출 %d · 알바 %d명" %[sim.data.money,sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.tycoon.day_sales,1+int(sim.data.tycoon.reception)+int(sim.data.tycoon.cleaning)]
-	if Campaign.active(sim):return "%d닢 · 새벽 납부 %d · 평판 %d · 신고 %d" %[sim.data.money,Campaign.rent(int(sim.data.campaign.day))+(4 if sim.data.staff.hired else 0)+(8 if int(sim.data.campaign.day)==3 and not sim.data.campaign.tax_paid else 0),sim.data.campaign.reputation,sim.data.ops.reports]
+	if Campaign.active(sim):return "%d닢 · 새벽 납부 %d · 평판 %d · 신고 %d" %[sim.data.money,Campaign.daily_cost(sim),sim.data.campaign.reputation,sim.data.ops.reports]
 	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.values().filter(func(p): return p.state!="gone").size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
 
 func context_title(kind_: String,id_: String) -> String:

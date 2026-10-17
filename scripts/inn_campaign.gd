@@ -52,11 +52,16 @@ static func tick(sim) -> void:
 static func rent(day: int) -> int:
 	return [8,12,16][clampi(day-1,0,2)]
 
+static func daily_cost(sim) -> int:
+	var c: Dictionary=sim.data.campaign
+	var cost=rent(int(c.day))+(preload("res://scripts/inn_tycoon.gd").wage(sim) if sim.data.has("tycoon") else (4 if sim.data.staff.hired else 0))+(8 if int(c.day)==3 and not c.tax_paid else 0)
+	if sim.data.has("tycoon"):cost=preload("res://scripts/inn_tycoon.gd").settlement_cost(sim,cost)
+	return cost
+
 static func settle(sim) -> void:
 	var c: Dictionary=sim.data.campaign
 	if c.summary or c.ending!="":return
-	var cost=rent(int(c.day))+(preload("res://scripts/inn_tycoon.gd").wage(sim) if sim.data.has("tycoon") else (4 if sim.data.staff.hired else 0))+(8 if int(c.day)==3 and not c.tax_paid else 0)
-	if sim.data.has("tycoon"):cost=preload("res://scripts/inn_tycoon.gd").settlement_cost(sim,cost)
+	var cost=daily_cost(sim)
 	sim.charge(cost,"%d일차 임대료·급여%s" %[c.day,"·세금" if int(c.day)==3 else ""])
 	var record={"day":c.day,"income":int(sim.data.money)-int(c.start_money)+cost,"served":int(sim.data.served)-int(c.start_served),"cost":cost+(8 if int(c.day)==3 and c.tax_paid else 0),"balance":sim.data.money,"debt":sim.data.debt}
 	c.history.append(record); c.summary=true

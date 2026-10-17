@@ -1,3 +1,13 @@
 [submodule "foundations/ironbound"]
 	path = foundations/ironbound
 	url = https://github.com/destinjones/ironbound.git
+
+[submodule "foundations/openclonk"]
+	path = foundations/openclonk
+	url = https://github.com/openclonk/openclonk.git
+	branch = master
+
+[submodule "foundations/minicraft"]
+	path = foundations/minicraft
+	url = https://github.com/MinicraftPlus/minicraft-plus-revived.git
+	branch = 2.3.0-dev

@@ -2,7 +2,7 @@
 3D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed
 EPISODE CHECKS: 23 checks, 0 failures
 Simulation verification: 146 checks, 0 failures
-3D CONTEXT POINTER CHECKS: 29 checks, 0 failures
+3D CONTEXT POINTER CHECKS: 32 checks, 0 failures
 2D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed
 EPISODE CHECKS: 23 checks, 0 failures
 SIDEVIEW RULE CHECKS: 31 checks; 0 failures

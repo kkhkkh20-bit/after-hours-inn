@@ -275,7 +275,7 @@ func _approach(point: Vector2,reach: float) -> bool:
 	destination=walking_route.back().point+Vector2(0,27); return true
 
 func _tap_world() -> void:
-	if object_context.panel.visible: object_context.close(); pointer_down=false; return
+	if object_context.panel.visible: object_context.close()
 	if mode!="move":
 		if mode=="hand": _select_person()
 		return
@@ -911,7 +911,9 @@ func context_items(kind_: String,id_: String) -> Array:
 			if gentle_opening and inn.served<3: items=items.filter(func(item): return item[0]!="actions")
 			return items
 		"actions": return [["serve","식사 내어주기"],["expel","내보내기"],["subdue","제압 시도"]]
-		"counter": return [["journal","오늘의 장부 · 사건/결산"],["staff","직원에게 말 걸기"],["system","저장 · 화면 설정"],["stop","현재 행동 취소"]]
+		"counter":
+			if gentle_opening and inn.served<1: return [["journal","운영 안내"],["system","저장 · 화면 설정"],["stop","현재 행동 취소"]]
+			return [["journal","오늘의 장부 · 사건/결산"],["staff","직원에게 말 걸기"],["system","저장 · 화면 설정"],["stop","현재 행동 취소"]]
 		"hatch": return [["hatch","덮개 닫기" if hatch_open else "덮개 열기"],["enter","지하 창고로 이동" if player.position.y<22*32 else "여관으로 올라가기"]]
 		"ground": return [["move","여기로 이동"],["mine","이곳 굴착"],["wood","목재 벽 설치"],["platform","발판 설치"],["torch","횃불 설치"],["drop","내려놓기"],["stop","현재 행동 취소"]]
 		"owner": return [["stop","현재 행동 취소"],["journal","운영 안내 · 장부"],["drop","내려놓기"],["system","저장 · 화면 설정"]]

@@ -770,9 +770,12 @@ func _unhandled_input(event: InputEvent) -> void:
 func world_tap(point: Vector2) -> void:
 	if mobile_ui.blocks_point(point):return
 	if object_context.panel.visible:
-		object_context.close(); return
+		object_context.close()
 	if (view_layer=="surface" and sim.data.player.floor==1) or (view_layer=="below" and sim.data.player.floor!=1):return
 	pointer_position=point
+	var inspector: Dictionary=sim.data.ops.inspector
+	if inspector.state not in ["idle","scheduled"] and inspector.floor==sim.data.player.floor and point.distance_to(camera.unproject_position(world_point(inspector.pos,inspector.floor,0.9)))<30:
+		object_context.open("inspector"); return
 	if sim.data.player.floor==0:
 		for number in [1,2]:
 			if point.distance_to(camera.unproject_position(world_point(sim.room_target(number)+Vector2(1,0),0,0.55)))<30:
@@ -1181,7 +1184,7 @@ func context_stats() -> String:
 func context_title(kind_: String,id_: String) -> String:
 	if kind_=="person": return str(sim.data.people[id_].name)
 	if kind_=="room": return room_text(int(id_))
-	return {"counter":"접수대 · 장부","hatch":"지하 입구","stairs":"계단","soil":"흙벽","lamp":"지하 등불","staff":"직원","owner":"여관 주인","system":"여관 설정","actions":"손님에게 할 행동"}.get(kind_,"여관")
+	return {"counter":"접수대 · 장부","hatch":"지하 입구","stairs":"계단","soil":"흙벽","lamp":"지하 등불","staff":"직원","owner":"여관 주인","system":"여관 설정","actions":"손님에게 할 행동","inspector":"국경 경비"}.get(kind_,"여관")
 
 func context_anchor(kind_: String,id_: String) -> Vector2:
 	var pos: Vector2=Simulation.COUNTER; var floor_: int=sim.data.player.floor
@@ -1195,6 +1198,7 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 		"lamp": pos=Vector2(-0.35,-1)
 		"staff": pos=sim.data.staff.pos; floor_=0
 		"owner": pos=sim.data.player.pos
+		"inspector": pos=sim.data.ops.inspector.pos; floor_=sim.data.ops.inspector.floor
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
@@ -1215,6 +1219,7 @@ func context_items(kind_: String,id_: String) -> Array:
 			if sim.gentle_opening() and sim.data.served<1: return [["journal","운영 안내"],["system","저장 · 화면 설정"]]
 			return [["journal","오늘의 장부 · 사건/결산"],["staff","직원 고용 / 업무 맡기기"],["repair","도구 수리 · 2닢"],["system","저장 · 화면 설정"]]
 		"hatch": return [["floor","올라가기" if sim.data.player.floor==1 else "내려가기"],["hatch","덮개 열기 / 닫기"],["lamp","지하 등불 켜기 / 끄기"]]
+		"inspector": return [["inspect","조사에 응하기"],["bribe","뇌물 제안 · 12닢"]] if sim.data.ops.inspector.state=="waiting" else [["journal","오늘의 장부"]]
 		"lamp": return [["lamp","켜기 / 끄기"]]
 		"stairs": return [["gallery","1층으로 내려가기" if sim.data.player.floor==2 else "2층으로 올라가기"]]
 		"room": return [["assign","선택 손님에게 배정"],["clean","청소하기"]]
@@ -1223,7 +1228,10 @@ func context_items(kind_: String,id_: String) -> Array:
 			return [["dig","빠르게 파기 · 4초"],["quiet","조용히 파기 · 10초"]]
 		"staff": return [["staff","서빙 위임 전환"],["explain","말 걸기 · 소음 설명"]]
 		"owner":
-			return [["stop","현재 행동 취소"],["journal","운영 안내 · 장부"],["drop","운반 내려놓기"],["system","저장 · 화면 설정"]]
+			var items=[["stop","현재 행동 취소"],["journal","운영 안내 · 장부"],["drop","운반 내려놓기"]]
+			if sim.data.player.floor==1 and (not sim.gentle_opening() or sim.data.served>=3): items.append(["cell","구금칸 설치 / 구금"])
+			items.append(["system","저장 · 화면 설정"])
+			return items
 		"system": return [["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
 	return []
 
@@ -1361,6 +1369,15 @@ func input_verify() -> void:
 	_physics_process(0.1)
 	checks.append(episode.data.elapsed==elapsed and episode_facts().opening)
 	checks.append(context_items("person","guest_1").size()==3 and context_items("soil","").size()==1)
+	sim.data.opening.active=false; sim.data.player.floor=1
+	checks.append(context_items("owner","").any(func(entry): return entry[0]=="cell"))
+	sim.data.player.floor=0; sim.data.player.pos=Simulation.COUNTER
+	sim.data.ops.inspector.state="waiting"; sim.data.ops.inspector.floor=0; sim.data.ops.inspector.pos=Simulation.COUNTER
+	set_layer("surface"); sync_view(0); object_context.close()
+	await pointer_click(camera.unproject_position(world_point(Simulation.COUNTER,0,0.9)))
+	checks.append(object_context.kind=="inspector")
+	await click_context("inspect")
+	checks.append(sim.data.ops.inspector.state=="search")
 	var failed=0
 	for i in range(checks.size()):
 		if not checks[i]: failed+=1; print("CONTEXT POINTER FAIL ",i)

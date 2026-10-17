@@ -1,0 +1,73 @@
+name: Test, build and deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inn-pages
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache official Godot engine and selected templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/godot
+            ~/.local/share/godot/export_templates/4.7.2.stable
+          key: godot-${{ runner.os }}-4.7.2-web-win-v2
+      - name: Install official Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl --fail --location --retry 3 "$release/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o "$RUNNER_TEMP/godot.zip"
+          curl --fail --location --retry 3 "$release/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o "$RUNNER_TEMP/templates.tpz"
+          mkdir -p "$HOME/.local/bin" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          unzip -p "$RUNNER_TEMP/godot.zip" "Godot_v${GODOT_VERSION}-stable_linux.x86_64" > "$HOME/.local/bin/godot"
+          chmod +x "$HOME/.local/bin/godot"
+          unzip -j "$RUNNER_TEMP/templates.tpz" templates/windows_release_x86_64.exe templates/web_nothreads_release.zip templates/version.txt -d "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+      - name: Add engine to PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Verify simulation and inputs, export Web and Windows
+        run: bash ci/build.sh
+      - name: Upload Windows test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AfterHours-Windows
+          path: build/windows/
+          retention-days: 3
+      - name: Package Pages website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Publish browser test build
+        id: deployment
+        uses: actions/deploy-pages@v5

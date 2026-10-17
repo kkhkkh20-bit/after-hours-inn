@@ -1,0 +1,129 @@
+[
+  {
+    "file": "assets/furniture/bedSingle.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "ca00c63f9a12da3138d902b2f5f18e0360fb6e8a5ac42ccb4bc3f185724b65d1"
+  },
+  {
+    "file": "assets/furniture/table.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "ff1a94498d023957f4bc3ff6f55a7a82977d336dbf01a573b3364f03afe5ff61"
+  },
+  {
+    "file": "assets/furniture/chair.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "c8a11eec93e89e31250ba91afc1b8d56c3bec7ae86640fd1239f595ff4180883"
+  },
+  {
+    "file": "assets/furniture/bench.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "ba05a6d23a5a5a44da016757632070e47ff7587ce10e2f6d6d52328b4cf5489b"
+  },
+  {
+    "file": "assets/furniture/tableRound.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "f8daea9124a542a00b7bdacfddac82dc468573d43e44d7b54dd6316e9695754b"
+  },
+  {
+    "file": "assets/furniture/books.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "b8dc56e5d29f6fc1f4727fccb1b9642627fee9942c48060a00034e98df02701c"
+  },
+  {
+    "file": "assets/furniture/bookcaseOpen.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "750702218d68c062b15dfef6ab06a4014d1cfa8bd05f02e57c53b7e13bec157c"
+  },
+  {
+    "file": "assets/furniture/coatRackStanding.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "d8231c22dab63ceb9fc8678f6c8ceafc62afa8726b51a73b4ce349043d3cdc91"
+  },
+  {
+    "file": "assets/furniture/rugRectangle.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/furniture-kit",
+    "sha256": "a989d2d59c04e3071e0c90388b113a9a8f339ce1814ef984c51cb6dcd7c8e0eb"
+  },
+  {
+    "file": "assets/town/wall-wood.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "8699614fdbc99f565942709c0977c964e2c12f3b3c60098a6e2c397c973f08db"
+  },
+  {
+    "file": "assets/town/wall-wood-window-small.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "3c9118d167d8e75ee78f884b9edb90101f9c1928d4fcc2afaedcc349bf8c672b"
+  },
+  {
+    "file": "assets/town/lantern.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "f270637e3083d6e84a30626ee05df2b09597a642985a7f5c3e4ab5bb1c7a8d55"
+  },
+  {
+    "file": "assets/town/cart.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "63503cd0a7398310e01aabc8e3663f711a7517394d23d179d0695157fee99d40"
+  },
+  {
+    "file": "assets/town/tree.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "e8d81b97297de62699b92559cee7b247da84b1815df2515e42fd5a318a30b8d7"
+  },
+  {
+    "file": "assets/town/fence.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "92261b9419108d84f3db0def5eadeffa783032029897562b1f512e4a7570ef48"
+  },
+  {
+    "file": "assets/town/stairs-wood.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "f6be9e5f77572d493dce374b68d231f116800ce388a3dcb0d646032162ccadd9"
+  },
+  {
+    "file": "assets/town/planks.glb",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://kenney.nl/assets/fantasy-town-kit",
+    "sha256": "619705afa7ad290bfa499a701fd7ea07210ad535126cb3abc245b6f16e1420ab"
+  },
+  {
+    "file": "assets/fonts/InnKorean.otf",
+    "creator": "Noto CJK authors",
+    "source": "https://github.com/notofonts/noto-cjk",
+    "license": "SIL OFL 1.1",
+    "modification": "Subset to UI glyphs; renamed Inn Korean Subset",
+    "sha256": "7034f7c168d7ef1dd5beeeb8eaf55fa3e56f7935424e68350407362aea8eb4e7"
+  }
+]

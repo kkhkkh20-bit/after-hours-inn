@@ -1,0 +1,490 @@
+extends RefCounted
+## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
+
+const COUNTER := Vector2(-1.75, -1.75)
+const ENTRY := Vector2(0.25, 3.25)
+const HATCH := Vector2(-3.25, 2.75)
+const SAVE_VERSION := 3
+var obstacles: Array[Rect2] = []
+var grid := AStarGrid2D.new()
+var data: Dictionary
+
+func _init() -> void:
+	data = {"clock":0.0, "speed":1, "paused":false, "money":24, "next_guest":22.0,
+		"serial":0, "order_serial":0, "people":{}, "orders":{},
+		"rooms":{"1":{"guest":"", "dirty":false}, "2":{"guest":"", "dirty":false}},
+		"player":{"pos":Vector2(0.25, 1.75), "floor":0, "carry":""},
+		"staff":{"hired":false,"delegated":false,"pos":COUNTER,"carry":"","path":[],"mode":"idle","target":"","distance":0.0},
+		"work":{}, "dues":{"wage":1200,"rent":1980,"tax":2160}, "debt":0,
+		"collector":false,"tax_paid":false,"cells":{}, "dig":{}, "noise":0.0,
+		"logs":[], "served":0, "departed":0}
+	for x in range(-1,2):
+		for y in range(-1,2): data.cells[cell_key(Vector2i(x,y))] = true
+	spawn_guest()
+	note("손님이 도착했다. 접수대 가까이에서 1 / 2로 객실을 배정한다.")
+
+func note(text: String) -> void:
+	data.logs.append({"time":int(data.clock),"text":text})
+	if data.logs.size() > 30: data.logs.pop_front()
+
+func add_obstacle(rect: Rect2) -> void:
+	obstacles.append(rect.grow(0.18))
+
+func rebuild_grid() -> void:
+	grid.region = Rect2i(0,0,28,16)
+	grid.cell_size = Vector2(0.5,0.5)
+	grid.offset = Vector2(-6.75,-3.75)
+	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+	grid.update()
+	for x in range(28):
+		for y in range(16):
+			var id := Vector2i(x,y)
+			grid.set_point_solid(id, not surface_walkable(grid.get_point_position(id)))
+
+func surface_walkable(pos: Vector2) -> bool:
+	if not Rect2(-6.8,-3.8,13.6,7.6).has_point(pos): return false
+	for rect in obstacles:
+		if rect.has_point(pos): return false
+	return true
+
+func walkable(pos: Vector2, floor_: int) -> bool:
+	if floor_ == 0: return surface_walkable(pos)
+	# Sample the actor footprint, so shoulders cannot cross unopened earth.
+	for shift in [Vector2.ZERO,Vector2(0.19,0),Vector2(-0.19,0),Vector2(0,0.19),Vector2(0,-0.19)]:
+		if not data.cells.has(cell_key(Vector2i(roundi(pos.x+shift.x),roundi(pos.y+shift.y)))): return false
+	return true
+
+func path_to(from: Vector2, to: Vector2) -> Array:
+	var a := Vector2i(floori((from.x+7)/0.5),floori((from.y+4)/0.5))
+	var b := Vector2i(floori((to.x+7)/0.5),floori((to.y+4)/0.5))
+	if not grid.is_in_boundsv(a) or not grid.is_in_boundsv(b): return []
+	if grid.is_point_solid(a) or grid.is_point_solid(b): return []
+	return Array(grid.get_point_path(a,b))
+
+func move_player(offset: Vector2) -> void:
+	if data.paused or not data.work.is_empty() or not data.dig.is_empty(): return
+	var remaining := offset
+	while remaining.length() > 0.0001:
+		var step := remaining.limit_length(0.08)
+		var p: Vector2 = data.player.pos
+		if walkable(p+Vector2(step.x,0),data.player.floor): p.x += step.x
+		if walkable(p+Vector2(0,step.y),data.player.floor): p.y += step.y
+		data.player.pos = p
+		remaining -= step
+
+func spawn_guest() -> void:
+	if waiting().size() >= 2: return
+	data.serial += 1
+	var id := "guest_%d" % data.serial
+	var templates := [["행상 로웬","조용한 방을 원한다",10],["전령 에다","식사를 서둘러 달라고 한다",8],["병사 브란","낯선 사람을 경계한다",12],["약초상 메린","먼 길을 걸어 피곤해한다",9]]
+	var sample: Array = templates[(int(data.serial)-1)%templates.size()]
+	data.people[id] = {"id":id,"name":sample[0],"trait":sample[1],"rate":sample[2],
+		"pos":ENTRY,"state":"waiting","room":0,"path":[],"arrival":data.clock,
+		"checkout":0.0,"order_at":0.0,"meals":0}
+	if data.serial > 1: note("%s 도착: %s" % [sample[0],sample[1]])
+
+func waiting() -> Array:
+	var result: Array = []
+	for id in data.people:
+		if data.people[id].state == "waiting": result.append(id)
+	return result
+
+func room_target(number: int) -> Vector2:
+	return Vector2(3.25, -2.25 if number==1 else 1.75)
+
+func near_counter() -> bool:
+	return data.player.floor == 0 and data.player.pos.distance_to(COUNTER)<2.0
+
+func assign_room(number: int) -> bool:
+	if data.paused or not near_counter():
+		note("접수대 가까이에서 객실을 배정해야 한다.")
+		return false
+	var key := str(number)
+	if not data.rooms.has(key): return false
+	var room_: Dictionary = data.rooms[key]
+	if room_.guest != "" or room_.dirty:
+		note("%d호는 사용 중이거나 청소가 필요하다." % number)
+		return false
+	if waiting().is_empty():
+		note("입실을 기다리는 손님이 없다.")
+		return false
+	var id: String = waiting()[0]
+	var person: Dictionary = data.people[id]
+	var path := path_to(person.pos,room_target(number))
+	if path.is_empty():
+		note("객실까지 갈 수 없다. 통로를 확인해야 한다.")
+		return false
+	room_.guest = id
+	person.room = number
+	person.state = "entering"
+	person.path = path
+	person.checkout = data.clock+105.0
+	data.money += int(person.rate)
+	note("%s → %d호. 숙박비 %d닢을 받았다." % [person.name,number,person.rate])
+	return true
+
+func reject_guest() -> void:
+	if data.paused or not near_counter() or waiting().is_empty(): return
+	var person: Dictionary = data.people[waiting()[0]]
+	person.state = "leaving"
+	person.path = path_to(person.pos,ENTRY)
+	note("%s의 숙박을 거절했다." % person.name)
+
+func create_order(id: String) -> String:
+	data.order_serial += 1
+	var order_id := "meal_%d" % data.order_serial
+	data.orders[order_id] = {"id":order_id,"guest":id,"status":"queued","holder":"","created":data.clock,"remaining":3.0,"paid":false}
+	data.people[id].meals += 1
+	note("%s: 따뜻한 식사를 주문했다." % data.people[id].name)
+	return order_id
+
+func can_receive(id: String) -> bool:
+	return data.people.has(id) and data.people[id].state == "staying"
+
+func start_cooking(order_id: String, holder: String) -> bool:
+	var order_: Dictionary = data.orders[order_id]
+	if order_.status != "queued" or order_.holder not in ["",holder] or data.money < 1 or not can_receive(order_.guest): return false
+	data.money -= 1
+	order_.status = "cooking"
+	order_.holder = holder
+	order_.remaining = 3.0
+	return true
+
+func pickup(order_id: String, holder: String) -> bool:
+	var order_: Dictionary = data.orders[order_id]
+	if order_.status != "ready" or order_.holder not in ["",holder] or not can_receive(order_.guest): return false
+	if (data.player.carry if holder == "player" else data.staff.carry) != "": return false
+	order_.status = "carried"
+	order_.holder = holder
+	if holder == "player": data.player.carry = order_id
+	else: data.staff.carry = order_id
+	return true
+
+func deliver(order_id: String, holder: String) -> bool:
+	if not data.orders.has(order_id): return false
+	var order_: Dictionary = data.orders[order_id]
+	if order_.status != "carried" or order_.holder != holder or order_.paid or not can_receive(order_.guest): return false
+	var position_: Vector2 = data.player.pos if holder=="player" else data.staff.pos
+	if holder=="player" and data.player.floor != 0: return false
+	if position_.distance_to(data.people[order_.guest].pos)>1.2: return false
+	order_.paid = true
+	order_.status = "served"
+	order_.holder = ""
+	if holder=="player": data.player.carry=""
+	else: data.staff.carry=""
+	data.money += 4
+	data.served += 1
+	note("%s에게 식사 전달. 4닢을 받았다." % data.people[order_.guest].name)
+	return true
+
+func interact() -> void:
+	if data.paused: return
+	if not data.work.is_empty() or not data.dig.is_empty():
+		note("작업 중이다. X로 중단할 수 있다.")
+		return
+	if data.player.carry != "":
+		if not deliver(data.player.carry,"player"): note("주문한 손님 가까이로 가야 한다.")
+		return
+	if near_counter():
+		if data.collector:
+			if data.money>=8:
+				data.money-=8
+				data.collector=false
+				data.tax_paid=true
+				note("징수원에게 세금 8닢을 냈다.")
+			else: note("세금 8닢이 부족하다. 징수원이 기다린다.")
+			return
+		for id in data.orders:
+			if pickup(id,"player"):
+				note("식사를 들었다. 주문한 손님에게 가져가자.")
+				return
+		for id in data.orders:
+			if start_cooking(id,"player"):
+				data.work={"type":"cook","order":id,"remaining":3.0}
+				note("식사 준비 중. 재료비 1닢 / 3초.")
+				return
+		note("지금 준비할 주문이 없다.")
+		return
+	if data.player.floor==0:
+		for key in data.rooms:
+			if data.rooms[key].dirty and data.player.pos.distance_to(room_target(int(key)))<1.6:
+				data.work={"type":"clean","room":key,"remaining":4.0}
+				note("%s호 청소 중. 4초가 걸린다." % key)
+				return
+	note("접수대에서 E로 식사 준비/집기, 빈 객실에서 E로 청소한다.")
+
+func toggle_staff() -> void:
+	if data.paused: return
+	if not data.staff.hired:
+		if not near_counter():
+			note("접수대 가까이에서 H로 직원을 고용한다.")
+			return
+		if data.money<3:
+			note("고용 준비금 3닢이 부족하다.")
+			return
+		data.money-=3
+		data.staff.hired=true
+		data.staff.delegated=true
+		note("직원 고용. 준비금 3닢 / 매일 20시 임금 4닢. 서빙을 맡겼다.")
+	else:
+		data.staff.delegated=not data.staff.delegated
+		note("직원에게 식사 준비·서빙을 맡겼다." if data.staff.delegated else "직원 위임을 해제했다. 진행 중인 주문은 마무리한다.")
+
+func tick(delta: float) -> void:
+	if data.paused: return
+	var remaining := delta
+	while remaining>0.00001:
+		var step := minf(remaining,0.1)
+		_step(step)
+		remaining-=step
+
+func _step(dt: float) -> void:
+	data.clock+=dt
+	data.noise=maxf(0,data.noise-dt*0.5)
+	if data.clock>=data.next_guest:
+		data.next_guest+=32.0
+		spawn_guest()
+	for id in data.people.keys():
+		var person: Dictionary=data.people[id]
+		if person.state=="waiting" and data.clock-person.arrival>65:
+			person.state="leaving"
+			person.path=path_to(person.pos,ENTRY)
+			note("%s이 기다리다 떠난다." % person.name)
+		if person.state in ["entering","leaving"]:
+			follow(person,dt*1.15)
+			if person.path.is_empty():
+				if person.state=="entering":
+					person.state="staying"
+					person.order_at=data.clock+3
+				else:
+					person.state="gone"
+					data.departed+=1
+		if person.state=="staying":
+			if data.clock>=person.checkout:
+				checkout(id)
+			elif data.clock>=person.order_at and person.meals<2:
+				create_order(id)
+				person.order_at=data.clock+45
+	for order_id in data.orders:
+		var order_: Dictionary=data.orders[order_id]
+		if order_.status=="cooking":
+			order_.remaining-=dt
+			if order_.holder=="player" and not data.work.is_empty(): data.work.remaining=order_.remaining
+			if order_.remaining<=0:
+				order_.status="ready"
+				if order_.holder=="player":
+					data.work={}
+					pickup(order_id,"player")
+					note("식사가 준비됐다. 주문한 손님에게 전달하자.")
+	update_work(dt)
+	update_worker(dt)
+	update_money()
+
+func follow(person: Dictionary, amount: float) -> void:
+	while amount>0 and not person.path.is_empty():
+		var target: Vector2=person.path[0]
+		var distance: float=person.pos.distance_to(target)
+		if distance<=amount:
+			if person.has("distance"): person.distance+=distance
+			person.pos=target
+			person.path.pop_front()
+			amount-=distance
+		else:
+			if person.has("distance"): person.distance+=amount
+			person.pos=person.pos.move_toward(target,amount)
+			amount=0
+
+func checkout(id: String) -> void:
+	var person: Dictionary=data.people[id]
+	data.rooms[str(int(person.room))].guest=""
+	data.rooms[str(int(person.room))].dirty=true
+	person.state="leaving"
+	person.path=path_to(person.pos,ENTRY)
+	for oid in data.orders:
+		var order_: Dictionary=data.orders[oid]
+		if order_.guest==id and order_.status not in ["served","cancelled"]:
+			order_.status="cancelled"
+			if data.player.carry==oid: data.player.carry=""
+			if data.staff.carry==oid: data.staff.carry=""
+			if data.work.get("order","")==oid: data.work={}
+			order_.holder=""
+	note("%s 퇴실. %d호 청소가 필요하다." % [person.name,person.room])
+
+func update_worker(dt: float) -> void:
+	var worker: Dictionary=data.staff
+	if not worker.hired: return
+	if worker.carry!="":
+		var order_: Dictionary=data.orders[worker.carry]
+		if not can_receive(order_.guest): return
+		var target: Vector2=data.people[order_.guest].pos
+		if worker.pos.distance_to(target)<1.1:
+			deliver(worker.carry,"staff")
+			worker.mode="idle"
+			worker.target=""
+			worker.path=[]
+		else:
+			if worker.path.is_empty(): worker.path=path_to(worker.pos,target)
+			follow(worker,dt*1.25)
+		return
+	if worker.target!="" and data.orders.has(worker.target):
+		var order_: Dictionary=data.orders[worker.target]
+		if order_.status in ["served","cancelled"]:
+			worker.target=""
+			worker.mode="idle"
+			worker.path=[]
+		elif worker.pos.distance_to(COUNTER)>0.15:
+			if worker.path.is_empty(): worker.path=path_to(worker.pos,COUNTER)
+			follow(worker,dt*1.25)
+			return
+		elif order_.status=="queued":
+			if start_cooking(worker.target,"staff"): worker.mode="cooking"
+			return
+		elif order_.status=="ready":
+			pickup(worker.target,"staff")
+			worker.path=[]
+			worker.mode="delivery"
+			return
+		else: return
+	if not worker.delegated:
+		return_staff(dt)
+		return
+	for oid in data.orders:
+		var order_: Dictionary=data.orders[oid]
+		if order_.status in ["queued","ready"] and order_.holder=="" and can_receive(order_.guest):
+			order_.holder="staff"
+			worker.target=oid
+			worker.mode="counter"
+			worker.path=path_to(worker.pos,COUNTER)
+			return
+	return_staff(dt)
+
+func return_staff(dt: float) -> void:
+	var worker: Dictionary=data.staff
+	if worker.pos.distance_to(COUNTER)>0.15:
+		if worker.path.is_empty(): worker.path=path_to(worker.pos,COUNTER)
+		worker.mode="return"
+		follow(worker,dt*1.25)
+	else: worker.mode="idle"
+
+func update_work(dt: float) -> void:
+	if not data.work.is_empty() and data.work.type=="clean":
+		data.work.remaining-=dt
+		if data.work.remaining<=0:
+			data.rooms[data.work.room].dirty=false
+			note("객실 청소를 마쳤다.")
+			data.work={}
+	if not data.dig.is_empty():
+		data.dig.remaining-=dt
+		data.noise=minf(8,data.noise+dt*1.7)
+		if data.dig.remaining<=0:
+			data.cells[data.dig.cell]=true
+			note("땅굴 한 칸을 넓혔다. 위층의 시간도 계속 흐른다.")
+			data.dig={}
+
+func cancel_work() -> void:
+	if data.paused: return
+	if data.work.get("type","")=="cook":
+		var order_: Dictionary=data.orders[data.work.order]
+		order_.status="queued"
+		order_.holder=""
+		data.money+=1
+	data.work={}
+	data.dig={}
+	note("작업을 중단했다.")
+
+func change_floor() -> bool:
+	if data.paused or not data.work.is_empty() or not data.dig.is_empty(): return false
+	if data.player.floor==0 and data.player.pos.distance_to(HATCH)<1.2:
+		data.player.floor=1
+		data.player.pos=Vector2.ZERO
+		note("지하로 내려왔다. 입구에서 Q로 복귀 / 흙벽을 클릭하면 굴착한다.")
+		return true
+	if data.player.floor==1 and data.player.pos.length()<1.1:
+		data.player.floor=0
+		data.player.pos=HATCH
+		note("위층으로 돌아왔다.")
+		return true
+	note("계단 입구 가까이에서 Q를 눌러야 한다.")
+	return false
+
+static func cell_key(cell: Vector2i) -> String:
+	return "%d,%d" % [cell.x,cell.y]
+
+static func parse_cell(key: String) -> Vector2i:
+	var parts:=key.split(",")
+	return Vector2i(int(parts[0]),int(parts[1]))
+
+func start_dig(cell: Vector2i) -> bool:
+	if data.paused or data.player.floor!=1 or not data.work.is_empty() or not data.dig.is_empty(): return false
+	if absi(cell.x)>12 or absi(cell.y)>8 or data.cells.has(cell_key(cell)): return false
+	if data.money<1:
+		note("굴착 도구 비용 1닢이 부족하다.")
+		return false
+	var current := Vector2i(roundi(data.player.pos.x),roundi(data.player.pos.y))
+	if absi(current.x-cell.x)+absi(current.y-cell.y)!=1:
+		note("내 바로 옆 흙벽만 팔 수 있다.")
+		return false
+	data.money-=1
+	data.dig={"cell":cell_key(cell),"remaining":4.0}
+	note("굴착 중. 4초 / 도구 비용 1닢 / X 중단.")
+	return true
+
+func update_money() -> void:
+	var minute := int(420+data.clock*6)
+	if minute>=data.dues.wage:
+		data.dues.wage+=1440
+		if data.staff.hired: charge(4,"직원 임금")
+	if minute>=data.dues.rent:
+		data.dues.rent+=1440
+		charge(12,"임대료")
+	if minute>=data.dues.tax and not data.collector:
+		data.dues.tax+=1440
+		data.collector=true
+		data.tax_paid=false
+		note("징수원이 왔다. 접수대에서 E로 세금 8닢을 낸다.")
+
+func charge(amount: int, label_: String) -> void:
+	var paid:=mini(amount,data.money)
+	data.money-=paid
+	data.debt+=amount-paid
+	note("%s %d닢 지급%s" % [label_,paid," / 미납 기록" if paid<amount else ""])
+
+static func encode(value: Variant) -> Variant:
+	if value is Vector2: return {"_vector2":[value.x,value.y]}
+	if value is Dictionary:
+		var result: Dictionary={}
+		for key in value: result[str(key)]=encode(value[key])
+		return result
+	if value is Array:
+		var result: Array=[]
+		for item in value: result.append(encode(item))
+		return result
+	return value
+
+static func decode(value: Variant) -> Variant:
+	if value is Dictionary:
+		if value.has("_vector2"): return Vector2(value._vector2[0],value._vector2[1])
+		var result: Dictionary={}
+		for key in value: result[key]=decode(value[key])
+		return result
+	if value is Array:
+		var result: Array=[]
+		for item in value: result.append(decode(item))
+		return result
+	return value
+
+func snapshot() -> Dictionary:
+	return {"version":SAVE_VERSION,"state":encode(data)}
+
+func restore(saved: Variant) -> bool:
+	if not saved is Dictionary or saved.get("version",0)!=SAVE_VERSION or not saved.get("state") is Dictionary: return false
+	var candidate: Dictionary=decode(saved.state)
+	for key in data:
+		if not candidate.has(key): return false
+	if not candidate.player.pos is Vector2 or not candidate.rooms is Dictionary: return false
+	for key in ["serial","order_serial","speed","money","debt","served","departed"]: candidate[key]=int(candidate[key])
+	candidate.player.floor=int(candidate.player.floor)
+	for person in candidate.people.values():
+		for key in ["room","rate","meals"]: person[key]=int(person[key])
+	data=candidate
+	return true

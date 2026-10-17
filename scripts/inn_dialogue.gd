@@ -31,7 +31,7 @@ static func line(sim,id: String) -> String:
 			if order_.guest==id and order_.status not in ["served","cancelled"]:return "따뜻한 식사 좀 부탁하겠소. 오늘 제대로 먹은 게 없어서."
 		return "잘 먹었소. 잠시 쉬었다 가겠소." if p.get("visit","")=="meal" else "방은 잘 쓰고 있소. 아침까지 방해만 없으면 좋겠군."
 	if p.get("visit","")=="meal":return "묵을 곳은 있습니다. 수프 한 그릇이면 돼요. 따뜻한 걸로 주시겠어요?"
-	return ["조용한 방 하나 있소? 마당 소리가 안 들리는 안쪽이면 좋겠소. 숙박비는 %d닢 드리리다.","해 뜨기 전에 떠나야 하오. 문 가까운 방이면 좋겠소. %d닢이면 되겠소?","사람들 눈에 덜 띄는 방이 필요하오. 누구와 같이 왔냐는 건 묻지 마시오. %d닢 드리리다.","오래 걸었더니 다리가 말을 안 듣네요. 방 하나와 따뜻한 식사 부탁해요. %d닢이에요."][(int(id.get_slice("_",1))-1)%4] %int(p.rate)
+	return ["하룻밤 묵을 방이 있습니까? 조용한 쪽이면 좋겠어요.","내일 일찍 떠납니다. 출입하기 편한 방이 있을까요?","저녁을 먹고 쉬고 싶습니다. 빈방이 있나요?","먼 길을 걸었더니 피곤하네요. 방 하나 부탁드립니다."][(int(id.get_slice("_",1))-1)%4]+"\n숙박비 %d닢을 낼 수 있습니다." %int(p.rate)
 
 static func options(sim,id: String) -> Array:
 	var p: Dictionary=sim.data.people[id]
@@ -39,7 +39,7 @@ static func options(sim,id: String) -> Array:
 		var result=[]
 		for n in sim.data.rooms:
 			var room_: Dictionary=sim.data.rooms[str(n)]
-			result.append(["book"+str(n),Sandbox.ROOM_NAMES.get(int(n),str(n)+"호")+(" · 사용 중" if room_.guest!="" else (" · 정리 후 안내" if room_.dirty else "")),room_.guest==""])
+			result.append(["book"+str(n),Sandbox.ROOM_NAMES.get(int(n),str(n)+"호")+(" · 사용 중" if room_.guest!="" else (" · 예약 중" if room_.get("reserved","") not in ["",id] else (" · 청소 후 안내" if room_.dirty else " · 빈방"))),room_.guest=="" and room_.get("reserved","") in ["",id]])
 		result.append(["talk_back","다시 이야기한다"]);return result
 	if p.get("dialogue_stage","") in ["rumor","interrogate"]:return [["talk_back","알겠습니다. 그래서…"]]
 	if p.state=="captive":return [["interrogate","무슨 사정인지 듣는다"],["release_captive","풀어준다"],["kill","살해"]]
@@ -51,22 +51,19 @@ static func options(sim,id: String) -> Array:
 	if p.get("role","")=="broker":return [["accept_cargo","상자를 맡겠습니다. +12닢"],["accept_hold","생포 의뢰도 있습니까? · 선택 의뢰"],["ask_story","상자에 무엇이 들었습니까?"],["refuse_cargo","우리 여관에서는 안 됩니다."]]
 	if p.get("role","")=="fugitive" and not p.get("protected",false):return [["shelter","방을 드리겠습니다. 돈은 됐어요."],["escort","함께 지하 은신처로 갑시다."],["feed_fugitive","식사라도 드시고 가세요."],["ask_story","누가 당신을 찾습니까?"],["dismiss","여기는 안 됩니다."]]
 	var result=[]
-	if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":result.append(["offer_room","숙박비 받고 방을 안내한다 · +%d닢부터" %int(p.rate)])
+	if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":result.append(["offer_room","객실 선택 · %d닢부터" %int(p.rate)])
 	else:
 		if p.get("visit","")=="meal" and p.state=="arriving" or sim.data.orders.values().any(func(o):return o.guest==id and o.status not in ["served","cancelled"]):result.append(["serve_meal","따뜻한 식사를 내오겠습니다."])
 	result.append(["ask_story","길에서는 별일 없었습니까?"])
 	if p.get("rival","")!="":result.append(["mediate","여기서는 싸우지 마세요."])
 	if int(p.room)>0:result.append(["relocate","다른 방으로 옮겨드릴까요?"])
-	result.append(["actions","다른 조치를 한다"])
-	result.append(["farewell","편히 계세요."])
+	result.append(["actions","다른 행동"])
 	return result
 
 static func choose(sim,id: String,action: String) -> String:
 	var p: Dictionary=sim.data.people[id]
 	if action.begins_with("book"):
 		var n=int(action.trim_prefix("book"))
-		if int(p.room)>0:
-			var old=int(p.room);sim.data.rooms[str(old)].guest="";sim.data.rooms[str(old)].dirty=true;p.room=0;p.relocating=true;p.state="waiting";p.arrival=sim.data.clock
 		if sim.request_room(n,id):p.chosen_room=n
 		return "close"
 	match action:

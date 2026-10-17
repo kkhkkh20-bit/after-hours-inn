@@ -154,7 +154,7 @@ func calendar_text() -> String:
 	return "%d일차 %02d:%02d · %s" %[1+minutes/1440,(minutes%1440)/60,minutes%60,"낮" if minutes%1440>=360 and minutes%1440<1200 else "밤"]
 
 func request_room(number: int,id: String) -> bool:
-	if Tycoon.active(self):return Tycoon.check_in(self,id,number)
+	if Tycoon.active(self):return Tycoon.reserve(self,number,id)
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():note("현재 작업을 마치거나 주인을 눌러 취소하자.");return false
 	if not data.people.has(id) or data.rooms[str(number)].guest!="":return false
 	if preload("res://scripts/inn_campaign.gd").active(self) and not data.people[id].get("known",false):note("먼저 손님에게 말을 걸어 원하는 것을 듣자.");return false
@@ -165,6 +165,7 @@ func request_room(number: int,id: String) -> bool:
 	return queue_command("admit"+str(number),id)
 
 func update_booking() -> void:
+	if Tycoon.active(self):Tycoon.booking_step(self);return
 	if data.get("booking_request",{}).is_empty():return
 	var job: Dictionary=data.booking_request
 	if not data.people.has(job.guest) or data.people[job.guest].state not in ["waiting","arriving"]:
@@ -182,11 +183,12 @@ func start_gentle_opening() -> void:
 	note("손님을 누르고 방을 골라주세요. 주인이 알아서 다가갑니다.")
 
 func spawn_guest() -> void:
-	if waiting().filter(func(id): return data.people[id].get("role","") not in ["worker","broker"]).size() >= (4 if Sandbox.active(self) else (1 if gentle_opening() and data.served<1 else 2)): return
+	if Tycoon.active(self) and data.rooms.values().all(func(r):return r.guest!="" or r.dirty or r.get("reserved","")!="") and data.people.values().filter(func(p):return p.get("visit","")=="meal" and p.state not in ["gone","leaving"]).size()>=2:return
+	if waiting().filter(func(id): return data.people[id].get("role","") not in ["worker","broker"]).size() >= 2: return
 
 	var natural: bool=data.get("opening",{}).get("natural",false)
 	var meal_only=natural and (int(data.serial)+1)%3==2
-	if natural and data.rooms.values().all(func(room_): return room_.guest!=""):meal_only=true
+	if natural and data.rooms.values().all(func(room_):return room_.guest!="" or room_.dirty or room_.get("reserved","")!=""):meal_only=true
 	if meal_only and data.people.values().filter(func(p): return p.get("visit","")=="meal" and p.state!="gone").size()>=2:return
 	data.serial += 1
 	var id := "guest_%d" % data.serial
@@ -197,10 +199,11 @@ func spawn_guest() -> void:
 		"checkout":0.0,"order_at":0.0,"meals":0}
 	Intrigue.register(data.people[id])
 	if data.get("opening",{}).get("natural",false):
-		var seats=[Vector2(-7.5,1.75),Vector2(-4.75,1.75),Vector2(-7.5,3.25),Vector2(-4.75,3.25)] if Sandbox.active(self) else [Vector2(-3.75,1.75),Vector2(-6.25,2.75),Vector2(-1.25,0.75)]
+		var seats=[Vector2(-8.75,1.75),Vector2(-6.25,1.75),Vector2(-5.75,2.25),Vector2(-3.75,2.25)] if Sandbox.active(self) else [Vector2(-3.75,1.75),Vector2(-6.25,2.75),Vector2(-1.25,0.75)]
 		var p: Dictionary=data.people[id]
 		p.pos=Vector2(14.25,3.25); p.state="arriving"
 		p.path=guest_path(p.pos,seats[(int(data.serial)-1)%seats.size()])
+		if Tycoon.active(self):retarget_arrival(id)
 	if Sandbox.active(self):
 		var p: Dictionary=data.people[id]
 		p.faction=["상인조합","전령단","국경군","약초상단"][(int(data.serial)-1)%4]
@@ -253,6 +256,7 @@ func assign_room(number: int, guest_id: String="") -> bool:
 			var preferred=1 if person.get("role","")=="fugitive" or (int(id.get_slice("_",1))-1)%4 in [0,2] else 2
 			data.campaign.reputation+=1 if number==preferred else -1
 			if number==preferred and int(person.rate)>0:data.money+=2;note("방이 마음에 든 손님이 2닢을 더 건넸다.")
+	room_.reserved=""
 	var payment=int(person.rate)+(Tycoon.room_bonus(self,number) if Tycoon.active(self) else 0)
 	if person.get("relocating",false):payment=0;person.relocating=false
 	data.money+=payment
@@ -288,6 +292,7 @@ func start_cooking(order_id: String, holder: String) -> bool:
 	return true
 
 func pickup(order_id: String, holder: String) -> bool:
+	if not data.orders.has(order_id):return false
 	var order_: Dictionary = data.orders[order_id]
 	if order_.status != "ready" or order_.holder not in ["",holder] or not can_receive(order_.guest): return false
 	if (data.player.carry if holder == "player" else data.staff.carry) != "": return false
@@ -388,11 +393,11 @@ func _step(dt: float) -> void:
 	data.clock+=dt
 	data.noise=maxf(0,data.noise-dt*0.5)
 	if data.clock>=data.next_guest:
-		data.next_guest=data.clock+(17.0 if Sandbox.active(self) else (48.0+float(int(data.serial)%3)*9.0 if data.get("opening",{}).get("natural",false) else 32.0))
+		data.next_guest=data.clock+(23.0 if Sandbox.active(self) else (48.0+float(int(data.serial)%3)*9.0 if data.get("opening",{}).get("natural",false) else 32.0))
 		spawn_guest()
 	for id in data.people.keys():
 		var person: Dictionary=data.people[id]
-		if person.state=="waiting" and data.clock-person.arrival>(150 if gentle_opening() else 65):
+		if person.state=="waiting" and data.get("booking_request",{}).get("guest","")!=id and data.clock-person.arrival>(150 if gentle_opening() else 65):
 			person.state="leaving"
 			person.path=path_to(person.pos,GATE if data.get("opening",{}).get("natural",false) else ENTRY)
 			note("%s이 기다리다 떠난다." % person.name)
@@ -480,6 +485,8 @@ func update_worker(dt: float) -> void:
 		worker.mode="refuse"
 		return
 	if worker.carry!="":
+		if not data.orders.has(worker.carry) or not can_receive(data.orders[worker.carry].guest):
+			worker.carry="";worker.target="";worker.mode="idle";worker.path=[];return
 		var order_: Dictionary=data.orders[worker.carry]
 		if not can_receive(order_.guest): return
 		var target: Vector2=data.people[order_.guest].pos
@@ -538,7 +545,7 @@ func update_work(dt: float) -> void:
 	if not data.work.is_empty() and data.work.type=="clean":
 		data.work.remaining-=dt
 		if data.work.remaining<=0:
-			data.rooms[data.work.room].dirty=false
+			if data.rooms[data.work.room].guest=="":data.rooms[data.work.room].dirty=false
 			note("객실 청소를 마쳤다.")
 			data.work={}
 	if not data.dig.is_empty():
@@ -552,11 +559,13 @@ func update_work(dt: float) -> void:
 
 func cancel_work() -> void:
 	if data.paused: return
-	if data.work.get("type","")=="cook":
+	data.excavation.command_tag=""
+	if data.work.get("type","")=="cook" and data.orders.has(data.work.get("order","")):
 		var order_: Dictionary=data.orders[data.work.order]
-		order_.status="queued"
-		order_.holder=""
-		data.money+=1
+		if order_.status=="cooking" and order_.holder=="player":
+			order_.status="queued"
+			order_.holder=""
+			data.money+=1
 	data.work={}
 	data.dig={}
 	data.excavation.path=[]
@@ -648,8 +657,12 @@ static func encode(value: Variant) -> Variant:
 
 static func decode(value: Variant) -> Variant:
 	if value is Dictionary:
-		if value.has("_vector2i"):return Vector2i(int(value._vector2i[0]),int(value._vector2i[1]))
-		if value.has("_vector2"): return Vector2(value._vector2[0],value._vector2[1])
+		if value.has("_vector2i") or value.has("_vector2"):
+			var pair: Variant=value.get("_vector2i",value.get("_vector2"))
+			if not pair is Array or pair.size()!=2:return null
+			for number in pair:
+				if typeof(number) not in [TYPE_INT,TYPE_FLOAT]:return null
+			return Vector2i(int(pair[0]),int(pair[1])) if value.has("_vector2i") else Vector2(pair[0],pair[1])
 		var result: Dictionary={}
 		for key in value: result[key]=decode(value[key])
 		return result
@@ -665,6 +678,15 @@ func snapshot() -> Dictionary:
 func restore(saved: Variant) -> bool:
 	if not saved is Dictionary or saved.get("version",0)!=SAVE_VERSION or not saved.get("state") is Dictionary: return false
 	var candidate: Dictionary=decode(saved.state)
+	for key in ["player","staff","rooms","people","orders","cells"]:
+		if not candidate.get(key) is Dictionary:return false
+	if not candidate.player.get("pos") is Vector2 or not candidate.player.has("floor"):return false
+	for room_ in candidate.rooms.values():
+		if not room_ is Dictionary or not room_.has_all(["guest","dirty"]):return false
+	for person in candidate.people.values():
+		if not person is Dictionary or not person.has_all(["id","pos","floor","state","room","rate","meals","path"]) or not person.pos is Vector2 or not person.path is Array:return false
+	for key in ["campaign","tycoon","ops","excavation","sandbox","booking_request"]:
+		if candidate.has(key) and not candidate[key] is Dictionary:return false
 	if data.has("campaign") and not candidate.has("campaign"):candidate.campaign={"active":false}
 	if data.has("booking_request") and not candidate.has("booking_request"):candidate.booking_request={}
 	if data.has("opening") and not candidate.has("opening"): candidate.opening={"active":false,"natural":false}
@@ -687,6 +709,7 @@ func restore(saved: Variant) -> bool:
 	if not candidate.excavation.has("lamp_on"):candidate.excavation.lamp_on=true
 	if not candidate.excavation.has("storeroom"):candidate.excavation.storeroom=false
 	data=candidate
+	if Tycoon.active(self):Tycoon.ensure(self)
 	Intrigue.migrate(self)
 	return true
 
@@ -893,7 +916,7 @@ func update_excavation(dt: float) -> void:
 		elif action=="dig":start_dig(parse_cell(job.cell))
 		elif action.begins_with("command:"):
 			var command: String=action.trim_prefix("command:"); var id: String=str(job.get("target",""))
-			if command in ["admit1","admit2","admit3","admit4","admit5","greet","dismiss","subdue","grab","sleep","kill","drag","deliver"] and data.people.has(id) and not Intrigue.close(self,id): queue_command(command,id)
+			if command in ["admit1","admit2","admit3","admit4","admit5","greet","dismiss","confirm_room","subdue","grab","sleep","kill","drag","deliver"] and data.people.has(id) and not Intrigue.close(self,id): queue_command(command,id)
 			else: perform_command(command,id)
 
 func repair_tools() -> bool:
@@ -906,7 +929,7 @@ func repair_tools() -> bool:
 	return true
 
 func queue_move(target: Vector2) -> bool:
-	if data.paused:return false
+	if data.paused:note("일시정지 중입니다. 영업을 재개해주세요.");return false
 	if Sandbox.active(self) and (not data.work.is_empty() or not data.dig.is_empty()):cancel_work()
 	if not data.work.is_empty() or not data.dig.is_empty():return false
 	var closest:=Vector2.ZERO
@@ -926,6 +949,8 @@ func queue_move(target: Vector2) -> bool:
 				elif grid.is_point_solid(id):continue
 				var delta:=point.distance_squared_to(target)
 				if delta<distance:distance=delta;closest=point
+	if distance>1.25*1.25:
+		note("그 지점은 벽이나 가구에 막혀 있습니다. 가까운 빈 바닥을 선택해주세요.");return false
 	var route: Array=gallery_route(data.player.pos,closest) if data.player.floor==2 else (path_to(data.player.pos,closest) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,closest))
 	if route.is_empty():note("그곳까지 이어지는 통로가 없다.");return false
 	data.excavation.path=route
@@ -933,11 +958,22 @@ func queue_move(target: Vector2) -> bool:
 	return true
 
 func queue_command(command: String, id: String="") -> bool:
+	if data.paused:note("일시정지 중입니다. 영업을 재개해주세요.");return false
+	var tag=command+":"+id
+	if data.excavation.get("command_tag","")!=tag:
+		data.excavation.command_tag=tag;data.excavation.command_deadline=data.clock+15
+	elif data.clock>float(data.excavation.get("command_deadline",data.clock+15)):
+		data.excavation.command_tag="";data.excavation.intent="";data.excavation.path=[]
+		note("대상에게 접근하지 못했습니다. 다시 선택해주세요.");return false
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
 	var target: Vector2=COUNTER
-	if command in ["subdue","grab","sleep","kill","drag","deliver","approach","admit1","admit2","admit3","admit4","admit5","greet","dismiss"]:
+	if command in ["subdue","grab","sleep","kill","drag","deliver","approach","admit1","admit2","admit3","admit4","admit5","greet","dismiss","confirm_room"]:
 		if not data.people.has(id) or data.people[id].floor!=data.player.floor or data.people[id].state=="gone":note("현재 층에서 대상을 다시 선택하자.");return false
 		target=data.people[id].pos
+		if data.player.pos.distance_to(target)>=1.1:
+			var approach=approach_point(target)
+			if approach==null:note("손님에게 접근할 통로가 없습니다.");return false
+			target=approach
 	elif command=="hatch":target=Vector2.ZERO if data.player.floor==1 else HATCH
 	elif command=="lamp":
 		if data.player.floor!=1:return false
@@ -962,6 +998,7 @@ func queue_command(command: String, id: String="") -> bool:
 	return true
 
 func perform_command(command: String, id: String="") -> void:
+	data.excavation.command_tag=""
 	if command.begins_with("admit"):
 		assign_room(int(command.trim_prefix("admit")),id);return
 	if command.begins_with("clean") and Sandbox.active(self):
@@ -970,6 +1007,7 @@ func perform_command(command: String, id: String="") -> void:
 		return
 	if id!="":data.ops.selected=id
 	match command:
+		"confirm_room":Tycoon.confirm(self,id)
 		"hatch":toggle_hatch()
 		"lamp":toggle_cellar_lamp()
 		"admit1":assign_room(1,id)
@@ -1025,9 +1063,15 @@ func basement_lit(point: Vector2) -> bool:
 	return true
 
 func request_direct_service(id: String) -> bool:
+	if data.player.carry!="" and data.orders.has(data.player.carry) and data.orders[data.player.carry].guest!=id:
+		note("먼저 들고 있는 식사를 해당 손님에게 전달해주세요.");return false
 	if data.people.has(id) and data.people[id].get("visit","")=="meal" and data.people[id].state=="arriving":
 		data.service_target=id;note("손님이 자리를 잡으면 식사를 내온다.");return true
 	if not can_receive(id) or data.player.floor==1: note("먼저 손님에게 방을 배정하자."); return false
+	for o in data.orders.values():
+		if o.guest!=id or o.status in ["served","cancelled"]:continue
+		if o.holder not in ["","player"]:note("이 주문은 직원이 준비 중입니다.");return false
+		o.holder="player"
 	data.service_target=id
 	return true
 
@@ -1057,3 +1101,27 @@ func update_direct_service() -> void:
 			data.work={"type":"cook","order":oid,"remaining":3.0}; return
 	# The delegated employee may already be handling this guest's order.
 	data.service_target=""; note("직원이 맡았거나 지금 준비할 주문이 없다.")
+
+func approach_point(target: Vector2) -> Variant:
+	var best: Variant=null;var score=INF
+	for offset in [Vector2(-.75,0),Vector2(.75,0),Vector2(0,-.75),Vector2(0,.75),Vector2(-.5,-.5),Vector2(.5,.5),Vector2(-.5,.5),Vector2(.5,-.5)]:
+		var point=target+offset
+		if not walkable(point,data.player.floor):continue
+		var route: Array=gallery_route(data.player.pos,point) if data.player.floor==2 else (path_to(data.player.pos,point) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,point))
+		if route.is_empty():continue
+		if route.size()<score:score=route.size();best=point
+	return best
+
+func retarget_arrival(id: String) -> void:
+	if not data.people.has(id):return
+	var p: Dictionary=data.people[id]
+	var points=[Vector2(-8.75,1.75),Vector2(-6.25,1.75),Vector2(-5.75,2.75),Vector2(-3.75,2.75)] if p.get("visit","")=="meal" else [Vector2(-1.75,-.25),Vector2(-.25,-.25),Vector2(-3.25,-.25)]
+	for candidate in points:
+		var occupied=false
+		for other in data.people.values():
+			if other.id!=id and other.state not in ["gone","leaving"] and (other.pos.distance_to(candidate)<.9 or other.get("arrival_target",Vector2(99,99)).distance_to(candidate)<.9):occupied=true
+		if occupied:continue
+		var path: Array=guest_path(p.pos,candidate)
+		if path.is_empty():continue
+		p.path=path;p.arrival_target=candidate;return
+	p.state="leaving";p.path=guest_path(p.pos,GATE)

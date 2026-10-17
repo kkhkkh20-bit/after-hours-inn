@@ -1,4 +1,11 @@
 extends Node3D
+const Pointer=preload("res://scripts/inn_pointer.gd")
+const Selection=preload("res://scripts/inn_selection.gd")
+const Commands=preload("res://scripts/inn_commands.gd")
+var pointer=Pointer.new()
+var selection_options: Array=[]
+var request_anchor=Vector2.ZERO
+var walking_route: MeshInstance3D
 const Excavation=preload("res://scripts/inn_excavation.gd")
 var dig_mode=""
 var view_angle=0.0
@@ -71,7 +78,7 @@ var surface_zoom := 26.0
 var basement_zoom := 14.0
 var overview := true
 var view_layer := "all"
-const CAMERA_ARM := Vector3(3,12,32)
+const CAMERA_ARM := Vector3(6,27,22)
 const CELLAR_OFFSET := Vector3(-3.25,-4.2,2.75)
 var cellar_lamp: OmniLight3D
 var light_spill: OmniLight3D
@@ -251,6 +258,7 @@ func build_surface() -> void:
 	preload("res://scripts/inn_architecture.gd").build(self)
 
 func _ready() -> void:
+	pointer.host=self
 	sim.travel_multiplier=1.7
 	ui_font = load("res://assets/fonts/InnKorean.otf")
 	surface = Node3D.new()
@@ -520,22 +528,25 @@ func sync_actor(visual: Node3D, pos: Vector2, dt: float, floor_: int=0) -> void:
 		visual.get_node("LeftArm").rotation.x=-swing*0.65;visual.get_node("RightArm").rotation.x=swing*0.65
 
 func sync_view(dt: float) -> void:
+	if walking_route==null:
+		walking_route=preload("res://scripts/inn_route_view.gd").new();add_child(walking_route)
+	walking_route.update_route(self)
 	var d: Dictionary=sim.data
 	var surface_shown: bool=view_layer!="below"
 	if apron!=null: apron.visible=view_layer=="surface"
 	if travel_marker!=null:
 		travel_marker.visible=not d.excavation.path.is_empty()
 		if travel_marker.visible: travel_marker.position=world_point(d.excavation.path.back(),d.player.floor,0.05)
-	var cellar_shown: bool=view_layer!="surface"
+	var cellar_shown: bool=view_layer in ["all","below"]
 	viewed_floor=d.player.floor
 	surface.visible=surface_shown
-	gallery.visible=surface_shown
+	gallery.visible=surface_shown and view_layer!="surface"
 	gallery_deck.visible=true
 	basement.visible=cellar_shown
-	staff_visual.visible=surface_shown and d.staff.hired
+	staff_visual.visible=Selection.visible_floor(self,int(d.staff.get("floor",0))) and d.staff.hired
 	collector_visual.visible=surface_shown and d.collector
 	sync_actor(player,d.player.pos,dt,d.player.floor)
-	player.visible=cellar_shown if d.player.floor==1 else surface_shown
+	player.visible=Selection.visible_floor(self,d.player.floor)
 	sync_actor(staff_visual,d.staff.pos,dt,int(d.staff.get("floor",0)))
 	staff_visual.rotation.y=atan2(-d.staff.facing.x,-d.staff.facing.y)
 	collector_visual.position=Vector3(-0.2,0.08,-1.5)
@@ -561,7 +572,7 @@ func sync_view(dt: float) -> void:
 		if not actors.has(id):
 			actors[id]=actor(Vector3.ZERO,Color("667f8c") if int(id.get_slice("_",1))%2 else Color("77534d"))
 			labels[id]=world_label(person.name,Vector3(0,1.95,0),actors[id])
-		actors[id].visible=(cellar_shown if person.floor==1 else surface_shown) and person.state!="gone"
+		actors[id].visible=(cellar_shown if person.floor==1 else surface_shown) and person.state!="gone" and Selection.visible_floor(self,person.floor)
 		sync_actor(actors[id],person.pos,dt,person.floor)
 		actors[id].rotation.z=PI/2 if person.state in ["down","dead"] else 0
 		if person.state in ["down","dead"]:
@@ -609,19 +620,19 @@ func world_point(pos: Vector2, floor_: int, height: float=0.0) -> Vector3:
 	return Vector3(pos.x,height+Simulation.floor_height(pos,floor_),pos.y)+((Sandbox.OFFSET if Sandbox.active(sim) else CELLAR_OFFSET) if floor_==1 else Vector3.ZERO)
 
 func focus_position() -> Vector3:
-	if overview and Sandbox.active(sim):return Vector3(5,-0.5,7) if view_layer=="all" else (Sandbox.OFFSET+Vector3(8,0,0) if view_layer=="below" else Vector3(5,1,0))
-	if overview:return CELLAR_OFFSET+Vector3(4,0.7,1) if view_layer=="below" else (Vector3(0,-0.2,0.5) if view_layer=="all" else Vector3(0,1.3,-0.4))
+	if overview and Sandbox.active(sim):
+		if view_layer=="all":return Vector3(5,-.5,7)
+		if view_layer=="below":return Sandbox.OFFSET+Vector3(8,0,0)
+		if view_layer=="rooms":return Vector3(1.5,3.2,-4.8)
+		return Vector3(3.0,.8,.7)
+	if overview:return CELLAR_OFFSET+Vector3(4,.7,1) if view_layer=="below" else Vector3(0,1,0)
 	return world_point(sim.data.player.pos,sim.data.player.floor)
 
 func set_layer(value: String) -> void:
-	view_layer=value
-	overview=true
-	camera_offset=Vector2.ZERO
-	camera.size=(39.5 if Sandbox.active(sim) else (22.8 if Campaign.active(sim) else 25.0)) if value!="below" else 24.0
-	camera_focus=(Vector3(0,-0.2,0.5) if value=="all" else Vector3(0,1.3,-0.4)) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
-	camera_focus=focus_position()
-	camera.position=camera_focus+camera_arm()
-	camera.look_at(camera_focus)
+	if object_context!=null:object_context.close()
+	view_layer=value;overview=true;camera_offset=Vector2.ZERO
+	camera.size={"all":39.5,"below":24.0,"rooms":24.0,"surface":31.0}.get(value,31.0)
+	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
 
 func walking_hit(point: Vector2) -> Variant:
@@ -682,6 +693,7 @@ func build_gallery() -> void:
 	for z in [-3.5,-2,-0.5,1]:
 		box(Vector3(0.09,1,0.09),Vector3(7,3.7,z),Color("8c7150"))
 	box(Vector3(0.09,0.09,4.5),Vector3(7,4.17,-1.25),Color("94764f"))
+	world_root=surface
 	for i in range(16):
 		var z:=4.875-i*0.25
 		var y: float=(i+1)*0.2
@@ -726,13 +738,17 @@ func rebuild_basement() -> void:
 	preload("res://scripts/cellar_terrain.gd").build(self)
 
 func start_campaign() -> void:
+	Commands.reset_view(self)
 	if DisplayServer.get_name()!="headless":
 		if ambience==null:
 			ambience=AudioStreamPlayer.new();ambience.stream=preload("res://assets/audio/inn-wind.wav");ambience.volume_db=-26;add_child(ambience)
 			ambience.stream.loop_mode=AudioStreamWAV.LOOP_FORWARD;ambience.stream.loop_begin=0;ambience.stream.loop_end=128000
 			room_chime=AudioStreamPlayer.new();room_chime.stream=preload("res://assets/audio/inn-chime.wav");room_chime.volume_db=-19;add_child(room_chime)
 		ambience.play()
-	Campaign.start(sim);sim.rebuild_guest_grid();basement.position=Sandbox.OFFSET;camera.keep_aspect=Camera3D.KEEP_WIDTH
+	Campaign.start(sim);sim.rebuild_guest_grid();
+	for id in sim.data.people:
+		if sim.data.people[id].state=="arriving" and sim.data.people[id].get("role","")=="":sim.retarget_arrival(id)
+	basement.position=Sandbox.OFFSET;camera.keep_aspect=Camera3D.KEEP_WIDTH
 	for child in basement.get_children():
 		if child!=terrain and child!=cellar_lamp:child.hide()
 	hatch_lid.hide();last_cell_count=-1;sandbox_revision=-1
@@ -740,10 +756,10 @@ func start_campaign() -> void:
 		if child is Label3D and child.text.begins_with("지하 입구"):child.hide()
 	world_root=surface
 	box(Vector3(1.65,0.18,1.65),Vector3(Simulation.HATCH.x,-0.02,Simulation.HATCH.y),Color("604c36"))
-	episode.data.briefed=true;episode_ui.root.hide();journal.open("intro");set_layer("all")
+	episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false;set_layer("surface")
 
 func context_opened(kind_: String) -> void:
-	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk","automation"] and not dialogue_paused:
+	if Campaign.active(sim) and kind_ in ["conversation","guard_talk","staff_talk","automation","pick","room","navigation","person","actions","other","system"] and not dialogue_paused:
 		dialogue_previous_pause=sim.data.paused;dialogue_paused=true;sim.data.paused=true
 
 func context_closed(_kind: String) -> void:
@@ -766,6 +782,7 @@ func save_game() -> void:
 	sim.note("저장했다. 진행 중인 주문과 작업도 함께 기록했다.")
 
 func load_game() -> void:
+	Commands.reset_view(self)
 	var save_path="user://inn-tycoon-v15.json" if Campaign.active(sim) else "user://inn-v03.json"
 	if not FileAccess.file_exists(save_path):
 		sim.note("저장된 기록이 없다. 메뉴에서 먼저 저장하자.")
@@ -792,48 +809,13 @@ func pan_camera(relative: Vector2) -> void:
 	camera_offset=camera_offset.limit_length(18)
 
 func _input(event: InputEvent) -> void:
-	if episode_ui!=null and episode_ui.opened or journal!=null and journal.opened: return
-	if event is InputEventMagnifyGesture:
-		camera.size=clampf(camera.size/event.factor,9,40); get_viewport().set_input_as_handled(); return
-	if event is InputEventScreenTouch:
-		if event.pressed:
-			touch_points[event.index]=event.position
-			if touch_points.size()>=2:
-				var points=touch_points.values(); pinch_span=points[0].distance_to(points[1]); touch_dragged=true; touch_blocked=true; get_viewport().set_input_as_handled(); return
-		else:
-			var was_pinch=pinch_span>0; touch_points.erase(event.index)
-			if was_pinch:
-				if touch_points.is_empty(): pinch_span=0
-				get_viewport().set_input_as_handled(); return
-	if event is InputEventScreenDrag and touch_points.has(event.index):
-		touch_points[event.index]=event.position
-		if touch_points.size()>=2:
-			var points=touch_points.values(); var span: float=points[0].distance_to(points[1])
-			if span>20 and pinch_span>20: camera.size=clampf(camera.size*pinch_span/span,9,40)
-			pinch_span=span; get_viewport().set_input_as_handled(); return
-	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
-		pressed_person=pick_person(event.position) if not mobile_ui.blocks_point(event.position) else ""
-		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<12 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
-		if pressed_owner:pressed_person=""
-		mouse_origin=event.position
-		mouse_dragged=false
-		mouse_blocked=mobile_ui.blocks_point(event.position)
-	if event is InputEventMouseMotion:
-		pointer_position=event.position
-		if event.device!=-1 and event.button_mask&MOUSE_BUTTON_MASK_LEFT and not mobile_ui.blocks_point(mouse_origin):
-			if event.position.distance_to(mouse_origin)>24:mouse_dragged=true
-			if mouse_dragged:pan_camera(event.relative)
-	if event is InputEventScreenTouch and event.pressed:
-		pressed_person=pick_person(event.position) if not mobile_ui.blocks_point(event.position) else ""
-		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<12 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
-		if pressed_owner:pressed_person=""
-		touch_origin=event.position
-		touch_dragged=false
-		touch_blocked=mobile_ui.blocks_point(event.position)
-	if event is InputEventScreenDrag:
-		pointer_position=event.position
-		if event.position.distance_to(touch_origin)>24:touch_dragged=true
-		if touch_dragged and not touch_blocked:pan_camera(event.relative)
+	var modal=(episode_ui!=null and episode_ui.opened) or (journal!=null and journal.opened)
+	var point=Vector2.ZERO
+	if event is InputEventMouse or event is InputEventScreenTouch or event is InputEventScreenDrag:point=event.position
+	pointer.observe(event,modal or (mobile_ui!=null and mobile_ui.blocks_point(point)))
+	if event is InputEventMouseMotion or event is InputEventScreenDrag:pointer_position=event.position
+	if not modal and event is InputEventMagnifyGesture:
+		camera.size=clampf(camera.size/event.factor,12,42);get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if episode_ui!=null and episode_ui.opened or journal!=null and journal.opened: return
@@ -865,85 +847,48 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_M:muted=not muted
 			KEY_F5:save_game()
 			KEY_F9:load_game()
-	if event is InputEventScreenTouch and not event.pressed and not touch_dragged and not touch_blocked:
-		world_tap(event.position)
-	if event is InputEventMouseButton and event.device!=-1:
-		if event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(8,camera.size-1)
-		if event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(36,camera.size+1)
-		if event.button_index==MOUSE_BUTTON_LEFT and not event.pressed and not mouse_dragged and not mouse_blocked:world_tap(event.position)
+	if event is InputEventMouseButton and event.device!=-1 and event.pressed:
+		if event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(12,camera.size-1)
+		elif event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(42,camera.size+1)
+	if (event is InputEventScreenTouch and not event.pressed) or (event is InputEventMouseButton and event.device!=-1 and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed):
+		var tap: Dictionary=pointer.take()
+		if not tap.is_empty():world_tap(tap.point,tap.candidates)
 
-func world_tap(point: Vector2) -> void:
+func world_tap(point: Vector2,captured: Variant=null) -> void:
 	if mobile_ui.blocks_point(point):return
+	pointer_position=point
+	var choices: Array=captured if captured!=null else selection_candidates(point)
 	if object_context.panel.visible:
 		object_context.close()
-	if Sandbox.active(sim) and not sim.data.work.is_empty() and sim.data.work.get("type","") not in ["construction","dispose"]:sim.cancel_work()
-	elif sim.data.work.get("type","")=="quick":sim.cancel_work()
-	if (view_layer=="surface" and sim.data.player.floor==1) or (view_layer=="below" and sim.data.player.floor!=1):return
-	pointer_position=point
-	if dig_mode!="":apply_dig_point(point);pressed_owner=false;pressed_person="";return
-	if Sandbox.active(sim) and sandbox_ground_request(point):pressed_owner=false;pressed_person="";return
-	if Sandbox.active(sim) and not (Tycoon.active(sim) and pressed_person!="" and sim.data.people.has(pressed_person) and sim.data.people[pressed_person].get("role","")==""):sim.data.sandbox.tunnel_plan=[]
-	var inspector: Dictionary=sim.data.ops.inspector
-	if inspector.state not in ["idle","scheduled"] and inspector.floor==sim.data.player.floor and point.distance_to(camera.unproject_position(world_point(inspector.pos,inspector.floor,0.9)))<30:
-		pressed_owner=false
-		if Campaign.active(sim):
-			if inspector.state=="waiting":context_action("inspector","","talk_guard")
-			else:sim.note("경비가 현장을 살피고 있다. 지금은 설명을 듣지 않는다.")
-		else:object_context.open("inspector")
+		if choices.is_empty():return
+	if dig_mode!="":apply_dig_point(point);return
+	if not choices.is_empty():
+		request_anchor=point
+		selection_options=choices
+		if choices.size()>1:object_context.open("pick","","누구를 선택할까요?")
+		else:activate_selection(choices[0])
 		return
-	if Sandbox.active(sim) and sandbox_objects(point):pressed_owner=false;pressed_person="";return
-	if pressed_owner:
-		pressed_owner=false; object_context.open("owner"); return
-	var target_id: String=pressed_person if pressed_person!="" and sim.data.people.has(pressed_person) and sim.data.people[pressed_person].state!="gone" else pick_person(point)
-	pressed_person=""
-	if target_id!="":
-		if not Tycoon.active(sim) or sim.data.people[target_id].get("role","")!="":sim.data.excavation.path=[];sim.data.excavation.intent=""
-		sim.data.ops.selected=target_id
-		if Campaign.active(sim):context_action("person",target_id,"greet")
-		else:object_context.open("person",target_id)
-		return
+	if Sandbox.active(sim) and sandbox_objects(point):return
 	if view_layer!="below":
+		if Selection.visible_floor(self,0) and point.distance_to(camera.unproject_position(world_point(Simulation.COUNTER,0,0.8)))<44:
+			object_context.open("counter");return
+		if Selection.visible_floor(self,0) and point.distance_to(camera.unproject_position(world_point(Simulation.STAIRS,0,0.4)))<44:
+			object_context.open("stairs");return
 		for number in ([1,2,3,4,5] if Sandbox.active(sim) else [1,2]):
-			var rp=Sandbox.room_point(number) if Sandbox.active(sim) else Vector2(5.6,-2.0 if number==1 else 2.0)
-			if point.distance_to(camera.unproject_position(world_point(rp,Sandbox.floor_of(number),0.55)))<24:
-				object_context.open("room",str(number)); return
-		if sim.data.staff.hired and point.distance_to(camera.unproject_position(world_point(sim.data.staff.pos,int(sim.data.staff.get("floor",0)),0.9)))<28:
-			if Campaign.active(sim):context_action("staff","","talk_staff")
-			else:object_context.open("staff")
-			return
-	if view_layer!="below" and point.distance_to(camera.unproject_position(world_point(Simulation.COUNTER,0,0.8)))<34:
-		object_context.open("counter"); return
-	if not Sandbox.active(sim) and point.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<32 and sim.data.player.floor==0:
-		object_context.open("hatch"); return
-	if Sandbox.active(sim) and sandbox_tap(point):return
+			var floor_=Sandbox.floor_of(number)
+			if not Selection.visible_floor(self,floor_):continue
+			var rp=Sandbox.room_point(number) if Sandbox.active(sim) else sim.room_target(number)
+			var center=camera.unproject_position(world_point(rp,floor_,0.6))
+			var bed=camera.unproject_position(world_point(Vector2(5.6,-2.0 if number==1 else 2.0) if number<3 else rp,floor_,0.65))
+			if point.distance_to(center)<44 or point.distance_to(bed)<44:object_context.open("room",str(number));return
+	var target_floor=1 if view_layer=="below" else (2 if view_layer=="rooms" else int(sim.data.player.floor))
+	if target_floor!=sim.data.player.floor:
+		request_anchor=point;object_context.open("navigation",str(target_floor),"화면만 보고 있습니다. 주인을 이 층으로 이동할까요?");return
 	if sim.data.player.floor==1:
-		if point.distance_to(camera.unproject_position(world_point(Vector2(-0.35,-1),1,1.6)))<24:
-			object_context.open("lamp"); return
-		if not Sandbox.active(sim) and point.distance_to(camera.unproject_position(world_point(Vector2.ZERO,1,1.9)))<30:
-			object_context.open("hatch"); return
-		var soil:=soil_at(point)
-		if soil!=Vector2i(99,99):
-			context_soil=soil
-			if Sandbox.active(sim):sim.data.stealth.quiet=false;sim.queue_dig(soil)
-			else:object_context.open("soil")
-			return
-	if sim.data.player.floor==0 and point.distance_to(camera.unproject_position(Vector3(8,0.3,4.5)))<50:
-		object_context.open("stairs"); return
-	if actor_hit_distance(point,sim.data.player.pos,sim.data.player.floor)<12:
-		object_context.open("owner"); return
-	# Upstairs walking can be requested directly, without an external floor button.
-	if sim.data.player.floor==0 and view_layer!="below":
-		var origin=camera.project_ray_origin(point); var ray=camera.project_ray_normal(point)
-		var upper: Variant=Plane(Vector3.UP,3.28).intersects_ray(origin,ray)
-		if upper!=null and upper.z<-3.5 and Simulation.gallery_walkable(Vector2(upper.x,upper.z)):
-			auto_floor_goal={"floor":2,"point":Vector2(upper.x,upper.z)}; sim.queue_gallery(); return
+		var soil=soil_at(point)
+		if soil!=Vector2i(99,99):context_soil=soil;object_context.open("soil");return
 	var hit: Variant=walking_hit(point)
-	if hit!=null:
-		pending_context_action.clear(); sim.data.booking_request={}
-		sim.data.service_target=""
-		auto_floor_goal.clear()
-		sim.data.ops.selected=""
-		sim.queue_move(Vector2(hit.x,hit.z))
+	if hit!=null:Commands.move(self,Vector2(hit.x,hit.z))
 
 func _physics_process(delta: float) -> void:
 	if capturing:return
@@ -970,7 +915,7 @@ func _physics_process(delta: float) -> void:
 		if sandbox_visual!=null:sandbox_visual.visible=true
 	if sim.data.player.floor!=displayed_floor:
 		displayed_floor=sim.data.player.floor
-		if view_layer!="all":set_layer("below" if displayed_floor==1 else "surface")
+		if view_layer!="all":set_layer("below" if displayed_floor==1 else ("rooms" if displayed_floor==2 else "surface"))
 		object_context.close()
 	if not pending_context_action.is_empty() and sim.data.excavation.intent=="" and sim.data.work.is_empty():
 		var job=pending_context_action
@@ -1337,6 +1282,9 @@ func context_stats() -> String:
 	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.values().filter(func(p): return p.state!="gone").size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
 
 func context_title(kind_: String,id_: String) -> String:
+	if kind_=="pick":return "대상 선택"
+	if kind_=="counter_more":return "접수대 · 다른 관리"
+	if kind_=="navigation":return "층 이동"
 	if kind_=="conversation":return str(sim.data.people[id_].name)
 	if kind_=="ground":return "비밀 입구 자리"
 	if kind_=="cellar_floor":return "지하 시설 공사"
@@ -1352,6 +1300,7 @@ func context_title(kind_: String,id_: String) -> String:
 	return {"counter":"접수대 · 장부","hatch":"지하 입구","stairs":"계단","soil":"흙벽","lamp":"지하 등불","staff":"직원","owner":"여관 주인","system":"여관 설정","actions":"손님에게 할 행동","inspector":"국경 경비"}.get(kind_,"여관")
 
 func context_anchor(kind_: String,id_: String) -> Vector2:
+	if kind_ in ["pick","navigation"]:return request_anchor
 	var pos: Vector2=Simulation.COUNTER; var floor_: int=sim.data.player.floor
 	match kind_:
 		"person","actions","other","conversation":
@@ -1372,6 +1321,23 @@ func context_anchor(kind_: String,id_: String) -> Vector2:
 	return camera.unproject_position(world_point(pos,floor_,0.9))
 
 func context_items(kind_: String,id_: String) -> Array:
+	if kind_=="counter_more":return [["recruit","마라와 이야기"],["private_entry","주인 전용 창고로 이동"],["view_tools","화면 방향"],["system","저장·설정"]]
+	if Sandbox.active(sim) and kind_=="owner":
+		var items=[]
+		if command_status()!="":items.append(["stop","현재 작업 취소"])
+		if sim.data.ops.drag!="" or sim.data.player.carry!="":items.append(["drop","운반 내려놓기"])
+		items.append(["automation","알바 고용·여관 개선"])
+		items.append(["journal","영업 장부"])
+		if items.size()<4:items.append(["dig_tools","구멍·통로 파기"])
+		return items
+	if kind_=="pick":
+		var items=[]
+		for i in selection_options.size():
+			var c: Dictionary=selection_options[i]
+			var name_=str(sim.data.people[c.id].name) if c.kind=="person" and sim.data.people.has(c.id) else {"owner":"주인","staff":"마라 · 직원","inspector":"국경 경비"}.get(c.kind,"대상")
+			items.append(["pick:"+str(i),name_])
+		return items
+	if kind_=="navigation":return [["go_floor","이 층으로 이동"]]
 	if kind_=="dig_tools":return [["place_shaft","구멍 파기 · 지상 위치 지정 / 3닢"],["place_tunnel","통로 파기 · 지하 목적지 지정"],["stop_dig","굴착 계획 취소"]]
 	if kind_=="view_tools":return [["view_front","앞에서 보기"],["view_back","뒤에서 보기"],["view_left","왼쪽에서 보기"],["view_right","오른쪽에서 보기"]]
 	if kind_=="automation":
@@ -1399,8 +1365,8 @@ func context_items(kind_: String,id_: String) -> Array:
 		if sim.data.campaign.ledger_found:items.push_front(["guard_evidence","이 반입 허가를 확인해보시죠."])
 		return items
 	if kind_=="staff_talk":return [["automation","접수·청소 알바 고용"],["delegate","식사는 계속 맡아주세요."],["takeover","내가 직접 서빙할게요."],["ally_story","손님들 사이에 무슨 일이 있나요?"]]
-	if Campaign.active(sim) and kind_=="counter":return [["automation","알바 고용 · 주방 개선"],["dig_tools","구멍·통로 파기"],["view_tools","뒤쪽·옆쪽에서 보기"],["journal","오늘 매출과 지출"],["recruit","마라와 이야기하기"],["private_entry","주인 전용 창고로 이동"],["system","저장 · 화면 설정"]]
-	if sim.data.paused: return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
+	if Campaign.active(sim) and kind_=="counter":return [["automation","알바 고용·주방 개선"],["dig_tools","구멍·통로 파기"],["journal","영업 장부"],["counter_more","다른 관리"]]
+	if sim.data.paused and not dialogue_paused and kind_!="system": return [["resume","영업 계속"],["journal","오늘의 장부"],["system","저장 · 화면 설정"]]
 	match kind_:
 		"person":
 			var p: Dictionary=sim.data.people[id_]
@@ -1441,6 +1407,18 @@ func travel_to_floor(target: int) -> void:
 	else:sim.queue_floor()
 
 func context_action(kind_: String,id_: String,action: String) -> void:
+	if kind_ in ["person","conversation","actions","other"] and (not sim.data.people.has(id_) or sim.data.people[id_].state=="gone"):
+		sim.note("그 손님은 이미 떠났습니다.");return
+	if action.begins_with("pick:"):
+		var index=int(action.get_slice(":",1))
+		if index>=0 and index<selection_options.size():activate_selection(selection_options[index])
+		return
+	if action=="go_floor":travel_to_floor(int(id_));return
+	if action=="counter_more":object_context.open("counter_more");return
+	if action=="stop":
+		Commands.cancel(self);dig_mode=""
+		if dig_cancel!=null:dig_cancel.hide()
+		return
 	if action=="greet" and Tycoon.active(sim) and sim.data.people.has(id_) and sim.data.people[id_].get("role","")=="" and sim.data.people[id_].state not in ["down","dead","restrained","captive","sheltered"]:
 		object_context.open("conversation",id_,Dialogue.begin(sim,id_));return
 	if Sandbox.active(sim) and sandbox_action(kind_,id_,action):return
@@ -1804,7 +1782,7 @@ func sandbox_tap(point: Vector2) -> bool:
 			if point.distance_to(camera.unproject_position(world_point(at,floor_,0.2)))<22:
 				if floor_!=sim.data.player.floor:continue
 				object_context.open("portal",e.id);return true
-	if sim.data.player.floor==1:
+	if sim.data.player.floor==1 and Selection.visible_floor(self,1):
 		for f in sim.data.sandbox.facilities:
 			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.5)))<26:object_context.open("facility",f.id);return true
 		var hit: Variant=walking_hit(point)
@@ -1816,7 +1794,7 @@ func sandbox_tap(point: Vector2) -> bool:
 		var hit: Variant=walking_hit(point)
 		if hit!=null and sim.surface_walkable(Vector2(hit.x,hit.z)):
 			var pos=Vector2(hit.x,hit.z)
-			if entrance_placing or (pos.distance_to(last_ground_tap)<1.2 and Time.get_ticks_msec()-last_ground_time<900):
+			if entrance_placing:
 				entrance_placing=false;build_point=pos;object_context.open("ground");return true
 			last_ground_tap=pos;last_ground_time=Time.get_ticks_msec()
 	return false
@@ -1901,11 +1879,12 @@ func sandbox_objects(point: Vector2) -> bool:
 		var floor_: int=sim.data.player.floor
 		if floor_==2:continue
 		var p: Vector2=e.top if floor_==0 else Vector2(e.bottom)
-		if point.distance_to(camera.unproject_position(world_point(p,floor_,0.1)))<15:
+		if not Selection.visible_floor(self,floor_):continue
+		if point.distance_to(camera.unproject_position(world_point(p,floor_,0.1)))<36:
 			object_context.open("portal",e.id);return true
-	if sim.data.player.floor==1:
+	if sim.data.player.floor==1 and Selection.visible_floor(self,1):
 		for f in sim.data.sandbox.facilities:
-			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.15)))<16:
+			if point.distance_to(camera.unproject_position(world_point(f.pos,1,0.15)))<44:
 				object_context.open("facility",f.id);return true
 	return false
 
@@ -1928,7 +1907,7 @@ func sandbox_ground_request(point: Vector2) -> bool:
 	if hit==null:return false
 	var pos=Vector2(hit.x,hit.z)
 	if not sim.surface_walkable(pos):return false
-	if entrance_placing or (pos.distance_to(last_ground_tap)<1.2 and Time.get_ticks_msec()-last_ground_time<900):
+	if entrance_placing:
 		entrance_placing=false;last_ground_time=0;build_point=pos;object_context.open("ground");return true
 	return false
 
@@ -1936,15 +1915,16 @@ func sync_tycoon_workers(dt: float) -> void:
 	if receptionist_visual==null:
 		receptionist_visual=actor(Vector3.ZERO,Color("6f8155"));world_label("토마 · 자동 접수",Vector3(0,1.95,0),receptionist_visual).pixel_size=0.014
 		cleaner_visual=actor(Vector3.ZERO,Color("89718a"));world_label("리아 · 객실 청소",Vector3(0,1.95,0),cleaner_visual).pixel_size=0.014
-	receptionist_visual.visible=sim.data.tycoon.reception and view_layer!="below"
-	cleaner_visual.visible=sim.data.tycoon.cleaning and view_layer!="below"
+	receptionist_visual.visible=sim.data.tycoon.reception and Selection.visible_floor(self,0)
+	cleaner_visual.visible=sim.data.tycoon.cleaning and Selection.visible_floor(self,int(sim.data.tycoon.cleaner.floor))
 	sync_actor(receptionist_visual,Vector2(-0.25,-1.25),dt)
 	var worker: Dictionary=sim.data.tycoon.cleaner;sync_actor(cleaner_visual,worker.pos,dt,int(worker.floor))
 	for n in sim.data.rooms:
 		if not tycoon_room_marks.has(n):
 			var at=world_point(Sandbox.room_point(int(n)),Sandbox.floor_of(int(n)),0.6);tycoon_room_marks[n]=world_label("",at,actors_root);tycoon_room_marks[n].pixel_size=0.012
 		var room_: Dictionary=sim.data.rooms[n]
-		tycoon_room_marks[n].text="%s호 · %s%s" %[n,"청소 필요" if room_.dirty else ("이용 중" if room_.guest!="" else "빈방")," · 개선 %d" %int(sim.data.tycoon.rooms[n]) if int(sim.data.tycoon.rooms[n])>0 else ""]
+		tycoon_room_marks[n].visible=Selection.visible_floor(self,Sandbox.floor_of(int(n)))
+		tycoon_room_marks[n].text="%s호 · %s%s" %[n,"예약 중" if room_.get("reserved","")!="" else ("청소 필요" if room_.dirty else ("이용 중" if room_.guest!="" else "빈방"))," · 개선 %d" %int(sim.data.tycoon.rooms[n]) if int(sim.data.tycoon.rooms[n])>0 else ""]
 		tycoon_room_marks[n].modulate=Color("c6a06b") if room_.dirty else (Color("a9bd89") if room_.guest=="" else Color("d4d6cf"))
 
 func camera_arm() -> Vector3:return CAMERA_ARM.rotated(Vector3.UP,view_angle)
@@ -1986,3 +1966,21 @@ func sync_dig_visual() -> void:
 	line.surface_begin(Mesh.PRIMITIVE_LINE_STRIP,mat);line.surface_add_vertex(world_point(sim.data.player.pos,1,0.3))
 	for cell in plan:line.surface_add_vertex(world_point(Vector2(cell),1,0.3))
 	line.surface_end();dig_route.mesh=line
+
+func selection_candidates(point: Vector2) -> Array:
+	return Selection.candidates(self,point)
+
+func activate_selection(choice: Dictionary) -> void:
+	var kind_=str(choice.kind);var id_=str(choice.id)
+	match kind_:
+		"person":
+			if not sim.data.people.has(id_) or sim.data.people[id_].state=="gone":return
+			sim.data.ops.selected=id_
+			if sim.data.people[id_].state in ["down","dead","restrained","captive"]:object_context.open("person",id_)
+			else:object_context.open("conversation",id_,Dialogue.begin(sim,id_))
+		"staff":object_context.open("staff_talk","","식사 운영을 맡고 있어요. 업무를 바꿀까요?")
+		"inspector":object_context.open("guard_talk","","몇 가지 확인할 일이 있소.")
+		_:object_context.open("owner")
+
+func command_status() -> String:return Commands.status(self)
+func view_name() -> String:return {"surface":"식당·마당","rooms":"객실","below":"지하","all":"전체"}.get(view_layer,"여관")

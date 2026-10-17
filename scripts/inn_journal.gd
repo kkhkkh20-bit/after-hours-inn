@@ -22,8 +22,8 @@ func label_(value: String,size_: int) -> Label:
 func setup(h) -> void:
 	host=h;layer=24
 	root=Control.new();root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);root.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(root)
-	goal=label_("",21);root.add_child(goal);goal.position=Vector2(22,121);goal.size=Vector2(675,64)
-	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,187);notice.size=Vector2(675,70)
+	goal=label_("",21);root.add_child(goal);goal.position=Vector2(22,163);goal.size=Vector2(675,36)
+	notice=label_("",20);root.add_child(notice);notice.position=Vector2(22,197);notice.size=Vector2(675,38)
 	progress=label_("",19);root.add_child(progress);progress.size=Vector2(210,40);progress.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER;progress.hide()
 	panel=PanelContainer.new();root.add_child(panel);panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);panel.offset_left=30;panel.offset_right=-30;panel.offset_top=270;panel.offset_bottom=-100
 	var s=StyleBoxFlat.new();s.bg_color=Color("1a272b");s.border_color=Color("a48a5b");s.set_border_width_all(2);s.set_corner_radius_all(12);s.content_margin_left=26;s.content_margin_right=26;s.content_margin_top=28;s.content_margin_bottom=26;panel.add_theme_stylebox_override("panel",s)
@@ -57,6 +57,7 @@ func refresh() -> void:
 	root.show()
 	var c: Dictionary=sim.data.campaign
 	goal.text=host.Campaign.goal(sim)
+	if host.view_layer=="below":goal.text="지상 영업 · 객실 %d/%d · 문의 %d · 주문 %d" %[sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.rooms.size(),sim.waiting().size(),sim.data.orders.values().filter(func(o):return o.status not in ["served","cancelled"]).size()]
 	if host.dig_mode!="":goal.text="구멍을 팔 지상 위치를 누르세요" if host.dig_mode=="shaft" else "통로를 이을 지하 목적지를 누르세요"
 	var message=host.episode_notice()
 	if message!=last_notice:last_notice=message;until=Time.get_ticks_msec()+4200
@@ -84,7 +85,7 @@ func refresh() -> void:
 		choices=[["retry","다른 선택으로 다시 시작"],["freeplay","결과를 남기고 자유 영업"]] if c.ending!="" else [["continue","다음 날 문을 연다 · 자동 저장"]]
 	else:
 		title.text="여관 장부 · %d일차" %c.day
-		body.text=host.Campaign.goal(sim)+"\n\n보유 %d닢 · 미납 %d닢\n식사 제공 %d회 · 객실 안내 %d회\n평판 %d · 신고 %d회\n\n오늘 임대료 %d닢%s%s\n영업은 08시부터 다음 날 08시까지, 약 3분 30초.\n새벽에 하루를 결산한다.\n\n사람을 누르면 주인이 다가가 말을 건다.\n요구를 들은 뒤 방과 식사를 제안할 수 있다.\n마라는 내 편이다. 기본으로 서빙을 맡기고 지하 일을 할 수 있다.\n\n지하에서도 지상의 영업을 볼 수 있다.\n흙벽은 한 번 눌러 파고, 열린 바닥에는 시설을 짓는다.\n입구는 마당·건물 아래 여러 곳에 만들 수 있다.\n\n선택 의뢰: 회색 망토와 생포 의뢰를 이야기한다.\n누구를 가두고 왜 가두는지는 목표에 표시된다." %[sim.data.money,sim.data.debt,sim.data.served,c.bookings,c.reputation,sim.data.ops.reports,host.Campaign.rent(int(c.day))," · 일당 4닢" if sim.data.staff.hired else ""," · 세금 8닢" if int(c.day)==3 and not c.tax_paid else ""]
+		body.text=host.Campaign.goal(sim)+"\n\n보유 %d닢 · 미납 %d닢\n식사 제공 %d회 · 객실 안내 %d회\n평판 %d · 신고 %d회\n\n오늘 임대료 %d닢%s%s\n영업은 08시부터 다음 날 08시까지, 약 3분 30초.\n새벽에 하루를 결산한다.\n\n사람을 누르면 요구가 표시된다. 행동을 고르면 필요한 곳으로 이동한다.\n요구를 들은 뒤 방과 식사를 제안할 수 있다.\n마라는 내 편이다. 기본으로 서빙을 맡기고 지하 일을 할 수 있다.\n\n지하에서도 지상의 영업을 볼 수 있다.\n흙벽은 한 번 눌러 파고, 열린 바닥에는 시설을 짓는다.\n입구는 마당·건물 아래 여러 곳에 만들 수 있다.\n\n선택 의뢰: 회색 망토와 생포 의뢰를 이야기한다.\n누구를 가두고 왜 가두는지는 목표에 표시된다." %[sim.data.money,sim.data.debt,sim.data.served,c.bookings,c.reputation,sim.data.ops.reports,host.Campaign.rent(int(c.day))," · 일당 4닢" if sim.data.staff.hired else ""," · 세금 8닢" if int(c.day)==3 and not c.tax_paid else ""]
 		choices=[["save","현재 상태 저장"],["close","장부를 닫는다"]]
 		if host.Tycoon.active(sim):
 			body.text="오늘 매출 %d닢 · 누적 매출 %d닢\n객실 이용 %d/5 · 식사 제공 %d회\n\n임대료 %d닢 · 알바 일당 %d닢\n\n접수: %s / 청소: %s / 식사: 마라\n\n정상 영업으로 돈을 벌어 객실·주방을 개선하세요.\n비밀 의뢰와 지하는 선택입니다.\n전용 창고에는 일반 손님이 들어오지 않습니다." %[sim.data.tycoon.day_sales,sim.data.tycoon.sales,sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.served,host.Campaign.rent(int(c.day)),host.Tycoon.wage(sim),"자동" if sim.data.tycoon.reception else "주인","자동" if sim.data.tycoon.cleaning else "주인"]

@@ -70,7 +70,7 @@ static func escort(s) -> void:
 	if not s.data.work.is_empty() or not s.data.dig.is_empty() or s.data.excavation.intent!="":return
 	if job.stage=="approach":
 		if s.data.player.floor!=p.floor:
-			if s.data.player.floor==2 or (s.data.player.floor==0 and p.floor==2):s.queue_gallery()
+			if s.data.player.floor>=2 or (s.data.player.floor==0 and p.floor>=2):s.queue_gallery(int(p.floor))
 			else:s.queue_floor()
 			return
 		if not s.Intrigue.close(s,id):s.queue_command("approach",id);return
@@ -83,7 +83,7 @@ static func escort(s) -> void:
 		if p.state!="restrained":cancel(s);return
 		p.escorted=true;s.data.ops.drag=id;job.stage="escort"
 	if s.data.ops.drag!=id:cancel(s);return
-	if s.data.player.floor==2:s.queue_gallery();return
+	if s.data.player.floor>=2:s.queue_gallery(0);return
 	if s.data.player.floor==0:
 		var e=s.Sandbox.nearest(s,s.data.player.pos,0)
 		if e.is_empty():cancel(s);s.note("지하로 이어지는 입구가 없습니다.");return

@@ -43,16 +43,17 @@ func update() -> void:
 			var pos=host.camera.unproject_position(host.world_point(points[key],0,1))
 			pins[key].position=Vector2(clampf(pos.x-83,12,viewport.x-178),clampf(pos.y-44,392,viewport.y-102))
 	# Facility prose is available on selection; the map is not covered by labels.
-	if host.view_layer=="surface":
+	if host.view_layer in ["surface","rooms","attic"]:
+		var shown_floor={"surface":0,"rooms":2,"attic":3}[host.view_layer]
 		for label in host.world_hints:
 			if is_instance_valid(label):
 				if not quiet_hidden.has(label.get_instance_id()):quiet_hidden[label.get_instance_id()]={"node":label,"visible":label.visible}
-				label.visible=label==host.owner_beacon
+				label.visible=label==host.owner_beacon or (shown_floor>=2 and int(label.get_meta("upper_floor",-1))==shown_floor)
 		for id in host.labels:
 			if not is_instance_valid(host.labels[id]):continue
 			var p: Dictionary=s.data.people[id]
 			var selected=host.object_context.panel.visible and host.object_context.target==id
-			host.labels[id].visible=selected and p.state!="gone"
+			host.labels[id].visible=selected and p.state!="gone" and int(p.floor)==shown_floor
 			host.labels[id].text=str(p.name);host.labels[id].pixel_size=.012
 	else:
 		for row in quiet_hidden.values():

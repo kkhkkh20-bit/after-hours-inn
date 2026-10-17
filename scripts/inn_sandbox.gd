@@ -2,7 +2,7 @@ extends RefCounted
 const DAY=210.0
 const OFFSET=Vector3(-3.25,-6.0,18.0)
 const TYPES={"prison":{"name":"감옥","cost":6},"stash":{"name":"은닉 창고","cost":4},"furnace":{"name":"처리 화로","cost":10},"refuge":{"name":"은신처","cost":6}}
-const ROOM_NAMES={1:"1호 · 조용한 안쪽",2:"2호 · 마당 옆",3:"3호 · 2층 서쪽",4:"4호 · 2층 가운데",5:"5호 · 2층 동쪽"}
+const ROOM_NAMES={1:"1호 · 2층 조용한 방",2:"2호 · 2층 가운데",3:"3호 · 2층 계단 옆",4:"4호 · 3층 안쪽",5:"5호 · 3층 마당 전망"}
 static func active(s) -> bool:return s.data.has("sandbox")
 static func start(s) -> void:
 	s.data.sandbox={"entrances":[],"facilities":[],"route":{},"revision":0,"next_relation":30.0,"next_noise":0.0,"tunnel_plan":[],"job":{"state":"none","target":"","reward":18,"held":0.0},"disposed":0,"stored":0,"rescued":0}
@@ -12,9 +12,9 @@ static func start(s) -> void:
 	s.data.staff.pos=s.COUNTER;s.data.next_guest=12;s.data.campaign.start_money=60
 	s.data.campaign.worker="ally";s.data.campaign.next_dawn=DAY
 	s.note("마라: 홀은 제가 볼게요. 지하 입구는 주인님이 편한 곳에 만드세요. 비밀은 지킬게요.")
-static func floor_of(n: int) -> int:return 2 if n>=3 else 0
+static func floor_of(n: int) -> int:return 2 if n<=3 else 3
 static func room_point(n: int) -> Vector2:
-	return Vector2([-4.5,1.5,7.5][clampi(n-3,0,2)],-6.25) if n>=3 else Vector2(3.25,-2.25 if n==1 else 1.75)
+	return Vector2([-4.5,1.5,7.5][n-1 if n<=3 else n-4],-6.25)
 static func underground(p: Vector2) -> Vector2i:return Vector2i(roundi(p.x+3.25),roundi(p.y-2.75))
 static func above(p: Vector2) -> Vector2:return Vector2(p.x-3.25,p.y+2.75)
 static func entrance(s,id: String) -> Dictionary:
@@ -32,7 +32,7 @@ static func use_entrance(s,id: String) -> bool:
 	if not s.data.work.is_empty() or not s.data.dig.is_empty():s.cancel_work()
 	var e=entrance(s,id)
 	if e.is_empty():return false
-	if s.data.player.floor==2:s.note("먼저 1층으로 내려가세요.");return false
+	if s.data.player.floor>=2:s.note("먼저 1층으로 내려가세요.");return false
 	var target: Vector2=e.top if s.data.player.floor==0 else Vector2(e.bottom)
 	if not s.queue_move(target):return false
 	s.data.excavation.intent="sandbox:portal";s.data.excavation.target=id
@@ -132,35 +132,41 @@ static func release(s,id: String) -> void:
 	s.note(p.name+"을 풀어주었다.");s.data.sandbox.revision+=1
 static func move_person(s,p: Dictionary,target: Vector2,floor_: int) -> void:
 	p.destination=target;p.destination_floor=floor_
-	if int(p.floor)==floor_:p.path=s.gallery_route(p.pos,target) if floor_==2 else s.guest_path(p.pos,target);p.travel=""
-	elif int(p.floor)==0:p.path=s.guest_path(p.pos,s.STAIRS);p.travel="up"
-	else:p.path=s.gallery_route(p.pos,s.STAIRS);p.travel="down"
+	if int(p.floor)==floor_:
+		p.path=s.gallery_route(p.pos,target,int(p.floor)) if floor_>=2 else s.guest_path(p.pos,target);p.travel="";return
+	var next=s.Upper.next_floor(int(p.floor),floor_)
+	var point=s.Upper.stair(int(p.floor),floor_)
+	p.path=s.gallery_route(p.pos,point,int(p.floor)) if int(p.floor)>=2 else s.guest_path(p.pos,point)
+	p.travel="upper:"+str(next)
 static func arrive(s,p: Dictionary) -> bool:
 	var travel: String=p.get("travel","")
 	if travel=="":return false
-	p.travel="";p.floor=2 if travel=="up" else 0;p.pos=s.STAIRS
-	p.path=s.gallery_route(p.pos,p.destination) if p.floor==2 else s.guest_path(p.pos,p.destination);return true
+	var next=int(travel.get_slice(":",1)) if travel.begins_with("upper:") else (2 if travel=="up" else 0)
+	var landing=s.Upper.stair(int(p.floor),int(p.get("destination_floor",next)))
+	p.travel="";p.floor=next;p.pos=landing
+	move_person(s,p,p.destination,int(p.get("destination_floor",next)));return true
 static func staff_step(s,dt: float) -> bool:
 	var w: Dictionary=s.data.staff
 	if not w.hired:return false
 	if w.carry!="" and s.data.orders.has(w.carry):
 		var p: Dictionary=s.data.people[s.data.orders[w.carry].guest]
 		if w.get("floor",0)!=p.floor:
-			if not w.get("transfer",false):w.path=s.gallery_route(w.pos,s.STAIRS) if int(w.get("floor",0))==2 else s.path_to(w.pos,s.STAIRS);w.transfer=true
+			if not w.get("transfer",false):move_person(s,w,p.pos,int(p.floor));w.transfer=true
 			s.follow(w,dt*3.3)
-			if w.path.is_empty():w.floor=p.floor;w.pos=s.STAIRS;w.transfer=false
+			if w.path.is_empty():arrive(s,w)
+			if int(w.get("floor",0))==int(p.floor):w.transfer=false
 			return true
 		return false
-	if int(w.get("floor",0))==2:
+	if int(w.get("floor",0))>=2:
 		var n: String=w.get("clean_room","")
 		if n!="" and s.data.rooms[n].dirty:
-			if w.path.is_empty():w.path=s.gallery_route(w.pos,room_point(int(n)))
+			if w.path.is_empty():w.path=s.gallery_route(w.pos,room_point(int(n)),int(w.get("floor",0)))
 			s.follow(w,dt*3.3)
 			if w.path.is_empty():s.data.rooms[n].dirty=false;w.clean_room="";s.note("마라가 %s호를 정리했다." %n)
 			return true
-		if w.path.is_empty():w.path=s.gallery_route(w.pos,s.STAIRS)
+		if w.path.is_empty() and w.get("travel","")=="":move_person(s,w,s.COUNTER,0)
 		s.follow(w,dt*3.3)
-		if w.path.is_empty():w.floor=0;w.pos=s.STAIRS;w.path=[]
+		if w.path.is_empty():arrive(s,w)
 		return true
 	if not s.data.has("tycoon") and w.target=="" and w.carry=="" and s.data.orders.values().all(func(o):return o.status not in ["queued","ready"]):
 		for n in s.data.rooms:
@@ -223,7 +229,7 @@ static func relationships(s) -> void:
 static func sound_at(s,point: Vector2,floor_: int=0) -> float:
 	# This underground layer is six metres below the inn. Distance in the exploded
 	# drawing never affects acoustics; only the actual location and depth do.
-	var depth=float(s.data.sandbox.get("depth",6.0))+(3.2 if floor_==2 else 0.0)
+	var depth=float(s.data.sandbox.get("depth",6.0))+(6.4 if floor_==3 else (3.2 if floor_==2 else 0.0))
 	if depth>7.5:return 0.0
 	var horizontal=Sandbox_above(s.data.stealth.source).distance_to(point)
 	if horizontal>3.2:return 0.0

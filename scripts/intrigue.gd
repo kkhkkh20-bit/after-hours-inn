@@ -186,7 +186,7 @@ static func flee(sim, id: String) -> void:
 	if sim.data.ops.drag==id:sim.data.ops.drag=""
 	person.state="escaping" if person.floor!=0 else "leaving"
 	person.report_pending=true
-	person.path=sim.gallery_route(person.pos,sim.STAIRS) if person.floor==2 else (basement_route(sim,person.pos,Vector2.ZERO) if person.floor==1 else sim.path_to(person.pos,sim.ENTRY))
+	person.path=sim.gallery_route(person.pos,sim.Upper.stair(int(person.floor),0),int(person.floor)) if person.floor>=2 else (basement_route(sim,person.pos,Vector2.ZERO) if person.floor==1 else sim.path_to(person.pos,sim.ENTRY))
 	if sim.data.has("sandbox") and person.floor==1:
 		var e=preload("res://scripts/inn_sandbox.gd").nearest(sim,person.pos,1)
 		if not e.is_empty():person.path=basement_route(sim,person.pos,Vector2(e.bottom));person.escape_top=e.top
@@ -407,10 +407,12 @@ static func tick(sim, dt: float) -> void:
 		elif person.state=="escaping":
 			sim.follow(person,dt*1.4)
 			if person.path.is_empty():
-				person.pos=sim.STAIRS if person.floor==2 else person.get("escape_top",sim.HATCH)
-				person.floor=0
-				person.state="leaving"
-				person.path=sim.path_to(person.pos,sim.ENTRY)
+				if person.floor>=2:
+					var from=int(person.floor);person.pos=sim.Upper.stair(from,0);person.floor=sim.Upper.next_floor(from,0)
+					if person.floor>=2:person.path=sim.gallery_route(person.pos,sim.STAIRS,int(person.floor))
+					else:person.state="leaving";person.path=sim.path_to(person.pos,sim.ENTRY)
+				else:
+					person.pos=person.get("escape_top",sim.HATCH);person.floor=0;person.state="leaving";person.path=sim.path_to(person.pos,sim.ENTRY)
 		if person.state=="gone" and person.report_pending:
 			person.report_pending=false
 			report(sim,str(person.name))

@@ -29,19 +29,22 @@ static func build(h) -> void:
 		h.box(Vector3(0.16,0.45,pair[1]),Vector3(10,0.22,pair[0]),stone,true)
 	h.world_label("마당 쪽문",Vector3(10,0.3,2.8),h.surface).pixel_size=0.009
 	for x in [-5.5,5.5]:h.box(Vector3(9,0.45,0.2),Vector3(x,0.22,6),stone,true)
-	# Preserve the two existing ground-floor guest rooms and path targets.
-	for z in range(-6,6):
-		if z in [-3,1,4,5]:continue
-		h.box(Vector3(0.15,1,1),Vector3(2,0.55,z+0.5),plaster,true)
-	h.box(Vector3(5,1,0.15),Vector3(4.5,0.55,0),plaster,true)
-	# Private rooms end before the public front hall and the right stair corridor.
-	# Upstairs traffic never needs to enter an occupied ground-floor room.
-	h.box(Vector3(5,0.75,0.15),Vector3(4.5,0.40,4),plaster,true)
-	h.box(Vector3(0.15,0.75,10),Vector3(7,0.40,-1),plaster,true)
-	h.world_label("객실 공용 통로",Vector3(7.9,0.2,0.5),h.surface).pixel_size=0.009
-	for z in [-2.0,2.0]:
-		h.model("furniture","bedSingle",Vector3(5.6,0.08,z),Vector3(1.1,0.75,2),0,true)
-		h.model("furniture","rugRectangle",Vector3(3.7,0.08,z),Vector3(1.4,0.025,2))
+	# Public ground floor: lobby and storage, no bedrooms.
+	h.model("furniture","rugRectangle",Vector3(3.8,.08,1),Vector3(4.2,.025,5))
+	for z in [-.8,2.8]:h.model("furniture","bench",Vector3(5.5,.08,z),Vector3(2.2,.9,.6),PI if z<0 else 0,true)
+	h.model("furniture","table",Vector3(3.6,.08,1),Vector3(1.1,.65,1.1),0,true)
+	h.model("furniture","books",Vector3(3.6,.77,1),Vector3(.5,.13,.35))
+	# Behind reception: wall of key compartments, linen and travel chests.
+	for x in [-2.6,-1.2,.2]:
+		h.model("furniture","bookcaseOpen",Vector3(x,.08,-5),Vector3(1.2,1.8,.45),0,true)
+		for row in range(3):
+			for col in range(3):h.box(Vector3(.26,.25,.3),Vector3(x-.36+col*.36,.42+row*.46,-4.92),Color("a3895c"))
+	for x in [3,4.5,6]:
+		h.box(Vector3(1,.7,.7),Vector3(x,.4,-4.4),Color("83603d"),true)
+		h.box(Vector3(1.05,.07,.76),Vector3(x,.78,-4.4),Color("bd9b62"))
+	h.model("furniture","bookcaseOpen",Vector3(5.8,.08,-5.4),Vector3(1.4,1.7,.4),0,true)
+	h.world_label("로비 · 대기석",Vector3(4,.3,3.8),h.surface)
+	h.world_label("접수 뒤 수납함 · 열쇠·린넨",Vector3(.5,1,-4.8),h.surface)
 	h.model("furniture","table",Vector3(-1.7,0.08,-2.7),Vector3(2.7,0.95,0.9),0,true)
 	h.model("furniture","books",Vector3(-2.4,1.04,-2.7),Vector3(0.5,0.17,0.35))
 	h.model("furniture","bookcaseOpen",Vector3(-5.4,0.08,-3.4),Vector3(1.35,1.9,0.4),0,true)

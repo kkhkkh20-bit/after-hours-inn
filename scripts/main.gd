@@ -56,6 +56,8 @@ var camera_offset:=Vector2.ZERO
 var camera: Camera3D
 var surface: Node3D
 var basement: Node3D
+var attic: Node3D
+var upper_stair_visual: Node3D
 var gallery: Node3D
 var gallery_deck: Node3D
 var terrain: Node3D
@@ -166,6 +168,7 @@ func model(group: String, name_: String, pos: Vector3, size: Vector3, angle := 0
 	var scene := load(path) as PackedScene
 	assert(scene != null, "Missing asset: " + path)
 	var pivot := Node3D.new()
+	pivot.set_meta("asset",group+"/"+name_)
 	world_root.add_child(pivot)
 	var imported := scene.instantiate() as Node3D
 	pivot.add_child(imported)
@@ -561,7 +564,9 @@ func sync_view(dt: float) -> void:
 	var cellar_shown: bool=view_layer in ["all","below"]
 	viewed_floor=d.player.floor
 	surface.visible=surface_shown
-	gallery.visible=surface_shown and view_layer!="surface"
+	gallery.visible=view_layer in ["all","rooms","attic"]
+	attic.visible=view_layer in ["all","attic"]
+	upper_stair_visual.visible=view_layer in ["all","rooms","attic"]
 	gallery_deck.visible=true
 	basement.visible=cellar_shown
 	staff_visual.visible=Selection.visible_floor(self,int(d.staff.get("floor",0))) and d.staff.hired
@@ -661,7 +666,8 @@ func focus_position() -> Vector3:
 	if overview and Sandbox.active(sim):
 		if view_layer=="all":return Vector3(5,-.5,7)
 		if view_layer=="below":return Sandbox.OFFSET+Vector3(10,0,-5)
-		if view_layer=="rooms":return Vector3(1.5,3.2,-4.8)
+		if view_layer=="rooms":return Vector3(0,3.2,-3.5)
+		if view_layer=="attic":return Vector3(0,6.4,-5.5)
 		return Vector3(3.0,.8,.7)
 	if overview:return CELLAR_OFFSET+Vector3(4,.7,1) if view_layer=="below" else Vector3(0,1,0)
 	return world_point(sim.data.player.pos,sim.data.player.floor)
@@ -669,7 +675,7 @@ func focus_position() -> Vector3:
 func set_layer(value: String) -> void:
 	if object_context!=null:object_context.close()
 	inn_view=false;view_layer=value;overview=true;camera_offset=Vector2.ZERO
-	camera.size={"all":68.0,"below":48.0,"rooms":24.0,"surface":44.0}.get(value,31.0)
+	camera.size={"all":68.0,"below":48.0,"rooms":24.0,"attic":24.0,"surface":44.0}.get(value,31.0)
 	camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
 	sync_view(0)
 
@@ -680,75 +686,16 @@ func walking_hit(point: Vector2) -> Variant:
 		var hit: Variant=Plane(Vector3.UP,(Sandbox.OFFSET.y if Sandbox.active(sim) else CELLAR_OFFSET.y)+0.08).intersects_ray(origin,ray)
 		return hit-(Sandbox.OFFSET if Sandbox.active(sim) else CELLAR_OFFSET) if hit!=null else null
 	if sim.data.player.floor==0:return Plane(Vector3.UP,0.08).intersects_ray(origin,ray)
-	var deck: Variant=Plane(Vector3.UP,3.28).intersects_ray(origin,ray)
-	if deck!=null and Simulation.gallery_walkable(Vector2(deck.x,deck.z)) and deck.z<=1:return deck
+	var height=6.48 if sim.data.player.floor==3 else 3.28
+	var deck: Variant=Plane(Vector3.UP,height).intersects_ray(origin,ray)
+	if deck!=null and Simulation.gallery_walkable(Vector2(deck.x,deck.z)) and deck.z<=( -3.25 if sim.data.player.floor==3 else 1.0):return deck
 	# y + .8z = 4.08 is the actual stair slope, not an upper-floor horizontal plane.
-	var stairs: Variant=Plane(Vector3(0,1,0.8).normalized(),4.08/Vector3(0,1,0.8).length()).intersects_ray(origin,ray)
-	if stairs!=null and stairs.x>=7 and stairs.x<9 and stairs.z>=1 and stairs.z<=5.2:return stairs
+	var stairs: Variant=Plane(Vector3(0,1,0.8).normalized(),(3.88 if sim.data.player.floor==3 else 4.08)/Vector3(0,1,0.8).length()).intersects_ray(origin,ray)
+	if stairs!=null and stairs.x>=7 and stairs.x<9 and stairs.z>=(-3.25 if sim.data.player.floor==3 else 1.0) and stairs.z<=(.85 if sim.data.player.floor==3 else 5.2):return stairs
 	return null
 
 func build_gallery() -> void:
-	gallery=Node3D.new()
-	add_child(gallery)
-	gallery_deck=Node3D.new()
-	gallery.add_child(gallery_deck)
-	world_root=gallery_deck
-	var wood:=Color("67513b")
-	# L-shaped gallery: a real void over the dining hall, not a full opaque second map.
-	box(Vector3(18,0.18,2),Vector3(0,3.1,-4.5),wood)
-	box(Vector3(2,0.18,4.5),Vector3(8,3.1,-1.25),wood)
-	for x in range(-9,9):
-		for z in [-5,-4]:model("town","planks",Vector3(x+0.5,3.2,z+0.5),Vector3(1,0.04,1))
-	for z in range(-3,1):
-		for x in [7,8]:model("town","planks",Vector3(x+0.5,3.2,z+0.5),Vector3(1,0.04,1))
-	world_root=gallery
-	box(Vector3(18,0.18,3),Vector3(0,3.1,-7),wood)
-	for x in range(-9,9):
-		for z in range(-8,-5):model("town","planks",Vector3(x+0.5,3.2,z+0.5),Vector3(1,0.04,1))
-	box(Vector3(18.2,0.6,0.2),Vector3(0,3.55,-8.5),Color("9a8568"))
-	for x in [-9,-3,3,9]:
-		box(Vector3(0.16,2.7,0.25),Vector3(x,4.5,-8.5),Color("453327"))
-		if x in [-3,3]:box(Vector3(0.13,1.25,2),Vector3(x,3.85,-7.5),Color("877355"))
-	for x in [-6,0,6]:
-		model("furniture","bedSingle",Vector3(x,3.24,-7.25),Vector3(1.3,0.8,2.1))
-		model("furniture","rugRectangle",Vector3(x+1.6,3.24,-6.7),Vector3(1.2,0.02,1.8))
-		model("town","lantern",Vector3(x+1.9,3.24,-8.1),Vector3(0.16,1.5,0.16))
-		light_at(Vector3(x+1.9,4.7,-7.4),0.9)
-		box(Vector3(0.8,1.25,0.09),Vector3(x,4.5,-8.36),Color("514134"))
-	# A rear roof slope and exposed front rafters leave upstairs readable.
-	var roof:=box(Vector3(19.2,0.15,1.0),Vector3(0,6.1,-8.5),Color("36434b"))
-	roof.rotation.x=-0.28
-	for x in [-9,-3,3,9]:
-		var rafter:=box(Vector3(0.14,0.14,5.5),Vector3(x,6,-5.8),Color("4b3629"))
-		rafter.rotation.x=0.19
-	# Two long timber beams and slim rails keep the silhouette architectural.
-	for z in [-5.5,-3.5]:
-		box(Vector3(18.2,0.2,0.2),Vector3(0,3.0,z),Color("3b3026"))
-	for x in [-9,-5,-1,3,7]:
-		box(Vector3(0.16,3.1,0.16),Vector3(x,1.55,-3.5),Color("443526"))
-		box(Vector3(0.09,1,0.09),Vector3(x,3.7,-3.5),Color("8c7150"))
-	box(Vector3(16,0.09,0.09),Vector3(-1,4.17,-3.5),Color("94764f"))
-	for z in [-3.5,-2,-0.5,1]:
-		box(Vector3(0.09,1,0.09),Vector3(7,3.7,z),Color("8c7150"))
-	box(Vector3(0.09,0.09,4.5),Vector3(7,4.17,-1.25),Color("94764f"))
-	world_root=surface
-	for i in range(16):
-		var z:=4.875-i*0.25
-		var y: float=(i+1)*0.2
-		box(Vector3(1.9,0.12,0.26),Vector3(8,y-0.06,z),Color("806345"))
-		for x in [7.05,8.95]:
-			if i%4==0:box(Vector3(0.075,0.8,0.075),Vector3(x,y+0.35,z),Color("68513a"))
-	for x in [7.05,8.95]:
-		var rail:=box(Vector3(0.07,0.07,5.12),Vector3(x,2.3,3),Color("94764f"))
-		rail.rotation.x=atan(0.8)
-	for x in [-4,4]:
-		model("town","lantern",Vector3(x,3.2,-5.2),Vector3(0.18,1.3,0.18))
-		light_at(Vector3(x,4.5,-4.5),1.0)
-	world_label("2층 계단 · 탭",Vector3(8,0.6,5.25),gallery)
-	var label:=world_label("1층 홀",Vector3(-2,0.16,0),gallery)
-	label.pixel_size=0.005
-	world_root=surface
-
+	preload("res://scripts/inn_upper.gd").build(self)
 func earth_mesh(vertices: PackedVector3Array, colors: PackedColorArray) -> void:
 	var arrays:=[]
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -794,6 +741,7 @@ func start_campaign() -> void:
 		if child is Label3D and child.text.begins_with("지하 입구"):child.hide()
 	world_root=surface
 	box(Vector3(1.65,0.18,1.65),Vector3(Simulation.HATCH.x,-0.02,Simulation.HATCH.y),Color("604c36"))
+	sim.Upper.migrate(sim)
 	episode.data.briefed=true;episode_ui.root.hide();sim.data.campaign.intro=false;show_inn()
 
 func context_opened(kind_: String) -> void:
@@ -928,9 +876,9 @@ func world_tap(point: Vector2,captured: Variant=null) -> void:
 			if not Selection.visible_floor(self,floor_):continue
 			var rp=Sandbox.room_point(number) if Sandbox.active(sim) else sim.room_target(number)
 			var center=camera.unproject_position(world_point(rp,floor_,0.6))
-			var bed=camera.unproject_position(world_point(Vector2(5.6,-2.0 if number==1 else 2.0) if number<3 else rp,floor_,0.65))
+			var bed=camera.unproject_position(world_point(rp-Vector2(1.5,1) if Sandbox.active(sim) else rp,floor_,0.65))
 			if point.distance_to(center)<44 or point.distance_to(bed)<44:object_context.open("room",str(number));return
-	var target_floor=1 if view_layer=="below" else (2 if view_layer=="rooms" else int(sim.data.player.floor))
+	var target_floor=1 if view_layer=="below" else (3 if view_layer=="attic" else (2 if view_layer=="rooms" else int(sim.data.player.floor)))
 	if target_floor!=sim.data.player.floor:
 		request_anchor=point;object_context.open("navigation",str(target_floor),"화면만 보고 있습니다. 주인을 이 층으로 이동할까요?");return
 	if sim.data.player.floor==1:
@@ -969,8 +917,9 @@ func _physics_process(delta: float) -> void:
 	if sim.data.player.floor!=displayed_floor:
 		displayed_floor=sim.data.player.floor
 		if displayed_floor==0:show_inn()
+		elif displayed_floor>=2:show_upper(displayed_floor)
 		elif not overview:frame_owner()
-		elif view_layer!="all":set_layer("below" if displayed_floor==1 else ("rooms" if displayed_floor==2 else "surface"))
+		elif view_layer!="all":set_layer("below" if displayed_floor==1 else ("attic" if displayed_floor==3 else ("rooms" if displayed_floor==2 else "surface")))
 		object_context.close()
 	advance_floor_journey()
 	if not pending_context_action.is_empty() and sim.data.excavation.intent=="" and sim.data.work.is_empty():
@@ -1086,7 +1035,7 @@ func touch_control(key: String) -> void:
 func follow_owner(snap: bool=true) -> void:
 	inn_view=false
 	var floor_=int(sim.data.player.floor)
-	var layer_="below" if floor_==1 else ("rooms" if floor_==2 else "surface")
+	var layer_="below" if floor_==1 else ("attic" if floor_==3 else ("rooms" if floor_==2 else "surface"))
 	if view_layer!=layer_ and object_context!=null:object_context.close()
 	view_layer=layer_;overview=false;camera_offset=Vector2.ZERO
 	if snap:
@@ -1498,7 +1447,7 @@ func context_items(kind_: String,id_: String) -> Array:
 		"hatch": return [["floor","올라가기" if sim.data.player.floor==1 else "내려가기"],["hatch","덮개 열기 / 닫기"],["lamp","지하 등불 켜기 / 끄기"]]
 		"inspector": return [["inspect","조사에 응하기"],["bribe","뇌물 제안 · 12닢"]] if sim.data.ops.inspector.state=="waiting" else [["journal","오늘의 장부"]]
 		"lamp": return [["lamp","켜기 / 끄기"]]
-		"stairs": return [["gallery","1층으로 내려가기" if sim.data.player.floor==2 else "2층으로 올라가기"]]
+		"stairs": return [["gallery","2층으로 내려가기" if sim.data.player.floor==3 else ("1층으로 내려가기" if sim.data.player.floor==2 else "2층으로 올라가기")]]
 		"room": return [["assign","선택 손님에게 배정"],["clean","청소하기"]]
 		"soil":
 			if sim.gentle_opening() and sim.data.served<3: return [["dig","여기 파기 · 4초"]]
@@ -1515,7 +1464,7 @@ func context_items(kind_: String,id_: String) -> Array:
 func floor_route_step(target: int,entry: String="") -> bool:
 	if int(sim.data.player.floor)==target:return true
 	follow_owner(false)
-	if sim.data.player.floor==2 or (sim.data.player.floor==0 and target==2):return sim.queue_gallery()
+	if sim.data.player.floor>=2 or (sim.data.player.floor==0 and target>=2):return sim.queue_gallery(target)
 	if entry!="":return Sandbox.use_entrance(sim,entry)
 	return sim.queue_floor()
 
@@ -1527,6 +1476,7 @@ func request_floor(target: int,entry: String="") -> void:
 	if sim.data.paused:sim.note("일시정지 중입니다. 상단 재개를 눌러주세요.");return
 	if int(sim.data.player.floor)==target:
 		if target==0:show_inn()
+		elif target>=2:show_upper(target)
 		else:frame_owner()
 		return
 	Commands.cancel(self,true)
@@ -1539,6 +1489,7 @@ func advance_floor_journey() -> void:
 	if sim.data.player.floor==floor_journey:
 		var arrived=floor_journey;floor_journey=-1;journey_entry=""
 		if arrived==0:show_inn()
+		elif arrived>=2:show_upper(arrived)
 		else:follow_owner(false)
 		return
 	if sim.data.excavation.intent!="" or not sim.data.work.is_empty():return
@@ -1558,12 +1509,14 @@ func transit_at(point: Vector2) -> Dictionary:
 				var label=camera.unproject_position(world_point(pos+Vector2(0,.9),floor_,.35))
 				if Rect2(label-Vector2(75,12),Vector2(150,24)).has_point(point):d=minf(d,12)
 				if d<30 and d<distance:best={"floor":0 if floor_==1 else 1,"entry":e.id};distance=d
-	for floor_ in [0,2]:
-		if not Selection.visible_floor(self,floor_):continue
-		var bottom=camera.unproject_position(world_point(Simulation.STAIRS,floor_,.2))
-		var upper=camera.unproject_position(world_point(Vector2(8,1),2,.2))
+	for pair in [[0,2],[2,3]]:
+		var lower=int(pair[0]);var upper_floor=int(pair[1])
+		if not Selection.visible_floor(self,lower) and not Selection.visible_floor(self,upper_floor):continue
+		var stair=Simulation.Upper.stair(lower,upper_floor)
+		var bottom=camera.unproject_position(world_point(stair,upper_floor,.2))
+		var upper=camera.unproject_position(world_point(stair-Vector2(0,4),upper_floor,.2))
 		var d=point.distance_to(Geometry2D.get_closest_point_to_segment(point,bottom,upper))
-		if d<30 and d<distance:best={"floor":0 if sim.data.player.floor==2 else 2};distance=d
+		if d<30 and d<distance:best={"floor":lower if int(sim.data.player.floor)==upper_floor else upper_floor};distance=d
 	return best
 
 func context_action(kind_: String,id_: String,action: String) -> void:
@@ -1605,7 +1558,7 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 	if action=="case_focus":
 		var target=sim.Contracts.target(sim)
 		if sim.data.people.has(target):
-			var person: Dictionary=sim.data.people[target];set_layer("below" if person.floor==1 else ("rooms" if person.floor==2 else "surface"));camera_offset=person.pos-Vector2(focus_position().x,focus_position().z)+(Vector2(Sandbox.OFFSET.x,Sandbox.OFFSET.z) if person.floor==1 else Vector2.ZERO);camera.size=22
+			var person: Dictionary=sim.data.people[target];set_layer("below" if person.floor==1 else ("attic" if person.floor==3 else ("rooms" if person.floor==2 else "surface")));camera_offset=person.pos-Vector2(focus_position().x,focus_position().z)+(Vector2(Sandbox.OFFSET.x,Sandbox.OFFSET.z) if person.floor==1 else Vector2.ZERO);camera.size=22
 		return
 	if action=="questioning":object_context.open("questioning",id_,sim.Contracts.questioning(sim,id_));return
 	if action in ["question","ransom","coerce","verify_intel"]:
@@ -2109,7 +2062,7 @@ func capture_sandbox() -> void:
 func sandbox_objects(point: Vector2) -> bool:
 	for e in sim.data.sandbox.entrances:
 		var floor_: int=sim.data.player.floor
-		if floor_==2:continue
+		if floor_>=2:continue
 		var p: Vector2=e.top if floor_==0 else Vector2(e.bottom)
 		if not Selection.visible_floor(self,floor_):continue
 		if point.distance_to(camera.unproject_position(world_point(p,floor_,0.1)))<44:
@@ -2153,7 +2106,7 @@ func sync_tycoon_workers(dt: float) -> void:
 	var worker: Dictionary=sim.data.tycoon.cleaner;sync_actor(cleaner_visual,worker.pos,dt,int(worker.floor))
 	for n in sim.data.rooms:
 		if not tycoon_room_marks.has(n):
-			var at=world_point(Sandbox.room_point(int(n)),Sandbox.floor_of(int(n)),0.6);tycoon_room_marks[n]=world_label("",at,actors_root);tycoon_room_marks[n].pixel_size=0.012
+			var at=world_point(Sandbox.room_point(int(n)),Sandbox.floor_of(int(n)),0.6);tycoon_room_marks[n]=world_label("",at,actors_root);tycoon_room_marks[n].pixel_size=0.012;tycoon_room_marks[n].set_meta("upper_floor",Sandbox.floor_of(int(n)))
 		var room_: Dictionary=sim.data.rooms[n]
 		tycoon_room_marks[n].visible=Selection.visible_floor(self,Sandbox.floor_of(int(n)))
 		tycoon_room_marks[n].text="%s호 · %s%s" %[n,"예약 중" if room_.get("reserved","")!="" else ("청소 필요" if room_.dirty else ("이용 중" if room_.guest!="" else "빈방"))," · 개선 %d" %int(sim.data.tycoon.rooms[n]) if int(sim.data.tycoon.rooms[n])>0 else ""]
@@ -2219,7 +2172,7 @@ func activate_selection(choice: Dictionary) -> void:
 		_:object_context.open("owner")
 
 func command_status() -> String:return Commands.status(self)
-func view_name() -> String:return {"surface":"식당·마당","rooms":"객실","below":"지하","all":"전체"}.get(view_layer,"여관")
+func view_name() -> String:return {"surface":"식당·마당","rooms":"2층 객실","attic":"3층 객실","below":"지하","all":"전체"}.get(view_layer,"여관")
 
 func cancel_everything() -> void:
 	Commands.cancel(self);dig_mode="";comfort.confirm_job.clear()
@@ -2237,3 +2190,8 @@ func show_inn() -> void:
 	sync_view(0)
 	if mobile_scene.host!=null:mobile_scene.update()
 	if journal!=null:journal.refresh()
+
+func show_upper(floor_: int) -> void:
+	set_layer("attic" if floor_==3 else "rooms")
+	camera.size=24;camera_focus=focus_position();camera.position=camera_focus+camera_arm();camera.look_at(camera_focus)
+	sync_view(0);mobile_scene.update();journal.refresh()

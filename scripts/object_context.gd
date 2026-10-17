@@ -43,7 +43,7 @@ func setup(owner_) -> void:
 	heading=label_("문 닫은 뒤",21);heading.position=Vector2(20,12);heading.size=Vector2(680,34);heading.autowrap_mode=TextServer.AUTOWRAP_OFF;top.add_child(heading)
 	stats=label_("",20);stats.position=Vector2(250,12);stats.size=Vector2(450,34);stats.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT;stats.autowrap_mode=TextServer.AUTOWRAP_OFF;top.add_child(stats)
 	var bar=HBoxContainer.new();bar.position=Vector2(20,56);bar.add_theme_constant_override("separation",8);top.add_child(bar)
-	for item in [["1층","surface"],["2층","rooms"],["지하","below"],["전체","all"],["정지","pause"],["1배","speed"],["설정","system"]]:
+	for item in [["1층","surface"],["2층","rooms"],["3층","attic"],["지하","below"],["정지","pause"],["1배","speed"],["설정","system"]]:
 		var value=str(item[1]);var b=button_(str(item[0]),bar,func():
 			var was_paused: bool=host.sim.data.paused
 			close()
@@ -51,10 +51,10 @@ func setup(owner_) -> void:
 			elif value=="pause":host.sim.data.paused=not was_paused
 			elif value=="speed":host.sim.data.speed=2 if host.sim.data.speed==1 else 1
 			elif value=="all":host.set_layer(value)
-			else:host.request_floor({"surface":0,"rooms":2,"below":1}[value]))
+			else:host.request_floor({"surface":0,"rooms":2,"attic":3,"below":1}[value]))
 		b.custom_minimum_size=Vector2(88,88)
 		b.add_theme_font_size_override("font_size",18)
-		if value in ["surface","rooms","below","all"]:controls["@view:"+value]=b
+		if value in ["surface","rooms","attic","below","all"]:controls["@view:"+value]=b
 		if value=="pause":controls["@pause"]=b
 		if value=="speed":controls["@speed"]=b
 	inn_button=button_("여관 보기",top,func():host.show_inn(),88);inn_button.position=Vector2(20,156);inn_button.size.x=210;controls["@inn"]=inn_button
@@ -168,14 +168,14 @@ func refresh() -> void:
 	heading.text="%d일 · %s" %[int(host.sim.data.campaign.day) if host.Campaign.active(host.sim) else 1,host.view_name()] if host.Campaign.active(host.sim) else "문 닫은 뒤"
 	if controls.has("@pause"):controls["@pause"].text="재개" if host.sim.data.paused else "정지"
 	if controls.has("@speed"):controls["@speed"].text="%d배" %host.sim.data.speed
-	for view in ["surface","rooms","below","all"]:
+	for view in ["surface","rooms","attic","below","all"]:
 		if controls.has("@view:"+view):controls["@view:"+view].modulate=Color("f5d79b") if host.view_layer==view else Color.WHITE
 	stats.text="%d닢 · %s" %[host.sim.data.money,host.sim.calendar_text().get_slice(" · ",0).get_slice(" ",1)]
 	top.visible=not ((host.journal!=null and host.journal.opened) or (host.episode_ui!=null and host.episode_ui.opened))
 	owner_button.text="주인 찾기"
 	inn_button.text="여관 운영 중" if host.inn_view else "여관 보기"
 	var job: String=host.command_status()
-	task_label.text=("진행: "+job) if job!="" else "정문 → 접수 → 객실 / 식당 · 알바 자동 운영"
+	task_label.text=("진행: "+job) if job!="" else ("정문 → 접수 → 객실 / 식당 · 알바 자동 운영" if host.view_layer=="surface" else "객실·시설을 눌러 관리 · 주인 찾기로 직접 이동")
 	cancel_button.visible=true;cancel_button.disabled=job==""
 	cancel_button.text="취소 · 작업 중지" if job!="" else "취소"
 	if panel.visible and kind in ["person","conversation","actions","other","inmate","questioning"]:

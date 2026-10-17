@@ -12,19 +12,27 @@ func run() -> void:
 	if "--candidate" in OS.get_cmdline_user_args():
 		app.set_layer("surface");app.camera.size=24;app.camera_focus=Vector3(3,0,2);app.camera.position=app.camera_focus+Vector3(26,34,0);app.camera.look_at(app.camera_focus)
 	await process_frame;await process_frame;await RenderingServer.frame_post_draw
+	var tag="v180"
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--tag="):tag=arg.trim_prefix("--tag=")
 	var prefix="candidate" if "--candidate" in OS.get_cmdline_user_args() else ("after" if "--after" in OS.get_cmdline_user_args() else "before")
-	root.get_texture().get_image().save_png("res://docs/mobile-v180-"+prefix+".png")
+	root.get_texture().get_image().save_png("res://docs/mobile-"+tag+"-"+prefix+".png")
 	app.object_context.open("owner");
 	if app.mobile_scene.host!=null:app.mobile_scene.update()
 	await process_frame;await process_frame;await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://docs/mobile-v180-"+prefix+"-menu.png")
+	root.get_texture().get_image().save_png("res://docs/mobile-"+tag+"-"+prefix+"-menu.png")
 	app.object_context.close();
 	if prefix=="after":
 		app.show_inn();var waiting=app.sim.waiting()
 		if not waiting.is_empty():app.activate_selection({"kind":"person","id":str(waiting[0])})
 		app.mobile_scene.update();app.journal.refresh();await process_frame;await process_frame;await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png("res://docs/mobile-v180-after-guest.png")
+		root.get_texture().get_image().save_png("res://docs/mobile-"+tag+"-after-guest.png")
 	app.object_context.close();app.request_floor(2);app.object_context.refresh();app.journal.refresh();app.mobile_scene.update()
 	await process_frame;await process_frame;await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("res://docs/mobile-v180-"+prefix+"-cancel.png")
+	root.get_texture().get_image().save_png("res://docs/mobile-"+tag+"-"+prefix+"-cancel.png")
+	if prefix=="after" and tag=="v181":
+		for floor_ in [2,3]:
+			app.object_context.close();app.cancel_everything();app.sim.data.player.floor=floor_;app.sim.data.player.pos=Vector2(8,-4.25);app.show_upper(floor_);app.camera.size=24;app.sync_view(0);app.journal.refresh();app.object_context.refresh();app.mobile_scene.update()
+			await process_frame;await process_frame;await RenderingServer.frame_post_draw
+			root.get_texture().get_image().save_png("res://docs/mobile-v181-after-floor%d.png" %floor_)
 	quit()

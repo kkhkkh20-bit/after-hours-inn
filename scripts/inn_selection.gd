@@ -3,6 +3,7 @@ extends RefCounted
 static func visible_floor(host,floor_: int) -> bool:
 	if host.view_layer=="below":return floor_==1
 	if host.view_layer=="rooms":return floor_==2
+	if host.view_layer=="attic":return floor_==3
 	if host.view_layer=="surface":return floor_==0
 	return true
 

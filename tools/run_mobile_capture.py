@@ -13,6 +13,6 @@ with open('/tmp/mobile180-render.log','w') as log:
    try:
     with socket.create_connection(('127.0.0.1',6000+n),timeout=.1):break
    except OSError:time.sleep(.05)
-  p=subprocess.run([godot,'--audio-driver','Dummy','--path',str(project),'--script','tools/capture_mobile.gd','--',sys.argv[1]],env=e,stdout=log,stderr=log,timeout=45)
+  p=subprocess.run([godot,'--audio-driver','Dummy','--path',str(project),'--script','tools/capture_mobile.gd','--',*sys.argv[1:]],env=e,stdout=log,stderr=log,timeout=45)
   print('capture exit',p.returncode)
  finally:x.terminate();x.wait();capture_data.cleanup()

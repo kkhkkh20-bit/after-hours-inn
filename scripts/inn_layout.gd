@@ -47,12 +47,12 @@ static func route_depart(s,p: Dictionary) -> void:
 static func room_of_body(s,id: String) -> int:
 	if not s.data.people.has(id):return 0
 	var p: Dictionary=s.data.people[id]
-	if p.state!="dead" or int(p.floor) not in [0,2]:return 0
+	if p.state!="dead" or int(p.floor) not in [2,3]:return 0
 	for key in s.data.rooms:
 		var n=int(key)
 		if int(p.floor)!=s.Sandbox.floor_of(n):continue
 		var point: Vector2=s.Sandbox.room_point(n)
-		var area=Rect2(2.2,-5.8 if n==1 else .2,4.5,3.6) if n<3 else Rect2(point+Vector2(-2,-2),Vector2(4,3.5))
+		var area=Rect2(point+Vector2(-2,-2),Vector2(4,3.5))
 		if area.has_point(p.pos):return n
 	return 0
 

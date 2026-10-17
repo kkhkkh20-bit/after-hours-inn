@@ -1,4 +1,5 @@
 extends RefCounted
+const Upper=preload("res://scripts/inn_upper.gd")
 ## Authoritative inn state. No UI, meshes, physics server or wall-clock dependency.
 
 const Contracts=preload("res://scripts/inn_contracts.gd")
@@ -88,7 +89,7 @@ func surface_walkable(pos: Vector2) -> bool:
 
 func walkable(pos: Vector2, floor_: int) -> bool:
 	if floor_ == 0: return surface_walkable(pos)
-	if floor_ == 2: return gallery_walkable(pos)
+	if floor_ >= 2: return upper_walkable(pos,floor_)
 	if data.excavation.get("storeroom",false) and data.cells.has("10,0") and Rect2(7.5,-0.5,3.05,1).has_point(pos):return false
 	# Sample the actor footprint, so shoulders cannot cross unopened earth.
 	for shift in [Vector2.ZERO,Vector2(0.19,0),Vector2(-0.19,0),Vector2(0,0.19),Vector2(0,-0.19)]:
@@ -101,13 +102,17 @@ static func gallery_walkable(pos: Vector2) -> bool:
 		if Rect2(x-0.85,-8.5,1.7,2.5).has_point(pos):return false
 	for x in [-3,3]:
 		if Rect2(x-0.25,-8.5,0.5,2.2).has_point(pos):return false
-	return Rect2(-9.0,-8.5,18.0,5.0).has_point(pos) or Rect2(7.0,-5.5,2.0,11.0).has_point(pos)
+	return Rect2(-9.0,-8.5,18.0,9.5).has_point(pos) or Rect2(7.0,-5.5,2.0,11.0).has_point(pos)
+
+static func upper_walkable(pos: Vector2,floor_: int) -> bool:
+	return gallery_walkable(pos) and (floor_!=3 or pos.y<=-3.25 or (pos.x>=7 and pos.x<9 and pos.y<=.75))
 
 static func floor_height(pos: Vector2, floor_: int) -> float:
+	if floor_==3:return 3.2+clampf((.75-pos.y)/4.0,0.0,1.0)*3.2
 	if floor_ != 2:return 0.0
 	return clampf((5.0-pos.y)/4.0,0.0,1.0)*3.2
 
-func gallery_route(from: Vector2, to: Vector2) -> Array:
+func gallery_route(from: Vector2, to: Vector2,floor_: int=2) -> Array:
 	var upstairs:=AStarGrid2D.new()
 	upstairs.region=Rect2i(0,0,40,30)
 	upstairs.cell_size=Vector2(0.5,0.5)
@@ -117,25 +122,25 @@ func gallery_route(from: Vector2, to: Vector2) -> Array:
 	for x in range(40):
 		for y in range(30):
 			var id:=Vector2i(x,y)
-			upstairs.set_point_solid(id,not gallery_walkable(upstairs.get_point_position(id)))
+			upstairs.set_point_solid(id,not upper_walkable(upstairs.get_point_position(id),floor_))
 	var a:=Vector2i(floori((from.x+10)/0.5),floori((from.y+9)/0.5))
 	var b:=Vector2i(floori((to.x+10)/0.5),floori((to.y+9)/0.5))
 	if not upstairs.is_in_boundsv(a) or not upstairs.is_in_boundsv(b):return []
 	if upstairs.is_point_solid(a) or upstairs.is_point_solid(b):return []
 	return Array(upstairs.get_point_path(a,b))
 
-func queue_gallery() -> bool:
+func queue_gallery(target: int=-1) -> bool:
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
 	if data.player.floor==1:note("먼저 지하에서 올라오자.");return false
-	data.excavation.intent=""
-	data.excavation.path=[]
-	var route: Array=gallery_route(data.player.pos,STAIRS) if data.player.floor==2 else path_to(data.player.pos,STAIRS)
+	var from=int(data.player.floor)
+	if target<0:target=2 if from in [0,3] else 0
+	if target==from:return true
+	var next=Upper.next_floor(from,target);var point=Upper.stair(from,target)
+	var route: Array=gallery_route(data.player.pos,point,from) if from>=2 else path_to(data.player.pos,point)
 	if route.is_empty():return false
 	data.excavation.path=route
-	data.excavation.intent="gallery_down" if data.player.floor==2 else "gallery_up"
-	data.ops.selected=""
-	return true
-
+	data.excavation.intent="gallery_top_up" if next==3 else ("gallery_top_down" if from==3 else ("gallery_up" if next==2 else "gallery_down"))
+	data.ops.selected="";return true
 func path_to(from: Vector2, to: Vector2) -> Array:
 	var a := Vector2i(floori((from.x+24)/0.5),floori((from.y+20)/0.5))
 	var b := Vector2i(floori((to.x+24)/0.5),floori((to.y+20)/0.5))
@@ -249,7 +254,7 @@ func assign_room(number: int, guest_id: String="") -> bool:
 	var id: String = guest_id if guest_id!="" else waiting()[0]
 	if id not in waiting(): return false
 	var person: Dictionary = data.people[id]
-	var path := guest_path(person.pos,STAIRS if Sandbox.active(self) and number>=3 else room_target(number))
+	var path := guest_path(person.pos,STAIRS if Sandbox.active(self) else room_target(number))
 	if path.is_empty():
 		note("객실까지 갈 수 없다. 통로를 확인해야 한다.")
 		return false
@@ -328,6 +333,7 @@ func deliver(order_id: String, holder: String) -> bool:
 	if Tycoon.active(self):Tycoon.income(self,price,"식사")
 	data.served += 1
 	if data.people[order_.guest].get("visit","")=="meal": data.people[order_.guest].checkout=data.clock+8
+	elif data.people[order_.guest].get("meal_trip",false):data.people[order_.guest].return_at=data.clock+8
 	note("%s에게 식사 전달. %d닢을 받았다." %[data.people[order_.guest].name,price])
 	return true
 
@@ -410,7 +416,7 @@ func _step(dt: float) -> void:
 			person.state="leaving"
 			person.path=path_to(person.pos,GATE if data.get("opening",{}).get("natural",false) else ENTRY)
 			note("%s이 기다리다 떠난다." % person.name)
-		if person.state in ["arriving","entering","leaving"]:
+		if person.state in ["arriving","entering","leaving","to_dining"]:
 			follow(person,dt*(2.4 if Sandbox.active(self) else 1.15))
 			if person.path.is_empty():
 				if Sandbox.active(self) and Sandbox.arrive(self,person):continue
@@ -419,14 +425,19 @@ func _step(dt: float) -> void:
 					if person.state=="dining": person.order_at=data.clock+0.5; person.checkout=data.clock+90
 				elif person.state=="entering":
 					person.state="staying"
-					person.order_at=data.clock+3
+					person.order_at=data.clock+(45 if person.meals>0 else 3)
+				elif person.state=="to_dining":person.state="dining";person.order_at=data.clock+.5
 				else:
 					person.state="gone"
 					data.departed+=1
+		if person.state=="dining" and person.get("meal_trip",false) and float(person.get("return_at",0))>0 and data.clock>=float(person.return_at):
+			person.meal_trip=false;person.return_at=0;person.dining_table=Vector2(99,99);person.state="entering";Sandbox.move_person(self,person,Sandbox.room_point(int(person.room)),Sandbox.floor_of(int(person.room)))
 		if person.state in ["staying","dining"]:
 			if data.clock>=person.checkout:
 				checkout(id)
 			elif data.clock>=person.order_at and person.meals<(1 if person.get("visit","")=="meal" else 2):
+				if Sandbox.active(self) and person.state=="staying" and person.floor>=2:
+					Upper.dine(self,person);continue
 				create_order(id)
 				person.order_at=data.clock+45
 	for order_id in data.orders:
@@ -506,7 +517,7 @@ func update_worker(dt: float) -> void:
 			worker.target=""
 			worker.path=[]
 		else:
-			if worker.path.is_empty(): worker.path=gallery_route(worker.pos,target) if int(worker.get("floor",0))==2 else path_to(worker.pos,target)
+			if worker.path.is_empty(): worker.path=gallery_route(worker.pos,target,int(worker.get("floor",0))) if int(worker.get("floor",0))>=2 else path_to(worker.pos,target)
 			follow(worker,dt*(3.3 if Sandbox.active(self) else 1.25))
 		return
 	if worker.target!="" and data.orders.has(worker.target):
@@ -857,7 +868,7 @@ func queue_floor() -> bool:
 		var e=Sandbox.nearest(self,data.player.pos,data.player.floor)
 		if e.is_empty():note("먼저 1층이나 마당 바닥을 눌러 비밀 입구를 만드세요.");return false
 		return Sandbox.use_entrance(self,e.id)
-	if data.player.floor==2:return queue_gallery()
+	if data.player.floor>=2:return queue_gallery()
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
 	data.excavation.path=[]
 	data.excavation.intent=""
@@ -912,17 +923,12 @@ func update_excavation(dt: float) -> void:
 	if walker.path.is_empty():
 		var action: String=job.intent
 		job.intent=""
-		if action=="gallery_up":
-			data.player.floor=2
-			data.player.pos=STAIRS
+		if action in ["gallery_up","gallery_down","gallery_top_up","gallery_top_down"]:
+			data.player.floor={"gallery_up":2,"gallery_down":0,"gallery_top_up":3,"gallery_top_down":2}[action]
+			data.player.pos=Upper.TOP_STAIRS if action.begins_with("gallery_top") else STAIRS
 			Intrigue.sync_drag(self)
-			queue_move(Vector2(8,-4.25))
-			note("계단을 따라 2층으로 올라간다. 난간 너머가 1층 홀이다.")
-		elif action=="gallery_down":
-			data.player.floor=0
-			data.player.pos=STAIRS
-			Intrigue.sync_drag(self)
-			note("계단을 내려와 1층 홀로 돌아왔다.")
+			if action in ["gallery_up","gallery_top_up"]:queue_move(Vector2(8,-4.25))
+			note("%s에 도착했습니다." %{0:"1층 로비",2:"2층 객실",3:"3층 객실"}[int(data.player.floor)])
 		elif action.begins_with("sandbox:"):Sandbox.perform(self,action,str(job.get("target","")))
 		elif action=="floor":change_floor()
 		elif action=="dig":start_dig(parse_cell(job.cell))
@@ -953,14 +959,14 @@ func move_route(target: Vector2) -> Array:
 			for y in range(grid.region.size.y):
 				var id:=Vector2i(x,y)
 				var point:=grid.get_point_position(id)
-				if data.player.floor==2:
-					if not gallery_walkable(point):continue
+				if data.player.floor>=2:
+					if not walkable(point,int(data.player.floor)):continue
 				elif grid.is_point_solid(id):continue
 				var delta:=point.distance_squared_to(target)
 				if delta<distance:distance=delta;closest=point
 	if distance>1.25*1.25:
 		note("그 지점은 벽이나 가구에 막혀 있습니다. 가까운 빈 바닥을 선택해주세요.");return []
-	var route: Array=gallery_route(data.player.pos,closest) if data.player.floor==2 else (path_to(data.player.pos,closest) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,closest))
+	var route: Array=gallery_route(data.player.pos,closest,int(data.player.floor)) if data.player.floor>=2 else (path_to(data.player.pos,closest) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,closest))
 	if route.is_empty():note("그곳까지 이어지는 통로가 없다.");return []
 	return route
 
@@ -1001,7 +1007,7 @@ func queue_command(command: String, id: String="") -> bool:
 		target=data.ops.cell if data.ops.built else data.player.pos
 	elif command.begins_with("clean"):
 		var n=int(command.trim_prefix("clean"));target=room_target(n)
-		if Sandbox.active(self) and data.player.floor!=Sandbox.floor_of(n):data.deferred_command={"command":command,"id":id};return queue_gallery()
+		if Sandbox.active(self) and data.player.floor!=Sandbox.floor_of(n):data.deferred_command={"command":command,"id":id};return queue_gallery(Sandbox.floor_of(n))
 	elif data.player.floor!=0:note("먼저 1층 접수대로 돌아가야 한다.");return false
 	data.excavation.target=id
 	if data.player.pos.distance_to(target)<0.85:
@@ -1063,7 +1069,7 @@ func toggle_cellar_lamp() -> bool:
 func toggle_hatch() -> bool:
 	if data.paused:return false
 	var target: Vector2=Vector2.ZERO if data.player.floor==1 else HATCH
-	if data.player.floor==2 or data.player.pos.distance_to(target)>1.5:note("입구 가까이에서 덮개를 조작하자.");return false
+	if data.player.floor>=2 or data.player.pos.distance_to(target)>1.5:note("입구 가까이에서 덮개를 조작하자.");return false
 	data.excavation.hatch_open=not data.excavation.hatch_open
 	note("덮개를 열었다. 빛과 소리가 위층으로 전달된다." if data.excavation.hatch_open else "덮개를 닫았다. 위층으로 새는 빛과 소리가 줄었다.")
 	return true
@@ -1102,11 +1108,11 @@ func update_direct_service() -> void:
 		var carried: String=data.player.carry
 		if data.orders[carried].guest!=id: data.service_target=""; note("먼저 들고 있는 식사를 전달하자."); return
 		if Intrigue.close(self,id):deliver(carried,"player");data.service_target=""
-		elif Sandbox.active(self) and data.player.floor!=data.people[id].floor:queue_gallery()
+		elif Sandbox.active(self) and data.player.floor!=data.people[id].floor:queue_gallery(int(data.people[id].floor))
 		else:queue_command("deliver",id)
 		return
 	if not near_counter():
-		if data.player.floor==2:queue_gallery()
+		if data.player.floor>=2:queue_gallery()
 		else:queue_move(COUNTER)
 		return
 	for oid in data.orders:
@@ -1124,7 +1130,7 @@ func approach_point(target: Vector2) -> Variant:
 	for offset in [Vector2(-.75,0),Vector2(.75,0),Vector2(0,-.75),Vector2(0,.75),Vector2(-.5,-.5),Vector2(.5,.5),Vector2(-.5,.5),Vector2(.5,-.5)]:
 		var point=target+offset
 		if not walkable(point,data.player.floor):continue
-		var route: Array=gallery_route(data.player.pos,point) if data.player.floor==2 else (path_to(data.player.pos,point) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,point))
+		var route: Array=gallery_route(data.player.pos,point,int(data.player.floor)) if data.player.floor>=2 else (path_to(data.player.pos,point) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,point))
 		if route.is_empty():continue
 		if route.size()<score:score=route.size();best=point
 	return best

@@ -89,6 +89,7 @@ static func goal(s) -> String:
 	return "자동 운영 중 · 손님·객실·주방을 눌러 관리"
 
 static func ensure(s) -> void:
+	s.Upper.migrate(s)
 	if s.data.sandbox.get("wide_version",0)<1:s.Layout.expand(s)
 	if s.data.sandbox.get("starter_version",0)<1:s.Layout.setup(s)
 	for n in s.data.rooms:
@@ -141,7 +142,7 @@ static func booking_step(s) -> void:
 		s.queue_command("clean"+n);return
 	if int(s.data.player.floor)!=int(p.floor):
 		if int(s.data.player.floor)==1:s.queue_floor()
-		else:s.queue_gallery()
+		else:s.queue_gallery(int(p.floor))
 		return
 	s.queue_command("confirm_room",id)
 
@@ -150,7 +151,8 @@ static func confirm(s,id: String) -> bool:
 	if job.is_empty() or job.get("guest","")!=id or not s.data.people.has(id):return false
 	var n=int(job.room);var r: Dictionary=s.data.rooms[str(n)];var p: Dictionary=s.data.people[id]
 	if r.guest!="" or r.dirty or r.get("reserved","")!=id:return false
-	var route: Array=s.guest_path(p.pos,s.STAIRS if n>=3 else s.room_target(n))
+	var dest=s.Upper.stair(int(p.floor),Sandbox.floor_of(n)) if int(p.floor)!=Sandbox.floor_of(n) else s.room_target(n)
+	var route: Array=s.gallery_route(p.pos,dest,int(p.floor)) if int(p.floor)>=2 else s.guest_path(p.pos,dest)
 	if route.is_empty():cancel_booking(s);s.note("객실 통로가 막혀 안내할 수 없습니다.");return false
 	var old=int(p.room);var previous_state=str(p.state);var old_room: Dictionary={}
 	if old>0:

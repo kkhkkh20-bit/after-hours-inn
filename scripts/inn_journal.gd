@@ -62,6 +62,9 @@ func refresh() -> void:
 	goal.text=host.Campaign.goal(sim)
 	if host.view_layer=="below" and host.sim.Contracts.current(sim).is_empty():goal.text="지상 영업 · 객실 %d/%d · 문의 %d · 주문 %d" %[sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.rooms.size(),sim.waiting().size(),sim.data.orders.values().filter(func(o):return o.status not in ["served","cancelled"]).size()]
 	if host.inn_view:goal.text="객실 %d/%d · 숙박 문의 %d명 · 식당 %d명" %[sim.data.rooms.values().filter(func(r):return r.guest!="").size(),sim.data.rooms.size(),sim.waiting().size(),sim.data.people.values().filter(func(p):return p.state=="dining").size()]
+	if host.view_layer in ["rooms","attic"]:
+		var floor_=2 if host.view_layer=="rooms" else 3;var numbers=sim.data.rooms.keys().filter(func(key):return host.Sandbox.floor_of(int(key))==floor_)
+		goal.text="%d층 · 객실 %d개 · 사용 %d개 · 빈 객실을 눌러 관리" %[floor_,numbers.size(),numbers.filter(func(key):return sim.data.rooms[key].guest!="").size()]
 	if host.dig_mode!="":goal.text="열린 지하 바닥을 눌러 시설 설치" if host.dig_mode.begins_with("build:") else ("구멍을 팔 지상 위치를 누르세요" if host.dig_mode=="shaft" else "통로를 이을 지하 목적지를 누르세요")
 	var message=host.episode_notice()
 	if message!=last_notice:last_notice=message;until=Time.get_ticks_msec()+4200

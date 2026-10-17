@@ -119,7 +119,7 @@ func act(kind: String,id: String,action: String) -> bool:
 			return false
 	host.object_context.open("comfort","",description("comfort"));return true
 func focus(pos: Vector2,floor_: int) -> void:
-	host.set_layer({0:"surface",1:"below",2:"rooms"}[floor_]);var point=host.world_point(pos,floor_);var base=host.focus_position();host.camera_offset=Vector2(point.x-base.x,point.z-base.z);host.camera_focus=point;host.camera.size=zoom;host.camera.position=point+host.camera_arm();host.camera.look_at(point)
+	host.set_layer({0:"surface",1:"below",2:"rooms",3:"attic"}[floor_]);var point=host.world_point(pos,floor_);var base=host.focus_position();host.camera_offset=Vector2(point.x-base.x,point.z-base.z);host.camera_focus=point;host.camera.size=zoom;host.camera.position=point+host.camera_arm();host.camera.look_at(point)
 func items(kind: String) -> Array:
 	match kind:
 		"resume":
@@ -142,7 +142,7 @@ func items(kind: String) -> Array:
 func description(kind: String) -> String:
 	if kind=="comfort":return "표시·소리 설정은 다음 실행에도 유지됩니다."
 	if kind=="operations":return "손님이나 객실을 누르면 해당 위치를 보여줍니다. 영업 작업은 직원이 계속 처리합니다."
-	if kind=="help":return "빈 바닥: 이동\n사람: 요구와 행동 선택\n계단·사다리: 한 번 눌러 층 이동\n1층·2층·지하: 주인이 실제로 이동\n전체: 둘러보기
+	if kind=="help":return "빈 바닥: 이동\n사람: 요구와 행동 선택\n계단·사다리: 한 번 눌러 층 이동\n1층·2층·3층·지하: 주인이 실제로 이동\n전체: 둘러보기
 여관 보기: 정문·마당·영업 한눈에\n드래그: 자유 관찰\n주인 버튼: 내 위치로 복귀\n상단 취소 버튼: 현재 작업 중지
 PC에서는 우클릭으로도 취소\n설정: 자동 저장·수동 저장·화면 조절"
 	if kind=="recent":

@@ -25,7 +25,7 @@ func _init() -> void:
 	for x in range(-3,2):
 		for y in range(-2,3): data.cells[cell_key(Vector2i(x,y))] = true
 	spawn_guest()
-	note("손님이 도착했다. 접수대 가까이에서 1 / 2로 객실을 배정한다.")
+	note("손님이 도착했다. 영업 창에서 객실을 배정하자.")
 
 func note(text: String) -> void:
 	data.logs.append({"time":int(data.clock),"text":text})
@@ -189,13 +189,13 @@ func deliver(order_id: String, holder: String) -> bool:
 func interact() -> void:
 	if data.paused: return
 	if not data.work.is_empty() or not data.dig.is_empty():
-		note("작업 중이다. X로 중단할 수 있다.")
+		note("작업 중이다. 화면의 중단 버튼을 누를 수 있다.")
 		return
 	if data.player.floor==1:
 		dig_nearest()
 		return
 	if Intrigue.inspector_action(self):return
-	if data.ops.drag!="":note("끌고 있는 대상을 먼저 C로 내려놓아야 한다.");return
+	if data.ops.drag!="":note("끌고 있는 대상을 먼저 내려놓아야 한다.");return
 	if explain_noise(): return
 	if data.player.carry != "":
 		if not deliver(data.player.carry,"player"): note("주문한 손님 가까이로 가야 한다.")
@@ -226,13 +226,13 @@ func interact() -> void:
 				data.work={"type":"clean","room":key,"remaining":4.0}
 				note("%s호 청소 중. 4초가 걸린다." % key)
 				return
-	note("접수대에서 E로 식사 준비/집기, 빈 객실에서 E로 청소한다.")
+	note("영업 창에서 식사 준비와 객실 청소를 선택한다.")
 
 func toggle_staff() -> void:
 	if data.paused: return
 	if not data.staff.hired:
 		if not near_counter():
-			note("접수대 가까이에서 H로 직원을 고용한다.")
+			note("관리 창에서 직원을 고용할 수 있다.")
 			return
 		if data.money<3:
 			note("고용 준비금 3닢이 부족하다.")
@@ -427,7 +427,7 @@ func change_floor() -> bool:
 		data.player.floor=1
 		data.player.pos=Vector2.ZERO
 		Intrigue.sync_drag(self)
-		note("지하로 내려왔다. 입구에서 Q로 복귀 / 흙벽을 클릭하면 굴착한다.")
+		note("지하로 내려왔다. 입구 이동 버튼으로 복귀 / 흙벽을 클릭하면 굴착한다.")
 		return true
 	if data.player.floor==1 and data.player.pos.length()<1.1:
 		observe_hatch()
@@ -436,7 +436,7 @@ func change_floor() -> bool:
 		Intrigue.sync_drag(self)
 		note("위층으로 돌아왔다.")
 		return true
-	note("계단 입구 가까이에서 Q를 눌러야 한다.")
+	note("층 이동 버튼을 누르면 입구로 걸어간다.")
 	return false
 
 static func cell_key(cell: Vector2i) -> String:
@@ -450,7 +450,7 @@ func start_dig(cell: Vector2i) -> bool:
 	if data.paused or data.ops.drag!="" or data.player.floor!=1 or not data.work.is_empty() or not data.dig.is_empty(): return false
 	if absi(cell.x)>12 or absi(cell.y)>8 or data.cells.has(cell_key(cell)): return false
 	if data.excavation.durability<=0:
-		note("도구가 닳았다. 접수대 T로 2닢에 수리한다.")
+		note("도구가 닳았다. 관리 창에서 2닢에 수리한다.")
 		return false
 	if data.money<1:
 		note("굴착 도구 비용 1닢이 부족하다.")
@@ -464,7 +464,7 @@ func start_dig(cell: Vector2i) -> bool:
 	data.excavation.intent=""
 	data.excavation.durability-=1
 	data.dig={"cell":cell_key(cell),"remaining":10.0 if data.stealth.quiet else 4.0,"quiet":data.stealth.quiet}
-	note("조용한 굴착 10초. X 중단." if data.stealth.quiet else "빠른 굴착 4초. 소리가 크다. X 중단.")
+	note("조용한 굴착 10초. 중단 버튼." if data.stealth.quiet else "빠른 굴착 4초. 소리가 크다. 중단 버튼.")
 	return true
 
 func update_money() -> void:
@@ -479,7 +479,7 @@ func update_money() -> void:
 		data.dues.tax+=1440
 		data.collector=true
 		data.tax_paid=false
-		note("징수원이 왔다. 접수대에서 E로 세금 8닢을 낸다.")
+		note("징수원이 왔다. 영업 창에서 세금 8닢을 낸다.")
 
 func charge(amount: int, label_: String) -> void:
 	var paid:=mini(amount,data.money)
@@ -605,7 +605,7 @@ func investigate(dt: float) -> bool:
 		s.phase="approach"
 		worker.mode="investigate"
 		worker.target=""
-		note("직원이 지하 입구로 걸어온다. X로 작업을 멈출 수 있다.")
+		note("직원이 지하 입구로 걸어온다. 중단 버튼으로 멈출 수 있다.")
 	if s.phase=="approach":
 		follow(worker,dt*1.1)
 		if worker.path.is_empty():
@@ -649,7 +649,7 @@ func explain_noise() -> bool:
 	return true
 
 func excavation_defaults() -> Dictionary:
-	return {"durability":24,"path":[],"intent":"","cell":"","hatch_open":false}
+	return {"durability":24,"path":[],"intent":"","cell":"","hatch_open":false,"target":""}
 
 func queue_floor() -> bool:
 	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
@@ -661,7 +661,7 @@ func queue_floor() -> bool:
 	if route.is_empty():note("입구까지 갈 수 있는 통로가 없다.");return false
 	data.excavation.path=route
 	data.excavation.intent="floor"
-	note("입구까지 걸어간 뒤 층을 바꾼다. WASD / X로 취소.")
+	note("입구까지 걸어간 뒤 층을 바꾼다. 다른 곳 탭 / 중단 버튼으로 취소.")
 	return true
 
 func queue_dig(cell: Vector2i) -> bool:
@@ -676,11 +676,11 @@ func queue_dig(cell: Vector2i) -> bool:
 		var route: Array=Intrigue.basement_route(self,data.player.pos,Vector2(stand))
 		if not route.is_empty() and (best.is_empty() or route.size()<best.size()):best=route
 	if best.is_empty():note("열린 통로와 맞닿은 흙벽을 골라야 한다.");return false
-	if data.excavation.durability<=0 or data.money<1:note("도구 내구도와 굴착 비용을 확인하자. 접수대 T 수리.");return false
+	if data.excavation.durability<=0 or data.money<1:note("도구 내구도와 비용을 확인하자. 관리 창에서 도구 수리.");return false
 	data.excavation.path=best
 	data.excavation.intent="dig"
 	data.excavation.cell=cell_key(cell)
-	note("선택한 흙벽 옆으로 이동한 뒤 직접 판다. X 취소.")
+	note("선택한 흙벽 옆으로 이동한 뒤 직접 판다. 중단 버튼으로 취소.")
 	return true
 
 func dig_nearest() -> bool:
@@ -708,12 +708,77 @@ func update_excavation(dt: float) -> void:
 		job.intent=""
 		if action=="floor":change_floor()
 		elif action=="dig":start_dig(parse_cell(job.cell))
+		elif action.begins_with("command:"):perform_command(action.trim_prefix("command:"),str(job.get("target","")))
 
 func repair_tools() -> bool:
-	if data.paused or not near_counter():note("접수대에서 T로 도구를 수리한다.");return false
+	if data.paused or not near_counter():note("관리 창에서 도구 수리를 선택한다.");return false
 	if data.excavation.durability>=24:note("곡괭이와 삽은 아직 튼튼하다.");return false
 	if data.money<2:note("도구 수리비 2닢이 부족하다.");return false
 	data.money-=2
 	data.excavation.durability=24
 	note("곡괭이와 삽을 수리했다. 내구도 24.")
 	return true
+
+func queue_move(target: Vector2) -> bool:
+	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
+	var closest:=Vector2.ZERO
+	var distance:=INF
+	if data.player.floor==1:
+		for key in data.cells:
+			var point:=Vector2(parse_cell(key))
+			var delta:=point.distance_squared_to(target)
+			if delta<distance:distance=delta;closest=point
+	else:
+		for x in range(grid.region.size.x):
+			for y in range(grid.region.size.y):
+				var id:=Vector2i(x,y)
+				if grid.is_point_solid(id):continue
+				var point:=grid.get_point_position(id)
+				var delta:=point.distance_squared_to(target)
+				if delta<distance:distance=delta;closest=point
+	var route: Array=path_to(data.player.pos,closest) if data.player.floor==0 else Intrigue.basement_route(self,data.player.pos,closest)
+	if route.is_empty():note("그곳까지 이어지는 통로가 없다.");return false
+	data.excavation.path=route
+	data.excavation.intent="move"
+	return true
+
+func queue_command(command: String, id: String="") -> bool:
+	if data.paused or not data.work.is_empty() or not data.dig.is_empty():return false
+	var target: Vector2=COUNTER
+	if command in ["subdue","drag","deliver","approach"]:
+		if not data.people.has(id) or data.people[id].floor!=data.player.floor or data.people[id].state=="gone":note("현재 층에서 대상을 다시 선택하자.");return false
+		target=data.people[id].pos
+	elif command=="explain":target=data.staff.pos
+	elif command in ["cell","build"]:
+		if data.player.floor!=1:note("구금칸은 지하에서 사용할 수 있다.");return false
+		target=data.ops.cell if data.ops.built else data.player.pos
+	elif command in ["clean1","clean2"]:target=room_target(1 if command=="clean1" else 2)
+	elif data.player.floor!=0:note("먼저 위층으로 올라가야 한다.");return false
+	data.excavation.target=id
+	if data.player.pos.distance_to(target)<0.85:
+		data.excavation.intent=""
+		perform_command(command,id)
+		return true
+	if not queue_move(target):return false
+	data.excavation.intent="command:"+command
+	data.excavation.target=id
+	note("대상 가까이로 걸어간 뒤 선택한 행동을 한다. 중단 버튼으로 취소.")
+	return true
+
+func perform_command(command: String, id: String="") -> void:
+	if id!="":data.ops.selected=id
+	match command:
+		"room1":assign_room(1)
+		"room2":assign_room(2)
+		"reject":reject_guest()
+		"prepare","deliver","clean1","clean2":interact()
+		"staff":toggle_staff()
+		"repair":repair_tools()
+		"contract":Intrigue.contract_action(self)
+		"protect":Intrigue.contract_action(self,true)
+		"inspect":Intrigue.inspector_action(self)
+		"bribe":Intrigue.inspector_action(self,true)
+		"subdue":Intrigue.subdue(self)
+		"drag":Intrigue.drag_or_release(self)
+		"cell","build":Intrigue.build_or_hold(self)
+		"explain":explain_noise()

@@ -1,6 +1,14 @@
 extends Node3D
 const Simulation = preload("res://scripts/simulation.gd")
 var sim = Simulation.new()
+var mobile_ui
+var touch_origin:=Vector2.ZERO
+var touch_dragged:=false
+var touch_blocked:=false
+var mouse_blocked:=false
+var mouse_origin:=Vector2.ZERO
+var mouse_dragged:=false
+var camera_offset:=Vector2.ZERO
 var camera: Camera3D
 var surface: Node3D
 var basement: Node3D
@@ -13,12 +21,6 @@ var collector_visual: CharacterBody3D
 var actors: Dictionary = {}
 var carried_visuals: Dictionary = {}
 var labels: Dictionary = {}
-var hud: Label
-var reception: Label
-var status: Label
-var feed: Label
-var hint: Label
-var notice: Label
 var ui_font: Font
 var models_loaded := 0
 var furniture_bounds: Array[AABB] = []
@@ -29,24 +31,16 @@ var capturing := false
 var camera_focus := Vector3.ZERO
 var earth_edges: Dictionary = {}
 var viewed_floor := 0
-var surface_zoom := 24.0
+var surface_zoom := 18.0
 var basement_zoom := 12.0
 var pointer_position := Vector2.ZERO
 var hatch_lid: Node3D
 var tool_pivot: Node3D
 var pick_head: MeshInstance3D
 var shovel_head: MeshInstance3D
-var dig_progress: ProgressBar
-var floor_button: Button
-var panels_hidden:=false
-var information_controls: Array[Control]=[]
-var action_buttons: Dictionary={}
-var contract_panel: Label
-var target_panel: Label
 var inspector_visual: CharacterBody3D
 var holding_visual: Node3D
 var holding_position:=Vector2(99,99)
-var awareness: Label
 var staff_marker: Label3D
 var vision_mesh: MeshInstance3D
 var show_vision := true
@@ -258,7 +252,7 @@ func _ready() -> void:
 	sun.shadow_enabled = true
 	build_surface()
 	box(Vector3(1,0.03,1),Vector3(-3.25,0.09,2.75),Color("243632"))
-	world_label("지하 입구 · 클릭 / Q",Vector3(-3.25,0.4,2.75),surface)
+	world_label("지하 입구 · 탭",Vector3(-3.25,0.4,2.75),surface)
 	build_excavation_visuals()
 	sim.rebuild_grid()
 	player = actor(Vector3.ZERO,Color("8f7147"))
@@ -275,14 +269,14 @@ func _ready() -> void:
 	world_label("징수원",Vector3(0,1.95,0),collector_visual)
 	world_root = basement
 	light_at(Vector3(0,2.8,0),1.2)
-	world_label("Q  위층",Vector3(0,1.9,0),basement)
+	world_label("위층 입구",Vector3(0,1.9,0),basement)
 	for x in [-0.35,0.35]:box(Vector3(0.07,1.7,0.07),Vector3(x,0.85,-0.2),Color("8d754e"))
 	for y in [0.25,0.55,0.85,1.15,1.45]:box(Vector3(0.7,0.07,0.07),Vector3(0,y,-0.2),Color("b09972"))
 	world_root = surface
 	camera = Camera3D.new()
 	add_child(camera)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 24
+	camera.size = surface_zoom
 	camera.position = Vector3(16,18,21)
 	camera.look_at(Vector3.ZERO)
 	camera.current = true
@@ -305,14 +299,19 @@ func _ready() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
-		get_viewport().get_texture().get_image().save_png("res://docs/v06-excavation.png")
+		get_viewport().get_texture().get_image().save_png("res://docs/v07-excavation.png")
 		get_tree().quit()
-	elif "--capture" in args or "--capture-basement" in args or "--capture-stealth" in args or "--capture-operation" in args or "--capture-prison" in args:
+	elif "--capture-service" in args or "--capture" in args or "--capture-basement" in args or "--capture-stealth" in args or "--capture-operation" in args or "--capture-prison" in args:
 		capturing = true
 		sim.data.player.pos = Simulation.COUNTER
 		sim.assign_room(1)
 		sim.toggle_staff()
 		sim.tick(24)
+		if "--capture" in args or "--capture-service" in args:
+			sim.queue_move(Vector2(0.25,1.75))
+			sim.tick(3)
+			frame_owner()
+		if "--capture-service" in args:mobile_ui.open_sheet("영업")
 		if "--capture-basement" in args:
 			sim.data.player.pos = Simulation.HATCH
 			sim.change_floor()
@@ -358,7 +357,8 @@ func _ready() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		await RenderingServer.frame_post_draw
-		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v06-surface.png")
+		var output := "res://docs/v04-stealth.png" if "--capture-stealth" in args else ("res://docs/v04-basement.png" if "--capture-basement" in args else "res://docs/v07-surface.png")
+		if "--capture-service" in args:output="res://docs/v07-service.png"
 		if "--capture-operation" in args:output="res://docs/v05-operation.png"
 		if "--capture-prison" in args:output="res://docs/v05-prison.png"
 		get_viewport().get_texture().get_image().save_png(output)
@@ -382,81 +382,10 @@ func world_label(text_: String, pos: Vector3, owner_: Node3D) -> Label3D:
 	label.position=pos
 	return label
 
-func panel(canvas: CanvasLayer, pos: Vector2, size_: Vector2) -> void:
-	var rect:=ColorRect.new()
-	rect.position=pos
-	rect.size=size_
-	rect.color=Color(0.04,0.07,0.09,0.91)
-	rect.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	canvas.add_child(rect)
-
-func ui_label(canvas: CanvasLayer, pos: Vector2, size_: Vector2, font_size: int) -> Label:
-	var label:=Label.new()
-	label.position=pos
-	label.size=size_
-	label.add_theme_font_override("font",ui_font)
-	label.add_theme_font_size_override("font_size",font_size)
-	label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	label.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	canvas.add_child(label)
-	return label
-
-func button(canvas: CanvasLayer, text_: String, pos: Vector2, size_: Vector2, callback: Callable) -> Button:
-	var control:=Button.new()
-	control.text=text_
-	control.position=pos
-	control.size=size_
-	control.add_theme_font_override("font",ui_font)
-	control.add_theme_font_size_override("font_size",17)
-	control.focus_mode=Control.FOCUS_NONE
-	control.pressed.connect(callback)
-	canvas.add_child(control)
-	return control
-
 func make_ui() -> void:
-	var canvas:=CanvasLayer.new()
-	add_child(canvas)
-	panel(canvas,Vector2(20,18),Vector2(1240,78))
-	hud=ui_label(canvas,Vector2(36,25),Vector2(1100,65),22)
-	notice=ui_label(canvas,Vector2(32,103),Vector2(1200,27),17)
-	panel(canvas,Vector2(20,138),Vector2(266,172))
-	reception=ui_label(canvas,Vector2(32,146),Vector2(242,102),17)
-	button(canvas,"1호 [1]",Vector2(32,260),Vector2(74,34),func():sim.assign_room(1))
-	button(canvas,"2호 [2]",Vector2(111,260),Vector2(74,34),func():sim.assign_room(2))
-	button(canvas,"거절 [G]",Vector2(190,260),Vector2(83,34),sim.reject_guest)
-	panel(canvas,Vector2(994,138),Vector2(266,390))
-	status=ui_label(canvas,Vector2(1008,148),Vector2(240,370),17)
-	button(canvas,"직원 고용 / 위임 [H]",Vector2(994,540),Vector2(266,38),sim.toggle_staff)
-	button(canvas,"저장 [F5]",Vector2(994,586),Vector2(128,36),save_game)
-	button(canvas,"불러오기 [F9]",Vector2(1130,586),Vector2(130,36),load_game)
-	panel(canvas,Vector2(20,464),Vector2(266,178))
-	feed=ui_label(canvas,Vector2(32,474),Vector2(242,158),15)
-	feed.max_lines_visible=6
-	panel(canvas,Vector2(20,660),Vector2(1240,120))
-	hint=ui_label(canvas,Vector2(34,670),Vector2(1210,100),17)
-	panel(canvas,Vector2(320,138),Vector2(650,82))
-	awareness=ui_label(canvas,Vector2(334,146),Vector2(622,70),17)
-	panel(canvas,Vector2(20,320),Vector2(266,134))
-	contract_panel=ui_label(canvas,Vector2(32,328),Vector2(242,78),15)
-	button(canvas,"의뢰 / 보수 [J]",Vector2(32,412),Vector2(130,32),func():Simulation.Intrigue.contract_action(sim))
-	button(canvas,"거절 / 보호 [K]",Vector2(166,412),Vector2(108,32),func():Simulation.Intrigue.contract_action(sim,true))
-	floor_button=button(canvas,"지하 입구 열고 내려가기 [Q]",Vector2(320,230),Vector2(330,34),func():sim.queue_floor())
-	action_buttons["dig"]=button(canvas,"가까운 흙벽 파기 [E]",Vector2(658,230),Vector2(312,34),func():sim.dig_nearest())
-	button(canvas,"도구 수리 [T] · 2닢",Vector2(994,630),Vector2(266,26),func():sim.repair_tools())
-	dig_progress=ProgressBar.new()
-	dig_progress.position=Vector2(334,272)
-	dig_progress.size=Vector2(622,18)
-	dig_progress.show_percentage=true
-	canvas.add_child(dig_progress)
-	panel(canvas,Vector2(320,552),Vector2(650,90))
-	target_panel=ui_label(canvas,Vector2(334,558),Vector2(620,36),16)
-	action_buttons["subdue"]=button(canvas,"제압 2초 [Z]",Vector2(334,601),Vector2(140,32),func():Simulation.Intrigue.subdue(sim))
-	action_buttons["drag"]=button(canvas,"끌기 / 풀기 [C]",Vector2(480,601),Vector2(152,32),func():Simulation.Intrigue.drag_or_release(sim))
-	action_buttons["cell"]=button(canvas,"구금칸 [B]",Vector2(638,601),Vector2(140,32),func():Simulation.Intrigue.build_or_hold(sim))
-	action_buttons["bribe"]=button(canvas,"경비 뇌물 [O]",Vector2(784,601),Vector2(168,32),func():Simulation.Intrigue.inspector_action(sim,true))
-	for node in canvas.get_children():
-		if node is Control and node.position.y>=138 and node.position.y<=654 and (node.position.x<300 or node.position.x>=994):information_controls.append(node)
-	button(canvas,"정보 패널 접기 / 펼치기 [I]",Vector2(1000,100),Vector2(260,28),toggle_information)
+	mobile_ui=preload("res://scripts/mobile_ui.gd").new()
+	add_child(mobile_ui)
+	mobile_ui.setup(self)
 
 func room_text(number: int) -> String:
 	var room_: Dictionary=sim.data.rooms[str(number)]
@@ -468,89 +397,7 @@ func when_text(value: float) -> String:
 	return "%d일 %02d:%02d" % [minute/1440+1,(minute%1440)/60,minute%60]
 
 func refresh_ui() -> void:
-	var d: Dictionary=sim.data
-	var minute:=int(420+d.clock*6)
-	var day:=minute/1440+1
-	var within:=minute%1440
-	hud.text="문 닫은 뒤  /  국경 여관  0.6\n%d일  %02d:%02d    보유 %d닢    미납 %d닢    %s    %s" % [day,within/60,within%60,d.money,d.debt,"지하" if d.player.floor==1 else "위층","일시정지" if d.paused else "%d배속" % d.speed]
-	var queue:=sim.waiting()
-	if queue.is_empty(): reception.text="접수 대기  0명\n다음 손님을 기다리는 중"
-	else:
-		var person: Dictionary=d.people[queue[0]]
-		reception.text="접수 대기  %d명\n%s / 숙박 %d닢\n%s" % [queue.size(),person.name,person.rate,person.trait]
-	var pending:=0
-	var order_lines: Array[String]=[]
-	for oid in d.orders:
-		var order_: Dictionary=d.orders[oid]
-		if order_.status in ["served","cancelled"]:continue
-		pending+=1
-		var names: Dictionary={"queued":"준비 대기","cooking":"조리 중","ready":"전달 대기","carried":"운반 중"}
-		order_lines.append("%s · %s" % [d.people[order_.guest].name,names.get(order_.status,order_.status)])
-	var staff_status: String="미고용 / 준비금 3닢"
-	if d.staff.hired:
-		staff_status="위임 중" if d.staff.delegated else "위임 해제"
-		var modes: Dictionary={"idle":"대기","counter":"접수대 이동","cooking":"식사 준비","delivery":"서빙","return":"복귀","investigate":"지하 확인","refuse":"업무 거부","alarm":"경비 부르러 이동"}
-		staff_status+=" · "+str(modes.get(d.staff.mode,d.staff.mode))
-	status.text="객실\n%s\n%s\n\n직원  %s\n\n주문 %d건 / 제공 %d회\n%s\n\n예정 납기\n%s 임금 4닢\n%s 임대료 12닢\n%s 세금 8닢" % [room_text(1),room_text(2),staff_status,pending,d.served,"\n".join(order_lines.slice(0,3)),when_text(d.dues.wage),when_text(d.dues.rent),when_text(d.dues.tax)]
-	if d.collector:status.text+="\n징수원 대기: 접수대 E"
-	var lines: Array[String]=[]
-	for item in d.logs.slice(maxi(0,d.logs.size()-3)):
-		lines.append("· "+str(item.text))
-	feed.text="최근 소식\n"+"\n".join(lines)
-	var action: String="접수대 E: 식사 준비·집기  /  주문 손님 곁 E: 전달  /  퇴실한 객실 E: 청소"
-	if d.player.floor==1:action="흙벽 클릭: 걸어가서 직접 파기 / E: 가까운 벽 파기 / Q: 위층 복귀 / R: 곡괭이·삽"
-	if not d.work.is_empty():action="작업 중  %.1f초 남음 · X로 중단" % d.work.remaining
-	if not d.dig.is_empty():action="굴착 중  %.1f초 남음 · 소음 %.1f · X로 중단" % [d.dig.remaining,d.noise]
-	hint.text=action+"\nWASD 이동   1/2 방 배정   G 거절   H 직원   Q 계단   Space 정지   Tab 배속   휠 확대\nR 굴착 방식   X 작업 중단   V 시야   M 소리   I 정보접기   F5 저장   F9 불러오기   Esc 종료"
-	if OS.has_feature("web"):
-		hint.text=hint.text.replace("F5 저장   F9 불러오기","저장·불러오기는 오른쪽 버튼").replace("Esc 종료","Esc 정지")
-	var stealth: Dictionary=d.stealth
-	var phases: Dictionary={"idle":"영업 중","alert":"소리에 주의 / 하던 일 마무리","approach":"지하 입구로 접근 중","listen":"계단에서 확인 중"}
-	var stage: String=str(phases.get(stealth.phase,stealth.phase)) if d.staff.hired else "아직 직원 없음"
-	if d.clock<stealth.refuse_until:stage="업무 거부 %.0f초" % (stealth.refuse_until-d.clock)
-	awareness.text="직원 경계 %d / 100  ·  %s  ·  확인 기억 %d\n굴착 %s  |  소음 %.1f  |  직원에게 들리는 소리 %.1f" % [int(stealth.suspicion),stage,int(stealth.memory),"조용히 10초" if stealth.quiet else "빠르게 4초",d.noise,stealth.heard]
-	awareness.modulate=Color("ffb882") if stealth.phase!="idle" or d.clock<stealth.refuse_until else Color("c3d8d0")
-	if stealth.phase in ["approach","listen"] and d.player.floor==0:hint.text="직원 시야 안 가까이 E: 설명 / X: 작업 중단\n"+hint.text
-	if d.excavation.intent!="":notice.text="이동 중 · 도착하면 작업 / WASD 또는 X로 취소"
-	floor_button.text="위층 입구로 걸어가기 [Q]" if d.player.floor==1 else "지하 입구 열고 내려가기 [Q]"
-	if d.player.floor==1 and d.ops.drag=="":
-		target_panel.text="도구: %s / 내구도 %d · 흙벽을 클릭하면 이동해서 직접 판다" % ["삽 · 조용히 10초" if d.stealth.quiet else "곡괭이 · 빠르게 4초",int(d.excavation.durability)]
-	var contract: Dictionary=d.ops.contract
-	var contract_names: Dictionary={"offered":"그림자 의뢰 / 보수 24닢","active":"억류 의뢰 진행","ready":"조건 달성 / 접수대 J 보수","paid":"보수 수령 / 구금자는 남아 있음","protected":"의뢰 폭로 / 손님 보호","declined":"의뢰 거절 / 정상 영업","failed":"의뢰 실패"}
-	contract_panel.text=str(contract_names.get(contract.state,contract.state))
-	if contract.target!="":contract_panel.text+="\n"+str(d.people[contract.target].name)
-	if contract.state=="active":contract_panel.text+=" / 남은 %.0f초\n지하 구금 %.0f / 30초" % [maxf(0,contract.deadline-d.clock),contract.held]
-	elif contract.state=="offered":contract_panel.text+="\n손님을 지하에 30초 억류\nJ 수락 / K 거절 · 접수대에서"
-	var target_id: String=Simulation.Intrigue.selected(sim)
-	target_panel.text="손님 클릭으로 선택 / Z 제압 · C 끌기/내려놓기/석방 · 지하 B 구금칸 8닢"
-	if target_id!="":
-		var target: Dictionary=d.people[target_id]
-		var states: Dictionary={"waiting":"접수 대기","entering":"입실 중","staying":"투숙","down":"기절 %.0f초" % maxf(0,target.wake_at-d.clock),"captive":"지하 구금","escaping":"탈출 중","leaving":"퇴장 중"}
-		target_panel.text="선택: %s / %s / %s" % [target.name,states.get(target.state,target.state),"지하" if target.floor==1 else "위층"]
-	if d.ops.drag!="":target_panel.text+="  ·  끄는 중: "+str(d.people[d.ops.drag].name)
-	if d.player.floor==1 and target_id=="" and d.ops.drag=="":target_panel.text="흙벽 클릭 → 걸어가서 도구질 / E 가까운 벽 / R 곡괭이·삽 / 내구도 %d" % int(d.excavation.durability)
-	var near_id: String=Simulation.Intrigue.select_near(sim)
-	var actionable: bool=Simulation.Intrigue.available(sim)
-	var reachable: bool=near_id!="" and Simulation.Intrigue.close(sim,near_id)
-	action_buttons.subdue.disabled=not (actionable and reachable and d.people[near_id].state in ["waiting","staying","entering"] and d.ops.drag=="" and d.player.carry=="")
-	action_buttons.drag.disabled=not (actionable and (d.ops.drag!="" or (reachable and d.people[near_id].state in ["down","captive"])))
-	action_buttons.cell.disabled=not actionable or d.player.floor!=1
-	action_buttons.cell.text="구금 [B]" if d.ops.built else "구금칸 8닢 [B]"
-	action_buttons.dig.disabled=d.player.floor!=1 or not actionable or d.ops.drag!=""
-	floor_button.disabled=not actionable
-	action_buttons.bribe.disabled=not actionable or not sim.near_counter() or d.ops.inspector.state!="waiting"
-	var investigation: Dictionary=d.ops.inspector
-	if investigation.state!="idle":
-		var phases_i: Dictionary={"scheduled":"경비 방문 %.0f초" % maxf(0,investigation.at-d.clock),"entering":"경비 도착","waiting":"접수대 E 조사 허용 / O 뇌물 12닢","search":"경비 입구 조사","sweep":"경비 지하 조사","return_below":"경비 복귀","leaving":"경비 퇴장"}
-		awareness.text+="\n신고 %d건 · %s" % [int(d.ops.reports),phases_i.get(investigation.state,investigation.state)]
-		awareness.add_theme_font_size_override("font_size",15)
-	else:awareness.add_theme_font_size_override("font_size",17)
-	notice.text=""
-	if d.ops.drag!="":notice.text="대상 운반 중 · 이동이 느려진다 / 지하 B 구금 / C 내려놓기"
-	if d.player.carry!="":notice.text="식사 운반 중 → "+str(d.people[d.orders[d.player.carry].guest].name)
-	if d.player.floor==1 and d.ops.drag=="":notice.text="곡괭이·삽 기본 지급 / 내구도 %d · T: 접수대 수리 2닢 / 흙벽 클릭 또는 E로 파기" % int(d.excavation.durability)
-	if d.excavation.intent!="":notice.text="입구/흙벽으로 이동 중 · WASD 또는 X로 취소"
-	if d.player.floor==1 and pending>0:notice.text+=" / 위층 주문 %d건" % pending
+	mobile_ui.refresh()
 
 func sync_actor(visual: Node3D, pos: Vector2, dt: float) -> void:
 	var before:=Vector2(visual.position.x,visual.position.z)
@@ -621,8 +468,6 @@ func sync_view(dt: float) -> void:
 	pick_head.visible=not d.stealth.quiet
 	shovel_head.visible=d.stealth.quiet
 	hatch_lid.rotation.x=-1.25 if d.excavation.hatch_open else 0
-	dig_progress.visible=not d.dig.is_empty()
-	if not d.dig.is_empty():dig_progress.value=100*(1-d.dig.remaining/(10.0 if d.dig.get("quiet",false) else 4.0))
 	refresh_ui()
 
 func rebuild_basement() -> void:
@@ -654,7 +499,7 @@ func save_game() -> void:
 
 func load_game() -> void:
 	if not FileAccess.file_exists("user://inn-v03.json"):
-		sim.note("저장된 기록이 없다. F5로 먼저 저장하자.")
+		sim.note("저장된 기록이 없다. 메뉴에서 먼저 저장하자.")
 		return
 	var saved: Variant=JSON.parse_string(FileAccess.get_file_as_string("user://inn-v03.json"))
 	if not sim.restore(saved):
@@ -664,8 +509,31 @@ func load_game() -> void:
 	sim.note("저장한 상태로 돌아왔다.")
 	sync_view(0)
 
+func pan_camera(relative: Vector2) -> void:
+	var scale_: float=camera.size/get_viewport().get_visible_rect().size.y
+	var right:=Vector2(camera.global_basis.x.x,camera.global_basis.x.z).normalized()
+	var down:=Vector2(camera.global_basis.z.x,camera.global_basis.z.z).normalized()
+	camera_offset-=(right*relative.x+down*relative.y)*scale_
+	camera_offset=camera_offset.limit_length(18)
+
 func _input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion: pointer_position=event.position
+	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
+		mouse_origin=event.position
+		mouse_dragged=false
+		mouse_blocked=mobile_ui.blocks_point(event.position)
+	if event is InputEventMouseMotion:
+		pointer_position=event.position
+		if event.device!=-1 and event.button_mask&MOUSE_BUTTON_MASK_LEFT and not mobile_ui.blocks_point(mouse_origin):
+			if event.position.distance_to(mouse_origin)>24:mouse_dragged=true
+			if mouse_dragged:pan_camera(event.relative)
+	if event is InputEventScreenTouch and event.pressed:
+		touch_origin=event.position
+		touch_dragged=false
+		touch_blocked=mobile_ui.blocks_point(event.position)
+	if event is InputEventScreenDrag:
+		pointer_position=event.position
+		if event.position.distance_to(touch_origin)>24:touch_dragged=true
+		if touch_dragged and not touch_blocked:pan_camera(event.relative)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -695,16 +563,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_M:muted=not muted
 			KEY_F5:save_game()
 			KEY_F9:load_game()
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(8 if sim.data.player.floor==1 else 15,camera.size-1)
-		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(32,camera.size+1)
-		if event.button_index==MOUSE_BUTTON_LEFT:
-			var target_id:=pick_person(event.position)
-			if target_id!="":sim.data.ops.selected=target_id
-			elif sim.data.player.floor==1:
-				sim.queue_dig(soil_at(event.position))
-			elif event.position.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<40:sim.queue_floor()
-			else:sim.data.ops.selected=""
+	if event is InputEventScreenTouch and not event.pressed and not touch_dragged and not touch_blocked:
+		world_tap(event.position)
+	if event is InputEventMouseButton and event.device!=-1:
+		if event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_UP:camera.size=maxf(8,camera.size-1)
+		if event.pressed and event.button_index==MOUSE_BUTTON_WHEEL_DOWN:camera.size=minf(36,camera.size+1)
+		if event.button_index==MOUSE_BUTTON_LEFT and not event.pressed and not mouse_dragged and not mouse_blocked:world_tap(event.position)
+
+func world_tap(point: Vector2) -> void:
+	if mobile_ui.blocks_point(point):return
+	pointer_position=point
+	var target_id:=pick_person(point)
+	if target_id!="":
+		sim.data.excavation.path=[]
+		sim.data.excavation.intent=""
+		sim.data.ops.selected=target_id
+		return
+	if point.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<32 and sim.data.player.floor==0:
+		sim.queue_floor()
+		return
+	if sim.data.player.floor==1:
+		var soil:=soil_at(point)
+		if soil!=Vector2i(99,99):
+			sim.queue_dig(soil)
+			return
+	var hit: Variant=Plane(Vector3.UP,0.08).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
+	if hit!=null:
+		sim.data.ops.selected=""
+		sim.queue_move(Vector2(hit.x,hit.z))
 
 func _physics_process(delta: float) -> void:
 	if capturing:return
@@ -721,7 +607,8 @@ func _physics_process(delta: float) -> void:
 		if dig_cursor!=null:
 			dig_cursor.visible=earth_edges.has(Simulation.cell_key(hover_cell))
 			dig_cursor.position=Vector3(hover_cell.x,0.94,hover_cell.y)
-	var focus_target:=Vector3(sim.data.player.pos.x,0,sim.data.player.pos.y)
+	if sim.data.excavation.intent!="":camera_offset=camera_offset.lerp(Vector2.ZERO,minf(1,delta*3))
+	var focus_target:=Vector3(sim.data.player.pos.x+camera_offset.x,0,sim.data.player.pos.y+camera_offset.y)
 	camera_focus=camera_focus.lerp(focus_target,minf(1,delta*4))
 	camera.position=camera_focus+Vector3(16,18,21)
 	camera.look_at(camera_focus)
@@ -741,153 +628,223 @@ func send_key(key: int) -> void:
 	Input.parse_input_event(event)
 	await get_tree().process_frame
 
+func pointer_click(point: Vector2, touch: bool=false) -> void:
+	if touch:
+		var down:=InputEventScreenTouch.new()
+		down.index=0
+		down.position=point
+		down.pressed=true
+		get_viewport().push_input(down,true)
+		await get_tree().process_frame
+		var up:=InputEventScreenTouch.new()
+		up.index=0
+		up.position=point
+		up.pressed=false
+		get_viewport().push_input(up,true)
+	else:
+		var motion:=InputEventMouseMotion.new()
+		motion.position=point
+		get_viewport().push_input(motion,true)
+		var down:=InputEventMouseButton.new()
+		down.position=point
+		down.button_index=MOUSE_BUTTON_LEFT
+		down.pressed=true
+		get_viewport().push_input(down,true)
+		await get_tree().process_frame
+		var up:=InputEventMouseButton.new()
+		up.position=point
+		up.button_index=MOUSE_BUTTON_LEFT
+		up.pressed=false
+		get_viewport().push_input(up,true)
+	await get_tree().process_frame
+
+func click_control(key: String) -> void:
+	sync_view(0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var control: Button=mobile_ui.controls[key]
+	await pointer_click(control.get_global_rect().get_center())
+	sync_view(0)
+
+func touch_control(key: String) -> void:
+	sync_view(0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var control: Button=mobile_ui.controls[key]
+	var point:=control.get_global_rect().get_center()
+	var down:=InputEventScreenTouch.new()
+	down.position=point
+	down.pressed=true
+	get_viewport().push_input(down,true)
+	var mouse:=InputEventMouseButton.new()
+	mouse.position=point
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.device=-1
+	mouse.pressed=true
+	get_viewport().push_input(mouse,true)
+	await get_tree().process_frame
+	mouse=InputEventMouseButton.new()
+	mouse.position=point
+	mouse.button_index=MOUSE_BUTTON_LEFT
+	mouse.device=-1
+	mouse.pressed=false
+	get_viewport().push_input(mouse,true)
+	var up:=InputEventScreenTouch.new()
+	up.position=point
+	up.pressed=false
+	get_viewport().push_input(up,true)
+	await get_tree().process_frame
+	sync_view(0)
+
+func frame_owner() -> void:
+	camera_focus=Vector3(sim.data.player.pos.x,0,sim.data.player.pos.y)
+	camera.position=camera_focus+Vector3(16,18,21)
+	camera.look_at(camera_focus)
+	sync_view(0)
+
 func input_verify() -> void:
-	# Exercise actual viewport button/input dispatch, not only simulation calls.
+	# No keyboard events: actual GUI buttons, ground clicks and touch events.
+	get_window().size=Vector2i(720,1280)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	set_physics_process(false)
 	var checks: Array=[]
-	sim.data.player.pos=Simulation.COUNTER
-	await get_tree().process_frame
-	var initial_motion:=InputEventMouseMotion.new()
-	initial_motion.position=Vector2(65,277)
-	get_viewport().push_input(initial_motion,true)
-	await get_tree().process_frame
-	var mouse:=InputEventMouseButton.new()
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.position=Vector2(65,277)
-	mouse.pressed=true
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	mouse=InputEventMouseButton.new()
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.position=Vector2(65,277)
-	mouse.pressed=false
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	checks.append(sim.data.rooms["1"].guest!="")
-	sim.tick(17)
-	await send_key(KEY_E)
-	checks.append(sim.data.work.get("type","")=="cook")
-	sim.tick(4)
-	await send_key(KEY_F5)
-	var coins: int=sim.data.money
-	sim.data.money=999
-	await send_key(KEY_F9)
-	checks.append(sim.data.money==coins and sim.data.player.carry!="")
-	await send_key(KEY_SPACE)
-	checks.append(sim.data.paused)
-	await send_key(KEY_SPACE)
-	checks.append(not sim.data.paused)
-	sim.data.player.pos=Simulation.HATCH
-	await send_key(KEY_Q)
-	sync_view(0)
-	checks.append(sim.data.player.floor==1 and not surface.visible and basement.visible)
-	sim.data.player.pos=Vector2(1,0)
-	var hit:=camera.unproject_position(Vector3(2,0.9,0))
-	var motion:=InputEventMouseMotion.new()
-	motion.position=hit
-	get_viewport().push_input(motion,true)
-	await get_tree().process_frame
-	_physics_process(0)
-	checks.append(hover_cell==Vector2i(2,0))
-	mouse=InputEventMouseButton.new()
-	mouse.position=hit
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.pressed=true
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	checks.append(not sim.data.dig.is_empty())
-	await send_key(KEY_R)
-	checks.append(not sim.data.stealth.quiet) # active dig cannot change its terms
-	await send_key(KEY_X)
-	checks.append(sim.data.dig.is_empty())
-	await send_key(KEY_R)
-	checks.append(sim.data.stealth.quiet)
-	await send_key(KEY_V)
-	checks.append(not show_vision)
-	await send_key(KEY_M)
-	checks.append(muted)
 	var geometry: Array=sim.obstacles.duplicate()
+	checks.append(get_viewport().get_visible_rect().size.y>get_viewport().get_visible_rect().size.x)
+	frame_owner()
+	var destination:=Vector2(0.25,0.25)
+	await pointer_click(camera.unproject_position(Vector3(destination.x,0.08,destination.y)))
+	checks.append(sim.data.excavation.intent=="move")
+	sim.tick(3)
+	checks.append(sim.data.player.pos.distance_to(destination)<0.1)
+	frame_owner()
+	destination=Vector2(-1.25,1.75)
+	await pointer_click(camera.unproject_position(Vector3(destination.x,0.08,destination.y)),true)
+	checks.append(sim.data.excavation.intent=="move")
+	sim.tick(4)
+	checks.append(sim.data.player.pos.distance_to(destination)<0.1)
+	var before_drag: Vector2=sim.data.player.pos
+	var touch_down:=InputEventScreenTouch.new()
+	touch_down.position=Vector2(300,500)
+	touch_down.pressed=true
+	get_viewport().push_input(touch_down,true)
+	var swipe:=InputEventScreenDrag.new()
+	swipe.position=Vector2(360,550)
+	swipe.relative=Vector2(60,50)
+	get_viewport().push_input(swipe,true)
+	var touch_up:=InputEventScreenTouch.new()
+	touch_up.position=swipe.position
+	touch_up.pressed=false
+	get_viewport().push_input(touch_up,true)
+	await get_tree().process_frame
+	checks.append(camera_offset.length()>0 and sim.data.player.pos==before_drag and sim.data.excavation.intent=="")
+	await click_control("center")
+	checks.append(camera_offset==Vector2.ZERO)
+	var emulated:=InputEventMouseButton.new()
+	emulated.device=-1
+	emulated.button_index=MOUSE_BUTTON_LEFT
+	emulated.position=Vector2(300,500)
+	emulated.pressed=true
+	get_viewport().push_input(emulated,true)
+	emulated=InputEventMouseButton.new()
+	emulated.device=-1
+	emulated.button_index=MOUSE_BUTTON_LEFT
+	emulated.position=Vector2(300,500)
+	emulated.pressed=false
+	get_viewport().push_input(emulated,true)
+	await get_tree().process_frame
+	checks.append(sim.data.excavation.intent=="")
+	await click_control("tab_메뉴")
+	checks.append(mobile_ui.drawer.visible)
+	sim.data.excavation.intent=""
+	await pointer_click(Vector2(350,500),true)
+	checks.append(sim.data.excavation.intent=="")
+	await click_control("save")
+	var money: int=sim.data.money
+	sim.data.money=999
+	await click_control("load")
+	checks.append(sim.data.money==money)
+	await click_control("close")
+	await click_control("pause")
+	checks.append(sim.data.paused)
+	await click_control("pause")
+	await click_control("speed")
+	checks.append(sim.data.speed==3 and not sim.data.paused)
+	await click_control("speed")
+	# Full normal service via pointer buttons and target selection.
 	sim=Simulation.new()
 	sim.obstacles.assign(geometry)
 	sim.rebuild_grid()
-	sim.data.player.pos=Simulation.COUNTER
+	frame_owner()
+	await click_control("tab_영업")
+	await touch_control("room1")
+	checks.append(sim.data.excavation.intent=="command:room1")
+	sim.tick(6)
+	checks.append(sim.data.rooms["1"].guest=="guest_1" and sim.near_counter())
+	sim.tick(17)
+	await click_control("tab_영업")
+	await click_control("prepare")
+	sim.tick(4)
+	checks.append(sim.data.player.carry!="")
 	sync_view(0)
-	var target_point:=camera.unproject_position(Vector3(sim.data.people.guest_1.pos.x,0.65,sim.data.people.guest_1.pos.y))
-	mouse=InputEventMouseButton.new()
-	mouse.position=target_point
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.pressed=true
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	mouse=InputEventMouseButton.new()
-	mouse.position=target_point
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.pressed=false
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	checks.append(sim.data.ops.selected=="guest_1")
-	await send_key(KEY_J)
+	checks.append(mobile_ui.primary.text.contains("전달"))
+	await click_control("primary")
+	sim.tick(10)
+	checks.append(sim.data.served==1 and sim.data.player.carry=="")
+	await click_control("tab_관리")
+	await click_control("staff")
+	sim.tick(8)
+	checks.append(sim.data.staff.hired and sim.data.staff.delegated)
+	# One covert contract through the same pointer-only UI.
+	sim=Simulation.new()
+	sim.obstacles.assign(geometry)
+	sim.rebuild_grid()
+	frame_owner()
+	await click_control("tab_의뢰")
+	await click_control("contract")
+	sim.tick(6)
 	checks.append(sim.data.ops.contract.state=="active")
-	sim.data.player.pos=sim.data.people.guest_1.pos
-	await send_key(KEY_Z)
-	checks.append(sim.data.work.get("type","")=="subdue")
-	sim.tick(2.1)
-	await send_key(KEY_C)
+	frame_owner()
+	var guest: Vector2=sim.data.people.guest_1.pos
+	await pointer_click(camera.unproject_position(Vector3(guest.x,0.65,guest.y)),true)
+	await click_control("secondary")
+	sim.tick(8)
+	checks.append(sim.data.people.guest_1.state=="down")
+	await click_control("primary")
+	sim.tick(1)
 	checks.append(sim.data.ops.drag=="guest_1")
-	sim.data.player.pos=Simulation.HATCH
-	await send_key(KEY_Q)
-	checks.append(sim.data.people.guest_1.floor==1 and sim.data.people.guest_1.pos==sim.data.player.pos)
-	sim.data.cells["2,0"]=true
-	sim.data.player.pos=Vector2(2,0)
-	Simulation.Intrigue.sync_drag(sim)
-	await send_key(KEY_B)
-	checks.append(sim.data.ops.built)
-	await send_key(KEY_B)
-	checks.append(sim.data.people.guest_1.state=="captive" and sim.data.ops.drag=="")
-	sim=Simulation.new()
-	sim.obstacles.assign(geometry)
-	sim.rebuild_grid()
-	sync_view(0)
-	mouse=InputEventMouseButton.new()
-	mouse.position=Vector2(450,247)
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.pressed=true
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	mouse=InputEventMouseButton.new()
-	mouse.position=Vector2(450,247)
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.pressed=false
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	checks.append(sim.data.excavation.intent=="floor")
+	await click_control("floor")
+	sim.tick(10)
+	checks.append(sim.data.player.floor==1 and sim.data.people.guest_1.floor==1)
+	frame_owner()
+	await pointer_click(camera.unproject_position(Vector3(-2,0.08,0)))
 	sim.tick(5)
-	sync_view(0)
-	checks.append(sim.data.player.floor==1 and sim.data.excavation.hatch_open)
-	var soil_screen:=camera.unproject_position(Vector3(2,0.9,0))
-	mouse=InputEventMouseButton.new()
-	mouse.position=soil_screen
-	mouse.button_index=MOUSE_BUTTON_LEFT
-	mouse.pressed=true
-	get_viewport().push_input(mouse,true)
-	await get_tree().process_frame
-	checks.append(sim.data.excavation.intent=="dig")
-	sim.tick(6)
-	checks.append(sim.data.cells.has("2,0") and sim.data.excavation.durability==23)
-	await send_key(KEY_E)
-	checks.append(sim.data.excavation.intent=="dig" or not sim.data.dig.is_empty())
-	sim.tick(6)
-	checks.append(sim.data.cells.size()==27 and sim.data.excavation.durability==22)
-	sim.data.player.floor=0
-	sim.data.player.pos=Simulation.COUNTER
-	await send_key(KEY_T)
-	checks.append(sim.data.excavation.durability==24)
+	await click_control("secondary")
+	checks.append(sim.data.ops.built)
+	await click_control("secondary")
+	checks.append(sim.data.people.guest_1.state=="captive" and sim.data.ops.drag=="")
+	await click_control("secondary")
+	checks.append(sim.data.stealth.quiet)
+	await click_control("primary")
+	sim.tick(12)
+	checks.append(sim.data.cells.size()==26 and sim.data.excavation.durability==23)
+	sim.tick(20)
+	checks.append(sim.data.ops.contract.state=="ready")
+	await click_control("floor")
+	sim.tick(5)
+	await click_control("tab_의뢰")
+	await click_control("contract")
+	sim.tick(5)
+	checks.append(sim.data.ops.contract.state=="paid")
+	await click_control("tab_메뉴")
+	await click_control("save")
+	sim.data.ops.contract.state="offered"
+	await click_control("load")
+	checks.append(sim.data.ops.contract.state=="paid" and sim.data.ops.built)
 	var failed:=0
 	for i in range(checks.size()):
-		if not checks[i]:
-			failed+=1
-			print("INPUT FAIL: ",i)
-	print("Viewport/input verification: %d checks, %d failures" % [checks.size(),failed])
+		if not checks[i]:failed+=1;print("POINTER FAIL: ",i)
+	print("Portrait/pointer verification: %d checks, %d failures" % [checks.size(),failed])
 	get_tree().quit(0 if failed==0 else 1)
 
 # Small deterministic procedural sounds: no external service or paid asset.
@@ -1023,8 +980,8 @@ func attach_tools() -> void:
 	world_root=surface
 
 func toggle_information() -> void:
-	panels_hidden=not panels_hidden
-	for node in information_controls:node.visible=not panels_hidden
+	if mobile_ui.drawer.visible:mobile_ui.close_sheet()
+	else:mobile_ui.open_sheet("메뉴")
 
 func soil_at(screen: Vector2) -> Vector2i:
 	var origin:=camera.project_ray_origin(screen)

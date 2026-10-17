@@ -1,10 +1,10 @@
 config_version=5
 [application]
 config/name="문 닫은 뒤 · 2D 단면 실험"
-config/version="0.10-sideview"
+config/version="0.11-direct-control"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="AfterHoursSideview"
-run/main_scene="res://main.tscn"
+run/main_scene="res://sandbox.tscn"
 [display]
 window/size/viewport_width=720
 window/size/viewport_height=1360
@@ -20,3 +20,4 @@ textures/canvas_textures/default_texture_filter=0
 environment/defaults/default_clear_color=Color(0.045,0.06,0.085,1)
 [input_devices]
 pointing/emulate_mouse_from_touch=true
+pointing/emulate_touch_from_mouse=true

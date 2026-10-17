@@ -90,7 +90,9 @@ static func update_quick_action(sim, dt: float) -> void:
 	clear_orders(sim,id)
 	var p: Dictionary=sim.data.people[id]
 	p.incident+=1; p.path=[]
-	sim.data.noise+=1.5 if job.action=="grab" else 3.0
+	if p.floor==1:
+		sim.data.noise+=1.5 if job.action=="grab" else 3.0
+		sim.data.stealth.source=p.pos
 	match job.action:
 		"grab":
 			p.state="restrained"; sim.data.ops.drag=id

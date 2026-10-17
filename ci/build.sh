@@ -58,3 +58,6 @@ cp assets/fonts/OFL.txt build/windows/tavern/licenses/font-OFL.txt
 cp "$tavern_project/README.md" build/windows/tavern/
 printf '%s\n' "${GITHUB_SHA:-local}" > build/web/tavern/version.txt
 python3 ci/mobile_shell.py build/web/tavern/index.html
+
+# Complete unchanged upstream game, exported separately.
+bash ci/build_foundation.sh

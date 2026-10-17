@@ -1,3 +1,11 @@
+# 현재 1.2 — 식사 손님·객실 재사용·하루·지상/지하 동시 보기
+
+[3D 실행](https://kkhkkh20-bit.github.io/after-hours-inn/?v=inn12) · [현재 조작·실제 시점·검증](docs/inn-cycle-v12.md)
+
+기본은 지하에서도 지상을 보는 전체 단면이다. 움직이는 사람과 주인의 클릭 범위를 보완하고 메뉴를 고정했다. 식사만 하는 손님, 게임 24시간=현실 8분, 익일 08시 퇴실과 빈방 정리 후 재접수를 연결했다. 아래는 이전 버전 이력이다.
+
+---
+
 # 최신 실행 — 1.1 직접 접객과 쉬운 첫 영업
 
 [3D 우선 플레이](https://kkhkkh20-bit.github.io/after-hours-inn/?v=easy11) · [2D 비교](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/?v=easy11) · [조작·실제 화면·검증](docs/direct-context-v11.md)

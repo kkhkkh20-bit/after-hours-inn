@@ -77,7 +77,7 @@ func refresh() -> void:
 	if current!=last_notice:
 		last_notice=current; notice_until=Time.get_ticks_msec()+3200
 	notice.text=current if Time.get_ticks_msec()<notice_until else ""
-	status.text="%s · 식사 %d/3 · 위험 %d%%" %[("자유 영업" if rules.data.freeplay else ("영업 결산" if rules.data.ending!="" else "남은 %d초" %maxi(0,int(240-rules.data.elapsed)))),facts.served,mini(100,int(facts.risk)+int(rules.data.risk))]
+	status.text="%s · 식사 %d/3 · 위험 %d%%" %[("자유 영업" if rules.data.freeplay else ("영업 결산" if rules.data.ending!="" else "사건 제한 %d초" %maxi(0,int(240-rules.data.elapsed)))),facts.served,mini(100,int(facts.risk)+int(rules.data.risk))]
 	if facts.get("opening",false):
 		status.text="손님을 눌러 방을 안내해주세요" if facts.get("booked",0)==0 else ("손님 클릭 → 식사 내어주기" if facts.served<1 else "기본 운영 완료 · 지하와 직원도 살펴보세요")
 	close_button.visible=rules.data.briefed and (rules.data.ending=="" or rules.data.freeplay)
@@ -97,6 +97,7 @@ func refresh() -> void:
 	if facts.get("opening",false):
 		heading.text="작은 여관의 첫 영업"
 		body_label.text="바닥을 누르면 이동합니다. 손님을 누르면 그 사람 옆에 할 수 있는 일이 표시됩니다.\n\n1. 손님 클릭 → 1호 또는 2호 안내\n2. 묵는 손님 클릭 → 식사 내어주기\n주인이 다가가 준비하고 전달합니다.\n\n지하 덮개를 누르면 내려갈 수 있습니다. 흙벽 → 파기로 공간을 넓힙니다. 직원 고용과 비밀 행동은 운영에 익숙해지면 표시됩니다.\n\n지금은 제한시간 없이 익힐 수 있습니다. 식사 3번을 제공하면 이 장부에서 첫날 밤 사건을 선택해 시작할 수 있습니다."
+		if host.has_method("context_heading"): body_label.text+="\n\n운영 시계: 게임 24시간 = 현실 8분. 오전 8시 시작, 숙박은 다음 날 오전 8시 퇴실입니다. 식사 손님은 객실 없이 주문합니다. 정리가 필요한 빈방은 방 안내를 고르면 먼저 청소합니다. 사건 도전은 이 운영 시계와 별도의 4분 제한입니다."
 		choices=[["challenge","첫날 밤 사건 시작 · 선택"]] if facts.served>=3 else []
 	var key=JSON.stringify(choices)
 	if key!=last_key:

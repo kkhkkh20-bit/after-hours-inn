@@ -62,7 +62,7 @@ static func subdue(sim) -> bool:
 	if not available(sim) or sim.data.ops.drag!="" or sim.data.player.carry!="":return false
 	var id:=select_near(sim)
 	if id=="" or not close(sim,id):sim.note("선택한 손님 가까이에서 제압을 시도한다.");return false
-	if sim.data.people[id].state not in ["waiting","staying","entering"]:return false
+	if sim.data.people[id].state not in ["waiting","staying","entering","dining"]:return false
 	sim.data.work={"type":"subdue","target":id,"remaining":2.0}
 	sim.note("제압 시도 2초. 목격되면 신고될 수 있다. 중단 버튼으로 취소.")
 	return true
@@ -72,7 +72,7 @@ static func quick_action(sim, action: String) -> bool:
 	var id:=select_near(sim)
 	if id=="" or not close(sim,id):return false
 	var person: Dictionary=sim.data.people[id]
-	if person.state not in ["arriving","waiting","staying","entering","restrained","down","captive"]:return false
+	if person.state not in ["arriving","waiting","staying","entering","dining","restrained","down","captive"]:return false
 	if sim.data.ops.drag!="" and sim.data.ops.drag!=id:return false
 	if action=="grab" and person.state in ["down","captive","restrained"]:return false
 	sim.data.work={"type":"quick","action":action,"target":id,"remaining":0.7 if action=="grab" else (1.5 if action=="sleep" else 2.0)}
@@ -85,7 +85,7 @@ static func update_quick_action(sim, dt: float) -> void:
 	if sim.data.work.remaining>0:return
 	var job: Dictionary=sim.data.work.duplicate(); sim.data.work={}
 	var id: String=job.target
-	if not close(sim,id) or sim.data.people[id].state not in ["arriving","waiting","staying","entering","restrained","down","captive"]:
+	if not close(sim,id) or sim.data.people[id].state not in ["arriving","waiting","staying","entering","dining","restrained","down","captive"]:
 		sim.note("대상이 멀어져 행동을 멈췄다.");return
 	clear_orders(sim,id)
 	var p: Dictionary=sim.data.people[id]
@@ -199,7 +199,7 @@ static func witness(sim, id: String, _kind: String) -> void:
 	var token:="incident:"+id+":"+str(int(victim.incident))
 	for key in sim.data.people.keys():
 		var person: Dictionary=sim.data.people[key]
-		if key==id or person.state not in ["waiting","staying","entering"] or person.seen.has(token):continue
+		if key==id or person.state not in ["waiting","staying","entering","dining"] or person.seen.has(token):continue
 		if sees(sim,person,victim.pos,victim.floor):
 			person.seen[token]=true
 			sim.note("%s이 수상한 행동을 목격했다. 출구로 향한다." % person.name)
@@ -251,10 +251,10 @@ static func contract_action(sim, protect: bool=false) -> bool:
 			sim.note("비밀 의뢰를 거절했다. 정상 영업을 계속한다.")
 			return true
 		var target: String=selected(sim)
-		if target=="" or sim.data.people[target].state not in ["waiting","staying","entering"]:
+		if target=="" or sim.data.people[target].state not in ["waiting","staying","entering","dining"]:
 			target=""
 			for id in sim.data.people:
-				if sim.data.people[id].state in ["waiting","staying","entering"]:target=id;break
+				if sim.data.people[id].state in ["waiting","staying","entering","dining"]:target=id;break
 		if target=="":sim.note("의뢰 대상이 될 손님이 아직 없다.");return false
 		contract.target=target
 		contract.state="active"
@@ -264,7 +264,7 @@ static func contract_action(sim, protect: bool=false) -> bool:
 		return true
 	if protect and contract.state=="active":
 		var person: Dictionary=sim.data.people[contract.target]
-		if person.state not in ["waiting","staying","entering"]:sim.note("먼저 위해를 가한 뒤 보호 보수를 받을 수는 없다.");return false
+		if person.state not in ["waiting","staying","entering","dining"]:sim.note("먼저 위해를 가한 뒤 보호 보수를 받을 수는 없다.");return false
 		contract.state="protected"
 		sim.data.money+=8
 		sim.data.ops.reputation+=2
@@ -376,7 +376,7 @@ static func tick(sim, dt: float) -> void:
 		if sim.data.work.remaining<=0:
 			var id: String=sim.data.work.target
 			sim.data.work={}
-			if close(sim,id) and sim.data.people[id].state in ["waiting","staying","entering"]:
+			if close(sim,id) and sim.data.people[id].state in ["waiting","staying","entering","dining"]:
 				clear_orders(sim,id)
 				var person: Dictionary=sim.data.people[id]
 				person.incident+=1

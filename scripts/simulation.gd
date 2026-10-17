@@ -133,6 +133,27 @@ func move_player(offset: Vector2) -> void:
 		remaining -= step
 	Intrigue.sync_drag(self)
 
+func calendar_text() -> String:
+	var minutes=int(480+data.clock*3)
+	return "%d일차 %02d:%02d · %s" %[1+minutes/1440,(minutes%1440)/60,minutes%60,"낮" if minutes%1440>=360 and minutes%1440<1200 else "밤"]
+
+func request_room(number: int,id: String) -> bool:
+	if data.paused or not data.work.is_empty() or not data.dig.is_empty():note("현재 작업을 마치거나 주인을 눌러 취소하자.");return false
+	if not data.people.has(id) or data.rooms[str(number)].guest!="":return false
+	if data.rooms[str(number)].dirty:
+		data.booking_request={"room":number,"guest":id}
+		note("%d호를 정리한 뒤 손님을 안내한다." %number)
+		return queue_command("clean"+str(number))
+	return queue_command("admit"+str(number),id)
+
+func update_booking() -> void:
+	if data.get("booking_request",{}).is_empty():return
+	var job: Dictionary=data.booking_request
+	if not data.people.has(job.guest) or data.people[job.guest].state not in ["waiting","arriving"]:
+		data.booking_request={};return
+	if not data.rooms[str(job.room)].dirty and data.work.is_empty() and data.excavation.intent=="":
+		data.booking_request={}; queue_command("admit"+str(job.room),job.guest)
+
 func gentle_opening() -> bool:
 	return data.get("opening",{}).get("active",false)
 
@@ -144,13 +165,17 @@ func start_gentle_opening() -> void:
 
 func spawn_guest() -> void:
 	if waiting().size() >= (1 if gentle_opening() and data.served<1 else 2): return
-	if data.get("opening",{}).get("natural",false) and data.rooms.values().all(func(room_): return room_.guest!=""): return
+
+	var natural: bool=data.get("opening",{}).get("natural",false)
+	var meal_only=natural and (int(data.serial)+1)%3==2
+	if natural and data.rooms.values().all(func(room_): return room_.guest!=""):meal_only=true
+	if meal_only and data.people.values().filter(func(p): return p.get("visit","")=="meal" and p.state!="gone").size()>=2:return
 	data.serial += 1
 	var id := "guest_%d" % data.serial
 	var templates := [["행상 로웬","조용한 방을 원한다",10],["전령 에다","식사를 서둘러 달라고 한다",8],["병사 브란","낯선 사람을 경계한다",12],["약초상 메린","먼 길을 걸어 피곤해한다",9]]
 	var sample: Array = templates[(int(data.serial)-1)%templates.size()]
 	data.people[id] = {"id":id,"name":sample[0],"trait":sample[1],"rate":sample[2],
-		"pos":ENTRY,"state":"waiting","room":0,"path":[],"arrival":data.clock,
+		"visit":"meal" if meal_only else "stay","pos":ENTRY,"state":"waiting","room":0,"path":[],"arrival":data.clock,
 		"checkout":0.0,"order_at":0.0,"meals":0}
 	Intrigue.register(data.people[id])
 	if data.get("opening",{}).get("natural",false):
@@ -197,7 +222,7 @@ func assign_room(number: int, guest_id: String="") -> bool:
 	person.room = number
 	person.state = "entering"
 	person.path = path
-	person.checkout = data.clock+105.0
+	person.checkout = (floorf(data.clock/480.0)+1)*480.0 if data.get("opening",{}).get("natural",false) else data.clock+105.0
 	data.money += int(person.rate)
 	note("%s → %d호. 숙박비 %d닢을 받았다." % [person.name,number,person.rate])
 	return true
@@ -218,7 +243,7 @@ func create_order(id: String) -> String:
 	return order_id
 
 func can_receive(id: String) -> bool:
-	return data.people.has(id) and data.people[id].state == "staying"
+	return data.people.has(id) and data.people[id].state in ["staying","dining"]
 
 func start_cooking(order_id: String, holder: String) -> bool:
 	var order_: Dictionary = data.orders[order_id]
@@ -253,6 +278,7 @@ func deliver(order_id: String, holder: String) -> bool:
 	else: data.staff.carry=""
 	data.money += 4
 	data.served += 1
+	if data.people[order_.guest].get("visit","")=="meal": data.people[order_.guest].checkout=data.clock+8
 	note("%s에게 식사 전달. 4닢을 받았다." % data.people[order_.guest].name)
 	return true
 
@@ -339,17 +365,18 @@ func _step(dt: float) -> void:
 			follow(person,dt*1.15)
 			if person.path.is_empty():
 				if person.state=="arriving":
-					person.state="waiting"; person.arrival=data.clock
+					person.state="dining" if person.get("visit","")=="meal" else "waiting"; person.arrival=data.clock
+					if person.state=="dining": person.order_at=data.clock+0.5; person.checkout=data.clock+90
 				elif person.state=="entering":
 					person.state="staying"
 					person.order_at=data.clock+3
 				else:
 					person.state="gone"
 					data.departed+=1
-		if person.state=="staying":
+		if person.state in ["staying","dining"]:
 			if data.clock>=person.checkout:
 				checkout(id)
-			elif data.clock>=person.order_at and person.meals<2:
+			elif data.clock>=person.order_at and person.meals<(1 if person.get("visit","")=="meal" else 2):
 				create_order(id)
 				person.order_at=data.clock+45
 	for order_id in data.orders:
@@ -370,6 +397,7 @@ func _step(dt: float) -> void:
 	update_worker(dt)
 	update_money()
 	update_direct_service()
+	update_booking()
 
 func follow(person: Dictionary, amount: float) -> void:
 	while amount>0 and not person.path.is_empty():
@@ -388,8 +416,9 @@ func follow(person: Dictionary, amount: float) -> void:
 
 func checkout(id: String) -> void:
 	var person: Dictionary=data.people[id]
-	data.rooms[str(int(person.room))].guest=""
-	data.rooms[str(int(person.room))].dirty=true
+	if int(person.room)>0:
+		data.rooms[str(int(person.room))].guest=""
+		data.rooms[str(int(person.room))].dirty=true
 	person.state="leaving"
 	person.path=path_to(person.pos,GATE if data.get("opening",{}).get("natural",false) else ENTRY)
 	for oid in data.orders:
@@ -400,7 +429,7 @@ func checkout(id: String) -> void:
 			if data.staff.carry==oid: data.staff.carry=""
 			if data.work.get("order","")==oid: data.work={}
 			order_.holder=""
-	note("%s 퇴실. %d호 청소가 필요하다." % [person.name,person.room])
+	note("%s이 식사를 마치고 떠난다." %person.name if person.get("visit","")=="meal" else "%s 퇴실. %d호 청소가 필요하다." % [person.name,person.room])
 
 func update_worker(dt: float) -> void:
 	var worker: Dictionary=data.staff
@@ -542,7 +571,7 @@ func start_dig(cell: Vector2i) -> bool:
 	return true
 
 func update_money() -> void:
-	var minute := int(420+data.clock*6)
+	var minute := int(480+data.clock*3) if data.get("opening",{}).get("natural",false) else int(420+data.clock*6)
 	if minute>=data.dues.wage:
 		data.dues.wage+=1440
 		if data.staff.hired: charge(4,"직원 임금")
@@ -591,6 +620,7 @@ func snapshot() -> Dictionary:
 func restore(saved: Variant) -> bool:
 	if not saved is Dictionary or saved.get("version",0)!=SAVE_VERSION or not saved.get("state") is Dictionary: return false
 	var candidate: Dictionary=decode(saved.state)
+	if data.has("booking_request") and not candidate.has("booking_request"):candidate.booking_request={}
 	if data.has("opening") and not candidate.has("opening"): candidate.opening={"active":false,"natural":false}
 	if data.has("service_target") and not candidate.has("service_target"): candidate.service_target=""
 	# Existing 0.3 saves acquire awareness defaults; in-flight jobs remain valid.
@@ -887,7 +917,11 @@ func perform_command(command: String, id: String="") -> void:
 		"room1":assign_room(1)
 		"room2":assign_room(2)
 		"reject":reject_guest()
-		"prepare","deliver","clean1","clean2":interact()
+		"clean1","clean2":
+			var room_=str(1 if command=="clean1" else 2)
+			if data.player.floor==0 and data.rooms[room_].guest=="" and data.rooms[room_].dirty and data.player.pos.distance_to(room_target(int(room_)))<1.6:
+				data.work={"type":"clean","room":room_,"remaining":4.0}; note(room_+"호 정리 중 · 4초")
+		"prepare","deliver":interact()
 		"staff":toggle_staff()
 		"repair":repair_tools()
 		"contract":Intrigue.contract_action(self)

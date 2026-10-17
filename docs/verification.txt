@@ -1,13 +1,12 @@
-1.1 direct context + gentle opening — Linux Godot 4.7.2
+1.2 inn cycle — Linux Godot 4.7.2
 3D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed
 EPISODE CHECKS: 23 checks, 0 failures
 Simulation verification: 146 checks, 0 failures
-3D CONTEXT POINTER CHECKS: 43 checks, 0 failures
+3D CONTEXT POINTER CHECKS: 60 checks, 0 failures
 2D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed
 EPISODE CHECKS: 23 checks, 0 failures
 SIDEVIEW RULE CHECKS: 31 checks; 0 failures
 SANDBOX TERRAIN CHECKS: 17 checks; 0 failures
 2D LOCAL RECEPTION CHECKS: 0 failures
 PHYSICS + TAP NAVIGATION CHECKS: 0 failures
-Web + Windows exports: exit 0. Native engine screenshots rendered. Physical mobile / Windows runtime: not tested.
-3D new action checks: grab, release and reporting, temporary knockout and wake, cancelled kill, persistent death, body drop, investigation, save/load: passed.
+Web + Windows exports: exit 0. Native 3D cutaway screenshot verified. Physical mobile / Windows runtime: not tested.

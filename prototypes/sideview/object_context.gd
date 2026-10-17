@@ -10,6 +10,8 @@ var kind=""
 var target=""
 var detail=""
 var title_label: Label
+var heading: Label
+var anchor=Vector2.ZERO
 
 func label_(text_: String,size_: int) -> Label:
 	var l=Label.new(); l.text=text_; l.add_theme_font_override("font",host.episode_font()); l.add_theme_font_size_override("font_size",size_)
@@ -19,7 +21,7 @@ func setup(owner_) -> void:
 	host=owner_; layer=10
 	root=Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.mouse_filter=Control.MOUSE_FILTER_IGNORE; add_child(root)
 	var header=ColorRect.new(); header.color=Color(0.035,0.065,0.085,0.90); header.position=Vector2(12,10); header.size=Vector2(696,102); header.mouse_filter=Control.MOUSE_FILTER_IGNORE; root.add_child(header)
-	var name_=label_("문 닫은 뒤",26); name_.position=Vector2(24,17); name_.size=Vector2(660,40); name_.autowrap_mode=TextServer.AUTOWRAP_OFF; root.add_child(name_)
+	var name_=label_("문 닫은 뒤",26); heading=name_; name_.position=Vector2(24,17); name_.size=Vector2(660,40); name_.autowrap_mode=TextServer.AUTOWRAP_OFF; root.add_child(name_)
 	stats=label_("",21); stats.position=Vector2(24,66); stats.size=Vector2(670,34); root.add_child(stats)
 	panel=PanelContainer.new(); root.add_child(panel); panel.custom_minimum_size.x=268; panel.size.x=268
 	var s=StyleBoxFlat.new(); s.bg_color=Color("162930"); s.border_color=Color("b89d6e"); s.set_border_width_all(2); s.set_corner_radius_all(12)
@@ -27,7 +29,7 @@ func setup(owner_) -> void:
 	column=VBoxContainer.new(); column.add_theme_constant_override("separation",7); panel.add_child(column); panel.hide()
 
 func open(type_: String,id_: String="",detail_: String="") -> void:
-	kind=type_; target=id_; detail=detail_; controls.clear()
+	kind=type_; target=id_; detail=detail_; controls.clear(); anchor=host.context_anchor(kind,target)
 	for c in column.get_children(): column.remove_child(c); c.queue_free()
 	title_label=label_(host.context_title(kind,target),23); title_label.custom_minimum_size.x=240; title_label.autowrap_mode=TextServer.AUTOWRAP_OFF; column.add_child(title_label)
 	if detail!="":
@@ -50,8 +52,9 @@ func close() -> void:
 
 func refresh() -> void:
 	stats.text=host.context_stats()
+	if host.has_method("context_heading"): heading.text=host.context_heading()
 	if not panel.visible: return
-	var at: Vector2=host.context_anchor(kind,target)
+	var at: Vector2=anchor
 	var viewport=host.get_viewport().get_visible_rect().size
 	var x=at.x+32
 	if x+panel.size.x>viewport.x-12: x=at.x-panel.size.x-32

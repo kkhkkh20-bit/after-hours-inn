@@ -1,6 +1,9 @@
 extends Node3D
 const Simulation = preload("res://scripts/simulation.gd")
 var sim = Simulation.new()
+var pressed_person=""
+var pressed_owner=false
+var pending_context_action: Dictionary={}
 var mobile_ui
 var touch_origin:=Vector2.ZERO
 var touch_dragged:=false
@@ -38,7 +41,7 @@ var surface_zoom := 26.0
 var basement_zoom := 14.0
 var overview := true
 var view_layer := "all"
-const CAMERA_ARM := Vector3(5,20,28)
+const CAMERA_ARM := Vector3(3,12,32)
 const CELLAR_OFFSET := Vector3(-3.25,-4.2,2.75)
 var cellar_lamp: OmniLight3D
 var light_spill: OmniLight3D
@@ -271,7 +274,7 @@ func _ready() -> void:
 	basement.add_child(cellar_lamp)
 	cellar_lamp.position=Vector3(-0.35,1.6,-1)
 	cellar_lamp.light_color=Color("ffbb6b")
-	cellar_lamp.light_energy=1.5
+	cellar_lamp.light_energy=2.0
 	cellar_lamp.omni_range=5
 	cellar_lamp.shadow_enabled=true
 	light_spill=OmniLight3D.new()
@@ -295,13 +298,13 @@ func _ready() -> void:
 	travel_marker=MeshInstance3D.new(); var marker_mesh=CylinderMesh.new(); marker_mesh.top_radius=0.34; marker_mesh.bottom_radius=0.34; marker_mesh.height=0.025; marker_mesh.radial_segments=24
 	travel_marker.mesh=marker_mesh; travel_marker.material_override=material(Color("c4bf7a")); add_child(travel_marker); travel_marker.hide()
 	make_ui()
-	set_layer("surface")
+	set_layer("all")
 	episode_ui=preload("res://scripts/episode_ui.gd").new()
 	add_child(episode_ui); episode_ui.setup(self,episode)
 	var args := OS.get_cmdline_user_args()
 	if args.is_empty():
 		sim.start_gentle_opening(); episode.data.briefed=true; episode_ui.refresh()
-	if "--capture-context" in args or "--capture-context-clean" in args or "--capture-actions" in args:
+	if "--capture-context" in args or "--capture-context-clean" in args or "--capture-actions" in args or "--capture-cycle" in args:
 		await capture_context("--capture-context" in args); return
 	if "--capture-episode" in args or "--capture-episode-cellar" in args:
 		await capture_episode("--capture-episode-cellar" in args)
@@ -552,7 +555,7 @@ func world_point(pos: Vector2, floor_: int, height: float=0.0) -> Vector3:
 	return Vector3(pos.x,height+Simulation.floor_height(pos,floor_),pos.y)+(CELLAR_OFFSET if floor_==1 else Vector3.ZERO)
 
 func focus_position() -> Vector3:
-	if overview:return CELLAR_OFFSET+Vector3(4,0.7,1) if view_layer=="below" else Vector3(0,1.3,-0.4)
+	if overview:return CELLAR_OFFSET+Vector3(4,0.7,1) if view_layer=="below" else (Vector3(0,-0.2,0.5) if view_layer=="all" else Vector3(0,1.3,-0.4))
 	return world_point(sim.data.player.pos,sim.data.player.floor)
 
 func set_layer(value: String) -> void:
@@ -560,7 +563,7 @@ func set_layer(value: String) -> void:
 	overview=true
 	camera_offset=Vector2.ZERO
 	camera.size=25.0 if value!="below" else 13.5
-	camera_focus=Vector3(0,1.3,-0.4) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
+	camera_focus=(Vector3(0,-0.2,0.5) if value=="all" else Vector3(0,1.3,-0.4)) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
 	camera.position=camera_focus+CAMERA_ARM
 	camera.look_at(camera_focus)
 	sync_view(0)
@@ -719,6 +722,9 @@ func _input(event: InputEvent) -> void:
 			if span>20 and pinch_span>20: camera.size=clampf(camera.size*pinch_span/span,9,40)
 			pinch_span=span; get_viewport().set_input_as_handled(); return
 	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
+		pressed_person=pick_person(event.position) if not mobile_ui.blocks_point(event.position) else ""
+		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<26 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
+		if pressed_owner:pressed_person=""
 		mouse_origin=event.position
 		mouse_dragged=false
 		mouse_blocked=mobile_ui.blocks_point(event.position)
@@ -728,6 +734,9 @@ func _input(event: InputEvent) -> void:
 			if event.position.distance_to(mouse_origin)>24:mouse_dragged=true
 			if mouse_dragged:pan_camera(event.relative)
 	if event is InputEventScreenTouch and event.pressed:
+		pressed_person=pick_person(event.position) if not mobile_ui.blocks_point(event.position) else ""
+		pressed_owner=not mobile_ui.blocks_point(event.position) and actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<26 and (pressed_person=="" or actor_hit_distance(event.position,sim.data.player.pos,sim.data.player.floor)<actor_hit_distance(event.position,sim.data.people[pressed_person].pos,sim.data.people[pressed_person].floor))
+		if pressed_owner:pressed_person=""
 		touch_origin=event.position
 		touch_dragged=false
 		touch_blocked=mobile_ui.blocks_point(event.position)
@@ -781,21 +790,21 @@ func world_tap(point: Vector2) -> void:
 	pointer_position=point
 	var inspector: Dictionary=sim.data.ops.inspector
 	if inspector.state not in ["idle","scheduled"] and inspector.floor==sim.data.player.floor and point.distance_to(camera.unproject_position(world_point(inspector.pos,inspector.floor,0.9)))<30:
-		object_context.open("inspector"); return
-	if sim.data.player.floor==0:
+		pressed_owner=false; object_context.open("inspector"); return
+	if pressed_owner:
+		pressed_owner=false; object_context.open("owner"); return
+	var target_id: String=pressed_person if pressed_person!="" and sim.data.people.has(pressed_person) and sim.data.people[pressed_person].state!="gone" else pick_person(point)
+	pressed_person=""
+	if target_id!="":
+		sim.data.excavation.path=[]; sim.data.excavation.intent=""; sim.data.ops.selected=target_id
+		object_context.open("person",target_id); return
+	if view_layer!="below":
 		for number in [1,2]:
 			if point.distance_to(camera.unproject_position(world_point(Vector2(5.6,-2.0 if number==1 else 2.0),0,0.55)))<30:
 				object_context.open("room",str(number)); return
 		if sim.data.staff.hired and point.distance_to(camera.unproject_position(world_point(sim.data.staff.pos,0,0.9)))<28:
 			object_context.open("staff"); return
-	var target_id:=pick_person(point)
-	if target_id!="":
-		sim.data.excavation.path=[]
-		sim.data.excavation.intent=""
-		sim.data.ops.selected=target_id
-		object_context.open("person",target_id)
-		return
-	if sim.data.player.floor==0 and point.distance_to(camera.unproject_position(world_point(Simulation.COUNTER,0,0.8)))<34:
+	if view_layer!="below" and point.distance_to(camera.unproject_position(world_point(Simulation.COUNTER,0,0.8)))<34:
 		object_context.open("counter"); return
 	if point.distance_to(camera.unproject_position(Vector3(Simulation.HATCH.x,0.15,Simulation.HATCH.y)))<32 and sim.data.player.floor==0:
 		object_context.open("hatch"); return
@@ -809,7 +818,7 @@ func world_tap(point: Vector2) -> void:
 			context_soil=soil; object_context.open("soil"); return
 	if sim.data.player.floor==0 and point.distance_to(camera.unproject_position(Vector3(8,0.3,4.5)))<50:
 		object_context.open("stairs"); return
-	if point.distance_to(camera.unproject_position(world_point(sim.data.player.pos,sim.data.player.floor,0.85)))<22:
+	if actor_hit_distance(point,sim.data.player.pos,sim.data.player.floor)<26:
 		object_context.open("owner"); return
 	# Upstairs walking can be requested directly, without an external floor button.
 	if sim.data.player.floor==0 and view_layer!="below":
@@ -819,6 +828,7 @@ func world_tap(point: Vector2) -> void:
 			auto_floor_goal={"floor":2,"point":Vector2(upper.x,upper.z)}; sim.queue_gallery(); return
 	var hit: Variant=walking_hit(point)
 	if hit!=null:
+		pending_context_action.clear(); sim.data.booking_request={}
 		sim.data.service_target=""
 		auto_floor_goal.clear()
 		sim.data.ops.selected=""
@@ -840,8 +850,13 @@ func _physics_process(delta: float) -> void:
 		update_stealth_audio(delta)
 	if sim.data.player.floor!=displayed_floor:
 		displayed_floor=sim.data.player.floor
-		set_layer("below" if displayed_floor==1 else "surface")
+		if view_layer!="all":set_layer("below" if displayed_floor==1 else "surface")
 		object_context.close()
+	if not pending_context_action.is_empty() and sim.data.excavation.intent=="" and sim.data.work.is_empty():
+		var job=pending_context_action
+		if sim.data.player.floor==int(job.floor):
+			pending_context_action={}; context_action(job.kind,job.id,job.action)
+		else: travel_to_floor(int(job.floor))
 	if not auto_floor_goal.is_empty() and sim.data.player.floor==int(auto_floor_goal.floor) and sim.data.excavation.intent=="":
 		sim.queue_move(auto_floor_goal.point); auto_floor_goal.clear()
 	if sim.data.player.floor==1:
@@ -1031,14 +1046,18 @@ func update_stealth_audio(delta: float) -> void:
 		step_sound.position=staff_visual.position
 		step_sound.play()
 
+func actor_hit_distance(screen: Vector2,pos: Vector2,floor_: int) -> float:
+	var foot=camera.unproject_position(world_point(pos,floor_,0.1))
+	var head=camera.unproject_position(world_point(pos,floor_,1.95))
+	return screen.distance_to(Geometry2D.get_closest_point_to_segment(screen,foot,head))
+
 func pick_person(screen: Vector2) -> String:
 	var id: String=""
-	var distance:=38.0
+	var distance:=30.0
 	for key in sim.data.people:
 		var person: Dictionary=sim.data.people[key]
-		if person.state=="gone" or person.floor!=sim.data.player.floor:continue
-		var point:=camera.unproject_position(world_point(person.pos,person.floor,0.65))
-		var delta:=screen.distance_to(point)
+		if person.state=="gone" or (view_layer=="below" and person.floor!=1) or (view_layer=="surface" and person.floor==1):continue
+		var delta=actor_hit_distance(screen,person.pos,person.floor)
 		if delta<distance:id=key;distance=delta
 	return id
 
@@ -1184,11 +1203,14 @@ func verify_episode_playthrough(capture: bool=false) -> int:
 	print("3D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed")
 	return 0
 
+func context_heading() -> String:
+	return sim.calendar_text()
+
 func context_stats() -> String:
-	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
+	return "%d닢 · 손님 %d · 식사 %d%s" %[sim.data.money,sim.data.people.values().filter(func(p): return p.state!="gone").size(),sim.data.served," · 멈춤" if sim.data.paused else ""]
 
 func context_title(kind_: String,id_: String) -> String:
-	if kind_=="person": return str(sim.data.people[id_].name)
+	if kind_=="person": return str(sim.data.people[id_].name)+(" · 식사" if sim.data.people[id_].get("visit","")=="meal" else "")
 	if kind_=="room": return room_text(int(id_))
 	return {"counter":"접수대 · 장부","hatch":"지하 입구","stairs":"계단","soil":"흙벽","lamp":"지하 등불","staff":"직원","owner":"여관 주인","system":"여관 설정","actions":"손님에게 할 행동","inspector":"국경 경비"}.get(kind_,"여관")
 
@@ -1215,8 +1237,8 @@ func context_items(kind_: String,id_: String) -> Array:
 			if p.state=="dead": return [["drag","끌기 / 내려놓기"],["greet","상태 확인"]]
 			if p.state=="restrained": return [["sleep","잠시 기절시키기"],["kill","살해"],["drop","놓아주기"]]
 			if p.state in ["down","captive"]: return [["drag","끌기 / 석방"],["kill","살해"],["greet","상태 확인"]]
-			if p.state in ["waiting","arriving"]:
-				var items=[["admit1","1호로 안내",sim.data.rooms["1"].guest=="" and not sim.data.rooms["1"].dirty],["admit2","2호로 안내",sim.data.rooms["2"].guest=="" and not sim.data.rooms["2"].dirty],["greet","말 걸기"]]
+			if p.state in ["waiting","arriving"] and p.get("visit","")!="meal":
+				var items=[["admit1","1호 정리 후 안내" if sim.data.rooms["1"].dirty else ("1호 사용 중" if sim.data.rooms["1"].guest!="" else "1호로 안내"),sim.data.rooms["1"].guest==""],["admit2","2호 정리 후 안내" if sim.data.rooms["2"].dirty else ("2호 사용 중" if sim.data.rooms["2"].guest!="" else "2호로 안내"),sim.data.rooms["2"].guest==""],["greet","말 걸기"]]
 				if not sim.gentle_opening() or sim.data.served>=3: items.append(["actions","다른 행동"])
 				return items
 			var items=[["service","식사 내어주기"],["greet","말 걸기"]]
@@ -1244,19 +1266,29 @@ func context_items(kind_: String,id_: String) -> Array:
 		"system": return [["pause","일시 정지"],["overview","여관 전체 보기"],["follow","주인 따라 보기"],["save","저장"],["load","불러오기"],["fullscreen","전체화면 전환"]]
 	return []
 
+func travel_to_floor(target: int) -> void:
+	if sim.data.player.floor==2 or (sim.data.player.floor==0 and target==2):sim.queue_gallery()
+	else:sim.queue_floor()
+
 func context_action(kind_: String,id_: String,action: String) -> void:
+	var target_floor=sim.data.player.floor
+	if kind_ in ["person","actions","other"] and sim.data.people.has(id_):target_floor=sim.data.people[id_].floor
+	elif kind_ in ["room","counter","staff","inspector"]:target_floor=0
+	elif kind_ in ["soil","lamp"]:target_floor=1
+	if action not in ["journal","system","actions","other","save","load","overview","pause","resume","stop","fullscreen"] and target_floor!=sim.data.player.floor:
+		pending_context_action={"kind":kind_,"id":id_,"action":action,"floor":target_floor}; travel_to_floor(target_floor); return
 	match action:
 		"resume": sim.data.paused=false; return
 		"pause": sim.data.paused=true; return
 		"journal": episode_ui.open(); return
 		"system": object_context.open("system"); return
 		"actions","other": object_context.open(action,id_); return
-		"overview": set_layer("surface" if sim.data.player.floor!=1 else "below"); return
+		"overview": set_layer("all"); return
 		"follow": frame_owner(); camera.size=18; return
 		"save": save_game(); return
 		"load": load_game(); return
 		"fullscreen": DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if DisplayServer.window_get_mode()!=DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_WINDOWED); return
-		"stop": sim.cancel_work(); sim.data.service_target=""; auto_floor_goal.clear(); return
+		"stop": pending_context_action.clear(); sim.data.booking_request={}; sim.cancel_work(); sim.data.service_target=""; auto_floor_goal.clear(); return
 		"floor": auto_floor_goal.clear(); sim.queue_floor(); return
 		"gallery": auto_floor_goal.clear(); sim.queue_gallery(); return
 		"hatch": sim.queue_command("hatch"); return
@@ -1268,7 +1300,8 @@ func context_action(kind_: String,id_: String,action: String) -> void:
 		"assign":
 			var selected: String=sim.data.ops.selected
 			if selected=="" or not sim.data.people.has(selected): sim.note("먼저 배정할 손님을 선택하자."); return
-			sim.queue_command("admit"+id_,selected); return
+			sim.request_room(int(id_),selected); return
+	if action in ["admit1","admit2"]: sim.request_room(1 if action=="admit1" else 2,id_); return
 	if action=="greet": pending_chat=id_
 	if kind_ in ["person","actions","other"]: sim.data.ops.selected=id_
 	sim.queue_command(action,id_)
@@ -1413,6 +1446,45 @@ func input_verify() -> void:
 	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.ops.selected="guest_1"
 	sim.data.player.pos=Simulation.ENTRY; Simulation.Intrigue.quick_action(sim,"sleep"); sim.tick(2); sim.tick(46)
 	checks.append(sim.data.people.guest_1.state in ["leaving","gone"])
+	# Both rooms must survive checkout -> cleaning -> a different guest's booking.
+	for number in [1,2]:
+		sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
+		sim.data.player.pos=Simulation.ENTRY; sim.assign_room(number,"guest_1"); sim.tick(110)
+		checks.append(sim.data.rooms[str(number)].guest=="" and sim.data.rooms[str(number)].dirty)
+		sim.spawn_guest(); checks.append(sim.request_room(number,"guest_2")); sim.tick(30)
+		checks.append(sim.data.rooms[str(number)].guest=="guest_2" and not sim.data.rooms[str(number)].dirty)
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.start_gentle_opening()
+	checks.append(sim.calendar_text().begins_with("1일차 08:00"))
+	sim.data.people.guest_1.pos=Simulation.ENTRY; sim.data.player.pos=Simulation.ENTRY; sim.assign_room(1,"guest_1")
+	checks.append(sim.data.people.guest_1.checkout==480)
+	sim.spawn_guest(); sim.data.next_guest=9999; sim.tick(30)
+	checks.append(sim.data.people.guest_2.state=="dining" and sim.data.people.guest_2.room==0 and not sim.data.orders.is_empty())
+	sim.request_direct_service("guest_2"); sim.tick(25)
+	checks.append(sim.data.served==1 and sim.data.people.guest_2.state in ["leaving","gone"] and sim.data.rooms["2"].guest=="")
+	sim.data.clock=240; checks.append(sim.calendar_text().contains("20:00") and sim.calendar_text().ends_with("밤"))
+	sim.data.clock=320; checks.append(sim.calendar_text().begins_with("2일차 00:00"))
+	# Capture the person at pointer down; release still targets that moving person.
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
+	sim.data.player.pos=Vector2(-7.25,3.25); set_layer("all"); sync_view(0); object_context.close()
+	var tap=camera.unproject_position(world_point(sim.data.people.guest_1.pos,0,1.7))
+	var press=InputEventMouseButton.new(); press.position=tap; press.button_index=MOUSE_BUTTON_LEFT; press.pressed=true; get_viewport().push_input(press,true)
+	await get_tree().process_frame
+	sim.data.people.guest_1.pos+=Vector2(2,0); sync_view(0)
+	var release=InputEventMouseButton.new(); release.position=tap; release.button_index=MOUSE_BUTTON_LEFT; release.pressed=false; get_viewport().push_input(release,true)
+	await get_tree().process_frame
+	checks.append(object_context.panel.visible and object_context.target=="guest_1")
+	var menu_at=object_context.panel.position; sim.data.people.guest_1.pos+=Vector2(2,0); object_context.refresh()
+	checks.append(object_context.panel.position==menu_at)
+	# Owner downstairs can see, select and serve the guest upstairs via actual stairs.
+	sim=Simulation.new(); sim.obstacles.assign(geometry_); sim.rebuild_grid(); sim.data.next_guest=9999
+	sim.data.player.pos=Simulation.ENTRY; sim.assign_room(1,"guest_1"); sim.tick(20)
+	sim.data.player.floor=1; sim.data.player.pos=Vector2.ZERO; pending_context_action={}; set_layer("all"); sync_view(0); object_context.close()
+	await pointer_click(camera.unproject_position(world_point(sim.data.people.guest_1.pos,0,1.5)),true)
+	checks.append(object_context.target=="guest_1")
+	await click_context("service")
+	checks.append(not pending_context_action.is_empty())
+	for step in range(250):sim.tick(0.1); _physics_process(0)
+	checks.append(sim.data.player.floor==0 and sim.data.served==1 and view_layer=="all" and surface.visible and basement.visible)
 	var failed=0
 	for i in range(checks.size()):
 		if not checks[i]: failed+=1; print("CONTEXT POINTER FAIL ",i)
@@ -1429,9 +1501,14 @@ func capture_context(show_menu: bool) -> void:
 		sim.data.ops.selected="guest_2"; object_context.open("person","guest_2")
 	if "--capture-actions" in OS.get_cmdline_user_args():
 		sim.data.served=3; sim.data.ops.selected="guest_2"; object_context.open("actions","guest_2")
+	if "--capture-cycle" in OS.get_cmdline_user_args():
+		sim.data.people.guest_2.visit="meal"; sim.data.people.guest_2.state="dining"; sim.create_order("guest_2")
+		sim.data.player.pos=Simulation.HATCH; sim.change_floor(); sim.data.player.pos=Vector2(1,1); set_layer("all"); sync_view(0); object_context.close()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	object_context.refresh()
 	await RenderingServer.frame_post_draw
+	if "--capture-cycle" in OS.get_cmdline_user_args():
+		get_viewport().get_texture().get_image().save_png("res://docs/cycle-3d-overview.png"); get_tree().quit(); return
 	get_viewport().get_texture().get_image().save_png("res://docs/context-3d-"+("actions" if "--capture-actions" in OS.get_cmdline_user_args() else ("guest" if show_menu else "inn"))+".png")
 	get_tree().quit()

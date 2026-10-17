@@ -1,3 +1,11 @@
+# 첫 번째 밤 — 3D·2D 세로 비교판
+
+[3D 플레이](https://kkhkkh20-bit.github.io/after-hours-inn/?v=episode1) · [2D 플레이](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/?v=episode1) · [화면·조작·검증·구현 범위](docs/episode-v1.md)
+
+두 버전의 하단 고정 대사/안내판을 제거하고 세로 전체 화면으로 정리했다. 4분 안에 식사 3회와 임대료 36닢을 준비하고, 보호비 요구·밀수 제안·경비 조사에 대응한다. 접수대에서 결산하면 선택에 따른 결말을 보고 재시작하거나 자유 영업을 계속한다. 아래 문서들은 이전 구현 기록이다. 상용 완제품이 아니라 시작과 결말이 있는 단편 비교판이다.
+
+---
+
 ## 2D 모바일 클릭 이동 0.3 · 2026-10-17
 
 [2D 세로 시제품 실행](https://kkhkkh20-bit.github.io/after-hours-inn/sideview/) · [스타듀밸리 조작 조사·새 화면·검증과 한계](docs/tap-controls-v03.md)

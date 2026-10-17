@@ -1,7 +1,9 @@
-After Hours 0.9 / Godot 4.7.2 stable / Compatibility
-Simulation verification: 146 checks, 0 failures.
-Landscape/pointer verification: 45 checks, 0 failures.
-Total: 191 checks. Keyboard events are not used by the pointer suite.
-Actual Linux OpenGL Compatibility / Mesa rendered 1600x900 overview, lit cellar and dark cellar screenshots were visually reviewed.
-The CI pipeline repeats both suites and exports Web and Windows.
-Native Windows executable and physical Android/iPhone touch/performance have not been directly tested in this environment.
+First Night / Godot 4.7.2 stable / Compatibility
+3D: 146 simulation checks + 45 pointer checks + 23 episode checks, zero failures.
+2D: 31 business checks + 17 terrain checks + 23 episode checks, zero failures.
+2D actual physics/tap navigation suite: zero failures.
+Both real-business episode playthroughs: booking, hired staff service, event decisions, rent payment, ending, save/load and freeplay passed.
+Shared episode and UI sources compared with cmp in CI.
+Actual Linux OpenGL Compatibility / Mesa portrait screenshots: inn, cellar and completed ending in both versions visually reviewed.
+Web and Windows exported. Physical Windows/Android/iPhone QA remains unverified.
+Not a finished commercial game; see docs/episode-v1.md for exact scope and limitations.

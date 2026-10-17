@@ -37,7 +37,7 @@ var dragging = -1
 var people: Array = []
 var noise_player: AudioStreamPlayer
 var save_path = "user://sandbox-v1.json"
-var message = "직접 걷고 점프해서 가까운 땅을 파보세요."
+var message = "접수대에서 손님을 받고 직원을 고용할 수 있다."
 var rebuild_pending = false
 var test_mode = false
 var navigation=Navigation.new()
@@ -55,6 +55,14 @@ var automatic_mining=false
 var navigation_job: Dictionary={}
 var use_button: Button
 
+var episode=preload("res://episode.gd").new()
+var episode_ui
+var tools: Control
+var stop_button: Button
+var room_button: Button
+var room_picker: Control
+var tools_visible=false
+
 func _ready() -> void:
 	_setup_input()
 	var canvas = CanvasModulate.new(); canvas.color=Color("8d91a2"); add_child(canvas)
@@ -70,7 +78,17 @@ func _ready() -> void:
 	]
 	noise_player=AudioStreamPlayer.new(); noise_player.stream=preload("res://assets/tap.wav"); noise_player.volume_db=-17; add_child(noise_player)
 	_rebuild_geometry(); _rebuild_lights(); _setup_ui()
+	episode_ui=preload("res://episode_ui.gd").new(); add_child(episode_ui); episode_ui.setup(self,episode)
 	var args=OS.get_cmdline_user_args()
+	if args.is_empty(): episode_ui.open()
+	if "--episode-playthrough" in args or "--capture-ending" in args:
+		test_mode=true
+		var failed=await verify_episode_playthrough("--capture-ending" in args)
+		get_tree().quit(failed); return
+	if "--episode-verify" in args:
+		test_mode=true; get_tree().quit(preload("res://episode_tests.gd").new().run()); return
+	if "--capture-episode" in args or "--capture-episode-cellar" in args:
+		await capture_episode("--capture-episode-cellar" in args); return
 	if "--verify" in args:
 		test_mode=true
 		var failures: int=load("res://tests.gd").new().run()
@@ -170,26 +188,73 @@ func _touch_button(text: String,rect: Rect2,action: String) -> TouchScreenButton
 	return b
 
 func _setup_ui() -> void:
-	var layer=CanvasLayer.new(); add_child(layer); ui=Control.new(); ui.mouse_filter=Control.MOUSE_FILTER_IGNORE; layer.add_child(ui)
-	_panel(Rect2(0,0,720,153)); _panel(Rect2(0,1000,720,360))
-	_label("title","문 닫은 뒤 · 클릭 이동 0.3",Rect2(22,15,570,40),27)
-	_button("멈춤",Rect2(593,16,105,52),_pause)
-	_label("stats","",Rect2(22,63,675,34),25)
-	_label("hint","바닥 클릭으로 이동 · 점프와 사다리는 자동",Rect2(22,108,676,34),22)
-	_label("context","",Rect2(20,1009,680,36),23)
-	var mode_list=[["move","이동"],["mine","곡괭이"],["block","블록"],["platform","발판"],["torch","횃불"],["hand","손님"]]
+	var layer=CanvasLayer.new(); add_child(layer); ui=Control.new(); ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); ui.mouse_filter=Control.MOUSE_FILTER_IGNORE; layer.add_child(ui)
+	_panel(Rect2(12,10,696,102))
+	_label("title","문 닫은 뒤 · 2D",Rect2(24,17,520,36),27)
+	_button("멈춤",Rect2(592,18,104,58),_pause)
+	_label("stats","",Rect2(24,65,670,34),22)
+	# Toolbox is explicitly opened; no permanently displayed dialogue or instruction strip.
+	tools=Panel.new(); tools.position=Vector2(20,250); tools.size=Vector2(680,390); ui.add_child(tools); tools.hide()
+	var original=ui; ui=tools
+	_label("context","",Rect2(16,12,646,55),20)
+	var mode_list=[["move","이동"],["mine","굴착"],["block","벽 쌓기"],["platform","발판"],["torch","횃불"],["hand","손님"]]
 	for i in range(mode_list.size()):
 		var entry=mode_list[i]
-		modes[entry[0]]=_button(entry[1],Rect2(20+i*116,1057,104,70),_select_mode.bind(entry[0]))
-	_button("재료 변경",Rect2(20,1142,200,58),_material_next)
-	use_button=_button("사용 / E",Rect2(240,1142,220,58),_request_use)
-	_button("저장",Rect2(480,1142,100,58),_save)
-	_button("읽기",Rect2(598,1142,100,58),_load_save)
-	_button("이동 취소",Rect2(20,1217,210,89),_stop_navigation)
-	_button("카운터 가기",Rect2(254,1217,210,89),_go_counter)
-	_button("덮개 가기",Rect2(488,1217,210,89),_go_hatch)
-	_label("log",message,Rect2(20,1315,678,38),21)
+		modes[entry[0]]=_button(entry[1],Rect2(16+(i%3)*218,78+(i/3)*76,208,66),_choose_tool.bind(entry[0]))
+	_button("재료 변경",Rect2(16,242,208,62),_material_next)
+	_button("저장",Rect2(234,242,208,62),_save)
+	_button("불러오기",Rect2(452,242,208,62),_load_save)
+	_button("덮개로 이동",Rect2(16,314,426,60),_go_hatch)
+	_button("닫기",Rect2(452,314,208,60),_toggle_tools)
+	ui=original
+	_button("도구",Rect2(600,238,100,64),_toggle_tools)
+	var bottom=Control.new(); bottom.mouse_filter=Control.MOUSE_FILTER_IGNORE; ui.add_child(bottom)
+	bottom.anchor_top=1; bottom.anchor_bottom=1; bottom.offset_top=-152; bottom.offset_bottom=-16; bottom.offset_right=720
+	ui=bottom
+	use_button=_button("사용",Rect2(254,0,210,62),_request_use)
+	stop_button=_button("중단",Rect2(20,74,210,62),_stop_navigation)
+	_button("접수대",Rect2(20,0,210,62),_go_counter)
+	room_button=_button("객실 배정",Rect2(488,0,210,62),_show_room_picker)
+	_button("지하 입구",Rect2(254,74,210,62),_go_hatch)
+	_button("전체 보기",Rect2(488,74,210,62),_overview_camera)
+	ui=original
+	room_picker=Panel.new(); ui.add_child(room_picker); room_picker.anchor_top=1; room_picker.anchor_bottom=1
+	room_picker.offset_top=-316; room_picker.offset_bottom=-164; room_picker.offset_left=20; room_picker.offset_right=700
+	ui=room_picker
+	_button("1호 배정",Rect2(12,12,320,60),_assign_guest_room.bind(1))
+	_button("2호 배정",Rect2(344,12,320,60),_assign_guest_room.bind(2))
+	_button("닫기",Rect2(12,82,652,58),func():room_picker.hide())
+	ui=original; room_picker.hide()
 	_update_ui()
+
+func _toggle_tools() -> void:
+	tools_visible=not tools_visible; tools.visible=tools_visible
+
+func _choose_tool(value: String) -> void:
+	_select_mode(value); tools_visible=false; tools.hide()
+
+func _overview_camera() -> void:
+	camera.zoom=Vector2(0.64,0.64) if camera.zoom.x>0.7 else Vector2(0.82,0.82)
+
+func _show_room_picker() -> void:
+	room_picker.visible=not room_picker.visible
+
+func _assign_guest_room(chosen: int) -> void:
+	room_picker.hide()
+	if paused: return
+	if player.position.distance_to(Vector2(29*32,21*32-19))>130:
+		message="접수대에서 방을 배정하자."; _go_counter(); return
+	var index=selected_person if selected_person in [0,1] else 0
+	var p: Dictionary=people[index]
+	if p.down: message="기절한 손님은 접수할 수 없다."; return
+	# Guest reservations expire; a reused room must be cleaned before sale.
+	if p.get("checkout",0.0)>clock: message="이미 투숙 중인 손님이다."; return
+	if p.get("dirty",false): p.dirty=false; message="객실을 청소했다. 다시 눌러 새 손님을 받자."; return
+	for guest in people.slice(0,2):
+		if guest!=p and guest.room==chosen and guest.get("checkout",0.0)>clock:
+			message="그 방은 이미 사용 중이다. 다른 손님을 선택하자."; return
+	p.room=chosen; p.checkout=clock+70; p.dirty=true; inn.coins+=8
+	message="%s → %d호. 숙박비 8닢" %[p.name,chosen]
 
 func _pause() -> void:
 	paused=not paused; player.active=not paused
@@ -330,7 +395,8 @@ func _material_next() -> void:
 	var options=["wood","dirt","stone"]; build_material=options[(options.find(build_material)+1)%3]; _update_ui()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch and event.pressed and event.position.y>153 and event.position.y<1000:
+	if episode_ui!=null and episode_ui.opened: return
+	if event is InputEventScreenTouch and event.pressed and event.position.y>153 and event.position.y<get_viewport().get_visible_rect().size.y-152:
 		active_touch=event.index; pointer_down=true
 		cursor_world=get_canvas_transform().affine_inverse()*event.position; target=terrain.cell_at(cursor_world)
 		_tap_world()
@@ -392,6 +458,7 @@ func _process(delta: float) -> void:
 			if noise_clock>0.45:
 				_noise(0.30 if dragging>=0 else (0.06 if player.crouch else 0.12)); noise_clock=0
 		_business_tick(delta)
+		episode.tick(delta,episode_facts())
 		if dragging>=0:
 			people[dragging].pos=player.position+Vector2(-22*player.facing,18)
 			if _witnessed(player.position): suspicion=minf(100,suspicion+delta*8)
@@ -399,6 +466,7 @@ func _process(delta: float) -> void:
 			player.position=Vector2(27*32,21*32-28); player.velocity=Vector2.ZERO; message="지하 경계에서 여관으로 복귀했다."
 		camera.position=player.position+Vector2(-32,65)
 	_update_ui(); queue_redraw()
+	episode_ui.refresh()
 
 func _work_target(delta: float) -> void:
 	if mode=="mine" or automatic_mining:
@@ -499,10 +567,10 @@ func _interact() -> void:
 	message="가까운 카운터·덮개·횃불 또는 선택한 손님에게 사용한다."
 
 func _business_tick(delta: float) -> void:
-	if order_clock>=8:
-		order_clock-=8
+	if order_clock>=12:
+		order_clock-=12
 		if inn.hired and employee_alert<=0 and inn.orders>0:
-			inn.orders-=1; inn.coins+=4; inn.served+=1
+			inn.orders-=1; inn.coins+=2; inn.served+=1
 		inn.orders=mini(4,inn.orders+1)
 	if inn.hired and wage_clock>=90:
 		wage_clock-=90
@@ -533,19 +601,20 @@ func _update_ui() -> void:
 	labels.stats.text="%d닢 · 주문 %d · 의심 %d%% · 직원 %s" %[inn.coins,inn.orders,suspicion,"고용" if inn.hired else "없음"]
 	var names={"wood":"목재","dirt":"흙","stone":"돌","platform":"발판","torch":"횃불"}
 	labels.context.text="%s %d · 흙 %d · 돌 %d · 발판 %d · 횃불 %d" %[names[build_material],terrain.inventory[build_material],terrain.inventory.dirt,terrain.inventory.stone,terrain.inventory.platform,terrain.inventory.torch]
-	labels.log.text=message
+
 	if dragging>=0: use_button.text="내려놓기"
 	elif selected_person>=0: use_button.text="운반 시작" if people[selected_person].down else "기절 시도"
-	else: use_button.text="사용 / E"
+	else: use_button.text="사용"
 	for key in modes: modes[key].modulate=Color("e1bd7e") if mode==key else Color.WHITE
 
 func _save() -> void:
 	if pointer_down or dragging>=0 or not walking_route.is_empty() or not player.is_on_floor(): message="땅에 서서 이동·작업·운반을 멈추고 저장하자."; return
 	var data=terrain.encode(); data.player=[player.position.x,player.position.y]
 	data.coins=inn.coins; data.hired=inn.hired; data.orders=inn.orders; data.suspicion=suspicion; data.hatch=hatch_open
+	data.episode=episode.data.duplicate(true)
 	data.clock=clock; data.order_clock=order_clock; data.wage_clock=wage_clock; data.guard_clock=guard_clock
 	data.people=[]
-	for p in people: data.people.append({"x":p.pos.x,"y":p.pos.y,"face":p.face,"down":p.down})
+	for p in people: data.people.append({"x":p.pos.x,"y":p.pos.y,"face":p.face,"down":p.down,"room":p.room,"checkout":p.get("checkout",0.0),"dirty":p.get("dirty",false)})
 	var file=FileAccess.open(save_path,FileAccess.WRITE)
 	if file==null: message="저장 실패"; return
 	file.store_string(JSON.stringify(data)); message="지형·인벤토리·여관 상태 저장 완료."
@@ -560,14 +629,17 @@ func _load_save() -> void:
 	terrain=next; player.position=Vector2(clampf(float(p[0]),34,83*32-32),clampf(float(p[1]),-32,52*32)); player.velocity=Vector2.ZERO
 	inn.coins=maxi(0,int(data.get("coins",24))); inn.orders=clampi(int(data.get("orders",1)),0,4); inn.hired=bool(data.get("hired",false))
 	suspicion=clampf(float(data.get("suspicion",0)),0,100); hatch_open=bool(data.get("hatch",false))
-	clock=maxf(0,float(data.get("clock",0))); order_clock=clampf(float(data.get("order_clock",0)),0,7.99)
+	clock=maxf(0,float(data.get("clock",0))); order_clock=clampf(float(data.get("order_clock",0)),0,11.99)
 	wage_clock=clampf(float(data.get("wage_clock",0)),0,89.99); guard_clock=clampf(float(data.get("guard_clock",0)),0,74.99)
 	if data.get("people",[]) is Array and data.people.size()==3:
 		for i in range(3):
 			var v=data.people[i]
 			if not v is Dictionary: continue
 			people[i].pos=Vector2(clampf(float(v.get("x",800)),32,83*32),clampf(float(v.get("y",672)),0,53*32))
+			people[i].room=int(v.get("room",0)); people[i].checkout=float(v.get("checkout",0)); people[i].dirty=bool(v.get("dirty",false))
 			people[i].target=people[i].pos.x; people[i].face=1 if int(v.get("face",1))>=0 else -1; people[i].down=bool(v.get("down",false))
+	if data.get("episode",{}) is Dictionary and not data.get("episode",{}).is_empty():
+		episode.data=data.episode.duplicate(true); episode_ui.ending_shown=false
 	dragging=-1; selected_person=-1; pointer_down=false; employee_alert=0
 	_stop_navigation()
 	_changed(); message="직접 조작 실험을 불러왔다."
@@ -615,7 +687,7 @@ func _draw() -> void:
 		draw_texture_rect_region(atlas,Rect2(x*32,13*32+10,64,22),Rect2(112,64,16,8))
 		draw_rect(Rect2(x*32+5,13*32,54,22),Color("82938e")); draw_rect(Rect2(x*32+7,13*32,17,15),Color("e2cf9b"))
 	draw_texture_rect_region(atlas,Rect2(28*32,20*32-15,96,47),Rect2(112,64,16,16))
-	draw_string(font,Vector2(28*32-5,19*32-10),"카운터 · 사용 / E",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("f1d49d"))
+	draw_string(font,Vector2(28*32-5,19*32-10),"접수대",HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("f1d49d"))
 	# Cellar background wall texture differentiates excavated air from solid earth.
 	for x in range(14,24):
 		for y in range(24,30):
@@ -641,7 +713,7 @@ func _draw() -> void:
 			var dest=Rect2(p.pos-Vector2(48,84),Vector2(96,96))
 			if p.face<0: dest.position.x+=96; dest.size.x=-96
 			draw_texture_rect_region(preload("res://assets/knight.png"),dest,Rect2((int(clock*4)%4)*32,0,32,32),[Color("b7bd93"),Color("b48790"),Color("8ab8bf")][i])
-		draw_string(font,p.pos-Vector2(40,62),p.name,HORIZONTAL_ALIGNMENT_LEFT,-1,17,Color("ead4af"))
+		draw_string(font,p.pos-Vector2(40,62),p.name+(" · %d호" %p.room if p.get("checkout",0.0)>clock else ""),HORIZONTAL_ALIGNMENT_LEFT,-1,17,Color("ead4af"))
 		if selected_person==i: draw_arc(p.pos-Vector2(0,24),32,0,TAU,24,Color("eccb85"),2)
 	if terrain.valid(target):
 		var outline=Color("e1c275") if terrain.within_reach(target,player.position) else Color("a45354")
@@ -737,7 +809,7 @@ func _verify_navigation() -> int:
 	await _wait_navigation(360)
 	if player.position.distance_to(touch_goal-Vector2(0,27))>18: failures+=1; push_error("Native touch destination did not arrive")
 	_navigate_to(Vector2(22*32+16,21*32))
-	await _test_click(Vector2(125,1260))
+	await _test_click(stop_button.get_global_rect().get_center())
 	if not walking_route.is_empty() or player.axis!=0: failures+=1; push_error("Cancel did not stop route")
 	_stop_navigation()
 	navigation_testing=false
@@ -752,3 +824,61 @@ func _test_click(p: Vector2) -> void:
 	for pressed in [true,false]:
 		var event=InputEventMouseButton.new(); event.button_index=MOUSE_BUTTON_LEFT; event.position=p; event.pressed=pressed
 		get_viewport().push_input(event,true); await get_tree().process_frame
+
+func episode_font() -> Font:
+	return font
+
+func episode_facts() -> Dictionary:
+	var bodies=0
+	for p in people:
+		if p.down: bodies+=1
+	return {"money":inn.coins,"served":inn.served,"near_counter":player.position.distance_to(Vector2(29*32,21*32-19))<130,"risk":int(suspicion),"bodies":bodies,"hatch":hatch_open,"dug":int(terrain.inventory.dirt)+int(terrain.inventory.stone)}
+
+func episode_coins(amount: int) -> void:
+	inn.coins+=amount
+
+func episode_pause(value: bool) -> void:
+	paused=value; player.active=not value; pointer_down=false
+
+func capture_episode(cellar: bool) -> void:
+	test_mode=true; episode.data.briefed=true; episode.data.elapsed=68; inn.hired=true
+	if cellar:
+		hatch_open=true; _rebuild_geometry(); player.position=Vector2(22*32,30*32-28)
+	else: player.position=Vector2(24*32,21*32-28)
+	camera.zoom=Vector2(0.72,0.72); camera.position=player.position+Vector2(-32,20)
+	paused=true; player.active=false; _update_ui(); episode_ui.refresh(); queue_redraw()
+	await get_tree().create_timer(0.5).timeout
+	get_viewport().get_texture().get_image().save_png("res://../../docs/episode-2d-"+("cellar" if cellar else "inn")+".png")
+	get_tree().quit()
+
+func episode_notice() -> String:
+	return message
+
+func verify_episode_playthrough(capture: bool=false) -> int:
+	episode_ui.perform("start")
+	for i in range(15): await get_tree().physics_frame
+	_interact()
+	assert(inn.hired)
+	_assign_guest_room(1)
+	assert(people[0].room==1 and people[0].checkout>clock)
+	for step in range(400):
+		clock+=0.5; order_clock+=0.5; wage_clock+=0.5; guard_clock+=0.5
+		_business_tick(0.5); episode.tick(0.5,episode_facts())
+		if step==90: episode_ui.perform("report")
+		if step==260: episode_ui.perform("honest")
+	assert(inn.served>=3)
+	var money: int=inn.coins
+	episode_ui.perform("settle")
+	assert(episode.data.ending=="여관을 지킨 밤" and inn.coins==money-36)
+	assert(episode_ui.panel.visible and episode_ui.heading.text==episode.data.ending)
+	_save(); episode.data.ending=""; _load_save()
+	assert(episode.data.ending=="여관을 지킨 밤")
+	if capture:
+		camera.zoom=Vector2(0.72,0.72); camera.position=player.position+Vector2(-32,20)
+		_update_ui(); episode_ui.refresh(); queue_redraw()
+		await get_tree().create_timer(0.5).timeout
+		get_viewport().get_texture().get_image().save_png("res://../../docs/episode-2d-ending.png")
+	episode_ui.perform("freeplay")
+	assert(not episode_ui.panel.visible and not paused and episode.data.freeplay)
+	print("2D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed")
+	return 0

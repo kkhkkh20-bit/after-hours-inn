@@ -1,5 +1,5 @@
 extends CanvasLayer
-## Landscape overview UI. All essential operations are exposed as buttons.
+## Portrait overlay. Controls occupy two compact rows; no bottom dialogue bar.
 var host
 var root: Control
 var header: PanelContainer
@@ -100,12 +100,12 @@ func setup(owner_) -> void:
 	root.offset_left=0
 	root.offset_right=0
 	root.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	header=make_panel(root,Vector4(0,0,1,0),Vector4(12,10,-12,74))
-	var top:=HBoxContainer.new()
+	header=make_panel(root,Vector4(0,0,1,0),Vector4(12,10,-12,112))
+	var top:=VBoxContainer.new()
 	header.add_child(top)
 	var top_row:=row(top)
 	top_row.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	top_row.add_child(text_node("문 닫은 뒤  0.9",22))
+	top_row.add_child(text_node("문 닫은 뒤 · 3D",24))
 	pause_button=make_button(top_row,"정지",func():host.sim.data.paused=not host.sim.data.paused,"pause")
 	pause_button.custom_minimum_size.x=100
 	pause_button.size_flags_horizontal=Control.SIZE_SHRINK_END
@@ -113,13 +113,14 @@ func setup(owner_) -> void:
 	speed_button.custom_minimum_size.x=90
 	speed_button.size_flags_horizontal=Control.SIZE_SHRINK_END
 	hud=text_node("",18)
-	hud.custom_minimum_size.x=420
+	hud.custom_minimum_size.x=0
 	top.add_child(hud)
-	alert_panel=make_panel(root,Vector4(0,0,1,0),Vector4(12,82,-500,126))
+	alert_panel=make_panel(root,Vector4(0,0,1,0),Vector4(12,152,-132,192))
 	alert=text_node("바닥을 탭해 이동하고 손님을 탭해 선택한다.",18)
 	alert.max_lines_visible=1
 	alert_panel.add_child(alert)
-	footer=make_panel(root,Vector4(0,1,1,1),Vector4(12,-128,-12,-10))
+	alert_panel.hide()
+	footer=make_panel(root,Vector4(0,1,1,1),Vector4(12,-142,-12,-12))
 	var bottom:=VBoxContainer.new()
 	bottom.add_theme_constant_override("separation",8)
 	footer.add_child(bottom)
@@ -127,11 +128,16 @@ func setup(owner_) -> void:
 	target.custom_minimum_size.y=26
 	target.max_lines_visible=1
 	bottom.add_child(target)
+	target.hide()
 	progress=ProgressBar.new()
 	progress.show_percentage=false
 	progress.custom_minimum_size.y=8
 	bottom.add_child(progress)
-	var actions:=row(bottom)
+	var actions:=GridContainer.new()
+	actions.columns=4
+	actions.add_theme_constant_override("h_separation",8)
+	actions.add_theme_constant_override("v_separation",8)
+	bottom.add_child(actions)
 	primary=make_button(actions,"접수대로 이동",func():
 		if primary_action.is_valid():primary_action.call(),"primary")
 	secondary=make_button(actions,"손님 선택",func():
@@ -146,7 +152,7 @@ func setup(owner_) -> void:
 		make_button(navigation,tab,open_sheet.bind(tab),"tab_"+tab)
 	zoom_box=VBoxContainer.new()
 	zoom_box.add_theme_constant_override("separation",8)
-	place(zoom_box,root,Vector4(1,0,1,0),Vector4(-110,140,-12,520))
+	place(zoom_box,root,Vector4(1,0,1,0),Vector4(-104,252,-12,640))
 	make_button(zoom_box,"전체",func():host.set_layer("all"),"overview")
 	make_button(zoom_box,"지상",func():host.set_layer("surface"),"surface_view")
 	make_button(zoom_box,"지하",func():host.set_layer("below"),"below_view")
@@ -159,7 +165,7 @@ func setup(owner_) -> void:
 	dim.color=Color(0,0,0,0.45)
 	place(dim,drawer,Vector4(0,0,1,1),Vector4.ZERO)
 	dim.mouse_filter=Control.MOUSE_FILTER_STOP
-	drawer_panel=make_panel(drawer,Vector4(0,0,1,1),Vector4(350,110,-350,-150))
+	drawer_panel=make_panel(drawer,Vector4(0,0,1,1),Vector4(20,205,-20,-160))
 	var sheet_layout:=VBoxContainer.new()
 	sheet_layout.add_theme_constant_override("separation",12)
 	drawer_panel.add_child(sheet_layout)
@@ -333,8 +339,8 @@ func refresh_sheet() -> void:
 
 func blocks_point(point: Vector2) -> bool:
 	if drawer.visible:return true
-	for control in [header,footer,alert_panel,zoom_box]:
-		if control.get_global_rect().has_point(point):return true
+	for control in [header,footer,zoom_box]:
+		if control.visible and control.get_global_rect().has_point(point):return true
 	return false
 
 func inspection_label(state_: String) -> String:

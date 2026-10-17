@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p build/web build/windows/licenses
+touch build/.gdignore
 godot --headless --editor --import
+cmp scripts/episode.gd prototypes/sideview/episode.gd
+cmp scripts/episode_ui.gd prototypes/sideview/episode_ui.gd
+timeout 45 godot --headless -- --episode-playthrough
+godot --headless -- --episode-verify
 godot --headless -- --verify
 godot --headless -- --input-verify
 godot --headless --export-release "Web" build/web/index.html
@@ -17,6 +22,8 @@ printf '%s\n' "${GITHUB_SHA:-local}" > build/web/version.txt
 mkdir -p build/web/sideview build/windows/sideview/licenses
 sideview_project="$PWD/prototypes/sideview"
 godot --headless --path "$sideview_project" --editor --import
+timeout 45 godot --headless --path "$sideview_project" -- --episode-playthrough
+godot --headless --path "$sideview_project" -- --episode-verify
 godot --headless --path "$sideview_project" -- --verify
 godot --headless --path "$sideview_project" -- --input-verify
 godot --headless --path "$sideview_project" --export-release "Web" "$PWD/build/web/sideview/index.html"
@@ -24,3 +31,5 @@ godot --headless --path "$sideview_project" --export-release "Windows Desktop" "
 cp prototypes/sideview/assets/THIRD_PARTY.md build/windows/sideview/licenses/
 cp prototypes/sideview/assets/OFL.txt build/windows/sideview/licenses/
 printf '%s\n' "${GITHUB_SHA:-local}" > build/web/sideview/version.txt
+
+python3 ci/mobile_shell.py build/web/index.html build/web/sideview/index.html

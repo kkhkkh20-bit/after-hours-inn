@@ -1,17 +1,17 @@
 config_version=5
 [application]
 config/name="After Hours - Border Inn"
-config/version="0.9"
+config/version="1.0-episode"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="AfterHoursBorderInn"
 run/main_scene="res://main.tscn"
 [display]
-window/size/viewport_width=1600
-window/size/viewport_height=900
+window/size/viewport_width=720
+window/size/viewport_height=1360
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/size/window_width_override=1280
-window/size/window_height_override=720
+window/size/window_width_override=540
+window/size/window_height_override=1020
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

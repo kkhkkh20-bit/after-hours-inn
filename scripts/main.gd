@@ -62,6 +62,9 @@ var alert_sound: AudioStreamPlayer
 var step_sound: AudioStreamPlayer3D
 var vision_clock := 0.0
 
+var episode=preload("res://scripts/episode.gd").new()
+var episode_ui
+
 func material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
@@ -274,12 +277,24 @@ func _ready() -> void:
 	add_child(camera)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = surface_zoom
+	camera.keep_aspect=Camera3D.KEEP_WIDTH
 	camera.position = CAMERA_ARM
 	camera.look_at(Vector3.ZERO)
 	camera.current = true
 	make_ui()
 	set_layer("all")
+	episode_ui=preload("res://scripts/episode_ui.gd").new()
+	add_child(episode_ui); episode_ui.setup(self,episode)
 	var args := OS.get_cmdline_user_args()
+	if args.is_empty(): episode_ui.open()
+	if "--capture-episode" in args or "--capture-episode-cellar" in args:
+		await capture_episode("--capture-episode-cellar" in args)
+		return
+	if "--episode-playthrough" in args or "--capture-ending" in args:
+		var failed=await verify_episode_playthrough("--capture-ending" in args)
+		get_tree().quit(failed); return
+	if "--episode-verify" in args:
+		get_tree().quit(preload("res://scripts/episode_tests.gd").new().run()); return
 	if "--verify" in args:
 		set_physics_process(false)
 		var result: int = preload("res://scripts/tests.gd").run(sim.obstacles)
@@ -517,7 +532,7 @@ func set_layer(value: String) -> void:
 	view_layer=value
 	overview=true
 	camera_offset=Vector2.ZERO
-	camera.size=26.0 if value!="below" else 11.5
+	camera.size=34.0 if value!="below" else 16.0
 	camera_focus=Vector3(5.5,1.4,1.4) if value!="below" else CELLAR_OFFSET+Vector3(4,0.7,1)
 	camera.position=camera_focus+CAMERA_ARM
 	camera.look_at(camera_focus)
@@ -629,6 +644,7 @@ func save_game() -> void:
 	if file==null:
 		sim.note("저장 파일을 만들 수 없다.")
 		return
+	sim.data.episode=episode.data.duplicate(true)
 	file.store_string(JSON.stringify(sim.snapshot()))
 	file.close()
 	sim.note("저장했다. 진행 중인 주문과 작업도 함께 기록했다.")
@@ -641,6 +657,9 @@ func load_game() -> void:
 	if not sim.restore(saved):
 		sim.note("이 버전에서 읽을 수 없는 저장 파일이다.")
 		return
+	if sim.data.has("episode"):
+		episode.data=sim.data.episode.duplicate(true)
+		episode_ui.ending_shown=false
 	last_cell_count=-1
 	sim.note("저장한 상태로 돌아왔다.")
 	sync_view(0)
@@ -653,6 +672,7 @@ func pan_camera(relative: Vector2) -> void:
 	camera_offset=camera_offset.limit_length(18)
 
 func _input(event: InputEvent) -> void:
+	if episode_ui!=null and episode_ui.opened: return
 	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
 		mouse_origin=event.position
 		mouse_dragged=false
@@ -672,6 +692,7 @@ func _input(event: InputEvent) -> void:
 		if touch_dragged and not touch_blocked:pan_camera(event.relative)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if episode_ui!=null and episode_ui.opened: return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
 			KEY_ESCAPE:
@@ -741,6 +762,7 @@ func _physics_process(delta: float) -> void:
 		var speed_: float=1.15 if sim.data.ops.drag!="" else (2.2 if sim.data.player.carry!="" else 2.9)
 		sim.move_player((right*direction.x+down*direction.y)*delta*speed_*sim.data.speed)
 		sim.tick(delta*sim.data.speed)
+		episode.tick(delta*sim.data.speed,episode_facts())
 		update_stealth_audio(delta)
 	if sim.data.player.floor==1:
 		hover_cell=soil_at(pointer_position)
@@ -753,6 +775,7 @@ func _physics_process(delta: float) -> void:
 	camera.position=camera_focus+CAMERA_ARM
 	camera.look_at(camera_focus)
 	sync_view(delta)
+	episode_ui.refresh()
 
 func send_key(key: int) -> void:
 	var event:=InputEventKey.new()
@@ -847,6 +870,12 @@ func frame_owner() -> void:
 
 func input_verify() -> void:
 	# No keyboard events: actual GUI buttons, ground clicks and touch events.
+	get_window().size=Vector2i(540,1020)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert(get_viewport().get_visible_rect().size.y>get_viewport().get_visible_rect().size.x)
+	assert(not mobile_ui.target.visible and not mobile_ui.alert_panel.visible)
+	assert(mobile_ui.footer.get_global_rect().end.x<=get_viewport().get_visible_rect().size.x)
 	get_window().size=Vector2i(1600,900)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -1217,3 +1246,64 @@ func refresh_noise() -> void:
 			mesh.surface_add_vertex(a.lerp(b,minf(1,t+0.12/maxf(length,0.001))))
 	mesh.surface_end()
 	noise_visual.mesh=mesh
+
+func episode_font() -> Font:
+	return ui_font
+
+func episode_facts() -> Dictionary:
+	var bodies=0
+	for p in sim.data.people.values():
+		if p.state in ["down","captive"]: bodies+=1
+	return {"money":sim.data.money,"served":sim.data.served,"near_counter":sim.near_counter(),"risk":int(sim.data.stealth.suspicion)+int(sim.data.ops.reports)*12,"bodies":bodies,"hatch":sim.data.excavation.hatch_open,"dug":maxi(0,sim.data.cells.size()-55)}
+
+func episode_coins(amount: int) -> void:
+	sim.data.money+=amount
+
+func episode_pause(value: bool) -> void:
+	sim.data.paused=value
+
+func capture_episode(cellar: bool) -> void:
+	capturing=true; episode.data.briefed=true; episode.data.elapsed=68
+	sim.data.player.pos=Simulation.COUNTER; sim.assign_room(1); sim.toggle_staff(); sim.tick(20)
+	if cellar:
+		sim.data.player.pos=Simulation.HATCH; sim.change_floor(); sim.queue_dig(Vector2i(2,0)); sim.tick(5); set_layer("below")
+	else: set_layer("all")
+	sync_view(0); episode_ui.refresh()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png("res://docs/episode-3d-"+("cellar" if cellar else "inn")+".png")
+	get_tree().quit()
+
+func episode_notice() -> String:
+	return str(sim.data.logs.back().text) if not sim.data.logs.is_empty() else ""
+
+func verify_episode_playthrough(capture: bool=false) -> int:
+	set_physics_process(false)
+	episode_ui.perform("start")
+	sim.data.player.pos=Simulation.COUNTER
+	assert(sim.assign_room(1))
+	sim.toggle_staff()
+	for step in range(364):
+		sim.tick(0.5); episode.tick(0.5,episode_facts())
+		if step==90: episode_ui.perform("report")
+		if step==132: assert(sim.assign_room(2))
+		if step==260: episode_ui.perform("honest")
+	assert(sim.data.served>=3)
+	sim.data.player.pos=Simulation.COUNTER
+	var money: int=sim.data.money
+	episode_ui.perform("settle")
+	assert(episode.data.ending=="여관을 지킨 밤" and sim.data.money==money-36)
+	assert(episode_ui.panel.visible and episode_ui.heading.text==episode.data.ending)
+	save_game(); episode.data.ending=""; load_game()
+	assert(episode.data.ending=="여관을 지킨 밤")
+	if capture:
+		set_layer("all"); sync_view(0); episode_ui.refresh()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("res://docs/episode-3d-ending.png")
+	episode_ui.perform("freeplay")
+	assert(not episode_ui.panel.visible and not sim.data.paused and episode.data.freeplay)
+	print("3D EPISODE PLAYTHROUGH: real booking, staff service, events, rent, ending, save/load, freeplay passed")
+	return 0

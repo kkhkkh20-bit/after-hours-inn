@@ -1,0 +1,29 @@
+[17:14:17] C4AulScriptEngine linked - 90533 lines, 0 warnings, 0 errors
+[17:14:18] INN READY: native terrain; 5 rooms; 2 cellar entrances; workshop; storage.
+[17:14:20] Player join: Innkeeper
+[17:15:12] MEAL: paid 12; food 11
+[17:15:12] BOOKED: Room 1; paid 35
+[17:15:12] BOOKED: Room 2; paid 35
+[17:15:12] MEAL: paid 12; food 10
+[17:15:20] BOOKED: Room 3; paid 35
+[17:15:34] BOOKED: Room 4; paid 35
+[17:15:36] INN STATE: staying at 469,198 action Walk
+[17:15:36] INN STATE: staying at 539,197 action Walk
+[17:15:36] INN STATE: staying at 619,197 action Walk
+[17:15:47] MEAL: paid 12; food 9
+[17:15:54] INN STATE: staying at 469,198 action Walk
+[17:15:54] INN STATE: staying at 539,197 action Walk
+[17:15:54] INN STATE: staying at 619,197 action Walk
+[17:15:54] INN STATE: staying at 700,198 action Walk
+[17:16:00] BOOKED: Room 5; paid 35
+[17:16:13] INN STATE: staying at 469,198 action Walk
+[17:16:13] INN STATE: staying at 539,197 action Walk
+[17:16:13] INN STATE: staying at 619,197 action Walk
+[17:16:13] INN STATE: staying at 700,198 action Walk
+[17:16:13] INN STATE: staying at 780,198 action Walk
+[17:16:13] BOOKED: Room 1; paid 35
+[17:16:26] MEAL: paid 12; food 8
+[17:16:32] INN STATE: staying at 700,198 action Walk
+[17:16:32] INN STATE: staying at 780,198 action Walk
+[17:16:32] INN STATE: staying at 469,198 action Walk
+[17:16:39] BOOKED: Room 2; paid 35

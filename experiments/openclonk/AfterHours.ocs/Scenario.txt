@@ -1,0 +1,20 @@
+[Head]
+Icon=17
+Title=After Hours Inn
+Version=8,0
+MaxPlayer=1
+Difficulty=1
+[Definitions]
+Definition1=Objects.ocd
+Definition2=Decoration.ocd
+[Player1]
+Crew=Clonk=1
+[Landscape]
+Sky=Clouds2
+MapWidth=150
+MapHeight=100
+MapZoom=8
+[Weather]
+Climate=0
+YearSpeed=0
+Wind=0

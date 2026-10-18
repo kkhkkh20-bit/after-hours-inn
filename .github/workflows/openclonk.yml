@@ -1,0 +1,29 @@
+name: OpenClonk inn Windows package
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'experiments/openclonk/**'
+      - 'ci/package_openclonk.py'
+      - '.github/workflows/openclonk.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare archive tool
+        run: |
+          if ! command -v 7z; then
+            sudo apt-get update
+            sudo apt-get install -y p7zip-full
+          fi
+      - name: Package complete official game and inn scenario
+        run: python3 ci/package_openclonk.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AfterHours-OpenClonk-Windows
+          path: build/openclonk-windows/
+          retention-days: 30

@@ -1,0 +1,11 @@
+[ParameterDef]
+Name=Start in cellar (play-test only)
+Description=Default starts at reception; this option starts beside diggable earth.
+ID=StartInCellar
+Default=0
+[Option]
+Name=Reception
+Value=0
+[Option]
+Name=Cellar
+Value=1

@@ -1,0 +1,5 @@
+[Player]
+Name=Innkeeper
+[Preferences]
+Color=0
+Mouse=1
